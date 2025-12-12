@@ -31,39 +31,51 @@ def get_gspread_client():
 
 def get_user_sheet(phone_number):
     """
-    ARQUITECTURA DE PESTAÑAS (TABS):
-    En lugar de crear un archivo por usuario, creamos una PESTAÑA por usuario
-    dentro del archivo maestro. Esto evita el error de cuota de disco del bot.
+    GESTIÓN HÍBRIDA:
+    1. Actualiza el Dashboard (Hoja 0) con el resumen.
+    2. Devuelve la Pestaña personal del usuario.
     """
     gc = get_gspread_client()
     master_sheet_name = os.getenv("GOOGLE_MASTER_SHEET", "Ticketia-Master")
     
-    # 1. Abrir el Libro Maestro (Contenedor)
+    # Abrir el Libro Maestro
     try:
         sh = gc.open(master_sheet_name)
     except gspread.SpreadsheetNotFound:
-        print(f"⚠️ No encuentro el archivo '{master_sheet_name}'. Creándolo...")
+        print(f"⚠️ No encuentro '{master_sheet_name}'. Creándolo...")
         sh = gc.create(master_sheet_name)
-        # Si lo crea el bot, compártelo contigo mismo inmediatamente por la web o fallará la visualización
-        
-    # 2. Buscar o Crear la Pestaña del Usuario
-    # Limpiamos el teléfono para que sea un nombre de hoja válido (sin +)
+
+    # --- PARTE 1: EL DASHBOARD (Admin) ---
+    try:
+        dashboard = sh.get_worksheet(0) # Siempre la primera pestaña
+    except:
+        dashboard = sh.add_worksheet(title="Dashboard", rows=100, cols=5)
+    
+    # Si está vacía, ponemos cabeceras chulas
+    if not dashboard.acell('A1').value:
+        dashboard.append_row(["Usuario (Tel)", "Total Gastado (€)", "Estado"])
+        # Le damos un poco de formato (negrita) a la primera fila
+        dashboard.format('A1:C1', {'textFormat': {'bold': True}})
+
     clean_phone = str(phone_number).replace("+", "")
     
+    # ¿Está este usuario en el Dashboard?
+    cell = dashboard.find(clean_phone)
+    if not cell:
+        print(f"📊 Añadiendo usuario {clean_phone} al Dashboard...")
+        # LA FÓRMULA MÁGICA: Suma la columna E de la pestaña del usuario
+        # Usamos sintaxis en inglés (=SUM), Google Sheets lo traduce a tu idioma local
+        formula = f"=SUM('{clean_phone}'!E:E)"
+        dashboard.append_row([clean_phone, formula, "ACTIVO"])
+
+    # --- PARTE 2: LA PESTAÑA DEL USUARIO ---
     try:
-        # Intentamos acceder a la pestaña con el nombre del teléfono
         worksheet = sh.worksheet(clean_phone)
-        print(f"✅ Pestaña encontrada para: {clean_phone}")
         return worksheet, False
-        
     except gspread.WorksheetNotFound:
-        # No existe, la creamos
-        print(f"🆕 Creando nueva pestaña para: {clean_phone}")
+        print(f"🆕 Creando pestaña personal para: {clean_phone}")
         worksheet = sh.add_worksheet(title=clean_phone, rows=1000, cols=10)
-        
-        # Le ponemos las cabeceras
         worksheet.append_row(["Fecha", "Comercio", "Categoría", "Concepto", "Total"])
-        
         return worksheet, True
 
 # Prompt del sistema
@@ -79,14 +91,14 @@ Si falla: { "error": "No es un ticket" }.
 def bot():
     incoming_msg = request.values.get('Body', '').lower()
     num_media = int(request.values.get('NumMedia', 0))
-    sender = request.values.get('From', 'Unknown') # ej: whatsapp:+34666...
+    sender = request.values.get('From', 'Unknown') 
     
-    # Limpiamos el sender para quitar 'whatsapp:'
+    # Limpiamos el sender
     phone_number = sender.replace("whatsapp:", "")
     
     resp = MessagingResponse()
     
-    # 1. Resolver Usuario (Pestañas)
+    # 1. Resolver Usuario y Dashboard
     try:
         sheet, is_new_user = get_user_sheet(phone_number)
     except Exception as e:
@@ -94,9 +106,8 @@ def bot():
         resp.message(f"🐛 DEBUG: {str(e)}")
         return str(resp)
         
-    # Bienvenida si es pestaña nueva
     if is_new_user:
-        welcome_msg = f"🆕 ¡Bienvenido! He creado tu pestaña privada en el Excel.\nMándame una foto para estrenarla."
+        welcome_msg = f"🆕 ¡Bienvenido! He creado tu pestaña privada.\nMándame una foto para empezar."
         if num_media == 0:
             resp.message(welcome_msg)
             return str(resp)
@@ -122,9 +133,7 @@ def bot():
                     max_tokens=300
                 )
                 
-                # Limpieza de JSON
-                raw = response.choices[0].message.content
-                clean = raw.replace("```json", "").replace("```", "").strip()
+                clean = response.choices[0].message.content.replace("```json", "").replace("```", "").strip()
                 datos = json.loads(clean)
                 
                 if "error" in datos:
@@ -134,18 +143,18 @@ def bot():
                     fila = [datos.get("fecha"), datos.get("comercio"), datos.get("categoria"), datos.get("concepto"), datos.get("total")]
                     sheet.append_row(fila)
                     
-                    msg = f"✅ *Guardado en tu Pestaña*\n🛒 {datos['comercio']}\n💰 {datos['total']}€"
-                    if is_new_user: msg = "🆕 ¡Pestaña creada!\n" + msg
+                    msg = f"✅ *Guardado*\n🛒 {datos['comercio']}\n💰 {datos['total']}€"
+                    if is_new_user: msg = "🆕 ¡Cuenta creada!\n" + msg
                     resp.message(msg)
 
             except Exception as e:
-                print(f"ERROR: {e}")
-                resp.message(f"💥 ERROR: {str(e)}")
+                print(f"ERROR IA: {e}")
+                resp.message("⚠️ No he podido leer ese ticket. Intenta que se vea mejor.")
         else:
-            resp.message("⚠️ Mándame una foto, no un archivo raro.")
+            resp.message("⚠️ Por favor, envía una imagen.")
     else:
         if not is_new_user:
-            resp.message("👋 Todo listo. Tu pestaña de gastos está activa.")
+            resp.message("👋 Tu sistema de gastos está activo. Envíame un ticket.")
 
     return str(resp)
 
