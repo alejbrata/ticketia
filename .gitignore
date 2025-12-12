@@ -13,6 +13,10 @@ pip-delete-this-directory.txt
 # Environments variables
 .env
 
+# Secrets
+ticketia-bot-*.json
+google_credentials.json
+
 # MacOS
 .DS_Store
 
