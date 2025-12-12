@@ -23,3 +23,8 @@ google_credentials.json
 # IDE
 .vscode/
 .idea/
+
+# Secretos de Google (NUNCA SUBIR)
+client_secrets.json
+token.json
+ticketia-bot-*.json
