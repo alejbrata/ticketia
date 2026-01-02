@@ -139,6 +139,14 @@ def dashboard():
     # C. Chats Atendidos (Placeholder por ahora, ya que no guardamos logs de chat persistentes en DB aún)
     chats_atendidos = 0
     
+    # Nombre del mes actual en español
+    meses_es = {
+        1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 
+        5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto", 
+        9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
+    }
+    month_name = meses_es.get(now.month, "Mes Actual")
+
     class UserContext:
         is_authenticated = True
         phone = user_phone
@@ -158,7 +166,8 @@ def dashboard():
         total_gastos=total_gastos_fmt,
         tickets_pendientes=tickets_pendientes,
         tickets_procesados=tickets_procesados,
-        chats_atendidos=chats_atendidos
+        chats_atendidos=chats_atendidos,
+        current_month_name=month_name
     )
 
 @app.route('/transactions')
@@ -183,7 +192,6 @@ def wizard():
     
     return render_template('wizard.html', current_user=MockUser())
 
-@app.route('/save_config', methods=['POST'])
 @app.route('/save_config', methods=['POST'])
 def save_config():
     # 1. Auth Real (Protección)
@@ -272,44 +280,38 @@ def export_excel():
     
     # 3. Preparar Datos para DataFrame
     data_list = []
-    base_url = request.host_url.rstrip('/') 
-    
-    # Lista auxiliar para guardar las URLs
-    urls = []
     
     for t in tickets:
-        if t.image_path and t.image_path.startswith(('http://', 'https://')):
-            full_img_url = t.image_path
-        else:
-            full_img_url = f"{base_url}{t.image_path}" if t.image_path else ""
-        
-        urls.append(full_img_url)
-        
-        # Cálculos Económicos
-        total = float(t.total or 0.0)
-        tax_rate = float(t.tax_percent or 21.0) # Usar el IVA guardado
-        
-        # Base = Total / (1 + tasa/100)
-        base_imponible = round(total / (1 + (tax_rate / 100)), 2)
-        cuota_iva = round(total - base_imponible, 2)
-        
+        # Calcular Cuota IVA (Fee) si falta
+        fee = t.fee
+        if (fee is None or fee == 0) and t.base and t.tax_percent:
+             fee = t.base * (t.tax_percent / 100)
+
         data_list.append({
-            "Fecha": t.date,
-            "ID Ref": t.id,
-            "Cuenta Contable": "41000000", # Contaplus Placeholder
-            "Concepto": t.concept or "Gasto General",
-            "Base Imponible": base_imponible,
-            "% IVA": tax_rate,
-            "Cuota IVA": cuota_iva,
-            "Total Factura": total,
-            "Enlace Imagen": "Ver Recibo"
+            "ID": t.id,
+            "Date": t.date,
+            "Month": t.date.month if t.date else None,
+            "Year": t.date.year if t.date else None,
+            "NIF": t.nif,
+            "Name": t.provider, # Mapeado desde provider
+            "Ticket_Number": t.ticket_number,
+            "Concept": t.concept,
+            "Expense_Account": "629", # Valor fijo
+            "Base": t.base,
+            "%IVA": t.tax_percent,
+            "Fee": fee,
+            "Total": t.total
         })
         
     # 4. Crear DataFrame y Excel con XlsxWriter
-    column_order = ['Fecha', 'ID Ref', 'Cuenta Contable', 'Concepto', 
-                   'Base Imponible', '% IVA', 'Cuota IVA', 'Total Factura', 'Enlace Imagen']
+    column_order = ["ID", "Date", "Month", "Year", "NIF", "Name", "Ticket_Number", "Concept", "Expense_Account", "Base", "%IVA", "Fee", "Total"]
     
     df = pd.DataFrame(data_list)
+    # Asegurarse que todas las columnas existan
+    for col in column_order:
+        if col not in df.columns:
+            df[col] = None
+            
     if not df.empty:
         df = df[column_order]
     
@@ -343,46 +345,47 @@ def export_excel():
         # 4. Centro
         center_format = workbook.add_format({'align': 'center'})
         
-        # 5. Enlaces
-        link_format = workbook.add_format({'font_color': 'blue', 'underline': 1})
-        
         # Aplicar formato a columnas (0-index based)
-        # A: Fecha
-        worksheet.set_column('A:A', 12, date_format)
-        # B: ID Ref
-        worksheet.set_column('B:B', 8, center_format)
-        # C: Cuenta
-        worksheet.set_column('C:C', 15, center_format)
-        # D: Concepto (Ancho flexible)
-        worksheet.set_column('D:D', 35)
-        # E: Base Imponible
-        worksheet.set_column('E:E', 15, currency_format)
-        # F: % IVA
-        worksheet.set_column('F:F', 8, center_format)
-        # G: Cuota IVA
-        worksheet.set_column('G:G', 12, currency_format)
-        # H: Total
-        worksheet.set_column('H:H', 15, currency_format)
-        # I: Enlace
-        worksheet.set_column('I:I', 15)
+        # ID (A)
+        worksheet.set_column('A:A', 8, center_format)
+        # Date (B)
+        worksheet.set_column('B:B', 12, date_format)
+        # Month (C)
+        worksheet.set_column('C:C', 6, center_format)
+        # Year (D)
+        worksheet.set_column('D:D', 6, center_format)
+        # NIF (E)
+        worksheet.set_column('E:E', 12, center_format)
+        # Name (F) - Provider
+        worksheet.set_column('F:F', 25)
+        # Ticket_Number (G)
+        worksheet.set_column('G:G', 15, center_format)
+        # Concept (H)
+        worksheet.set_column('H:H', 30)
+        # Expense_Account (I)
+        worksheet.set_column('I:I', 10, center_format)
+        # Base (J)
+        worksheet.set_column('J:J', 12, currency_format)
+        # %IVA (K)
+        worksheet.set_column('K:K', 8, center_format)
+        # Fee (L)
+        worksheet.set_column('L:L', 12, currency_format)
+        # Total (M)
+        worksheet.set_column('M:M', 15, currency_format)
 
         # Sobreescribir Cabeceras con Estilo
         for col_num, value in enumerate(df.columns.values):
             worksheet.write(0, col_num, value, header_format)
-            
-        # Re-escribir enlaces
-        link_col_idx = 8 
-        for i, url in enumerate(urls):
-            if url:
-                worksheet.write_url(i + 1, link_col_idx, url, link_format, string="Ver Recibo")
         
     output.seek(0)
     
-    # Nombre de archivo dinámico y limpio
+    # Nombre de archivo dinámico (Con TIMESTAMP para cache busting)
     import re
-    safe_name = re.sub(r'[^a-zA-Z0-9]', '', business_name) # Remove special chars
-    date_str = datetime.now().strftime('%Y-%m-%d')
+    safe_name = re.sub(r'[^a-zA-Z0-9]', '', business_name)
+    date_str = datetime.now().strftime('%Y-%m-%d_%H%M%S')
     filename = f"Gastos_{safe_name}_{date_str}.xlsx"
+    
+    print(f"Generando Excel: {filename}") # Debug Log
     
     return send_file(output, as_attachment=True, download_name=filename, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
@@ -450,37 +453,12 @@ def bot():
         # => CASO 2: Escriben a un NÚMERO DEDICADO DE CLIENTE
         # target_business es la empresa a la que quieren contactar
         
-        # ¿Quién escribe?
-        if sender == target_business.user_phone:
-            # A.1) ES EL DUEÑO probando su propio bot
-            if num_media > 0:
-                 # Si el dueño se manda foto a su propio bot de cliente -> ¿Lo procesamos como ticket?
-                 # Generalmente NO, el bot de cliente es para clientes. 
-                 # Pero si su plan lo permite, podríamos.
-                 # Por simplicidad: Los tickets se suben al CENTRAL. Aquí asumimos test del bot.
-                 resp.message("⚠️ Estás hablando con TU bot de atención al cliente (Modo Test). Para subir gastos, escribe al número Central de Zeptai.")
-            else:
-                 # Responder como simulación de bot
-                 try:
-                    ai_response = generate_response(incoming_msg, target_number)
-                    resp.message(f"[TEST MODO DUEÑO] 🤖: {ai_response}")
-                 except Exception as e:
-                    resp.message(f"Error Test: {e}")
-        else:
-            # A.2) ES UN CLIENTE FINAL
-            # Verificar si el plan incluye Chatbot
-            features = target_business.features or {}
-            if features.get('has_chatbot', False):
-                try:
-                    ai_response = generate_response(incoming_msg, target_number)
-                    resp.message(ai_response)
-                except Exception as e:
-                    print(f"Error Chatbot V2: {e}")
-                    # Silencio o error genérico en logs
-            else:
-                # El negocio tiene número pero no bot contratado (Raro)
-                pass 
-
+        # TODO: Invocar Agente con Herramientas
+        # Aquí iría la lógica específica del agente del cliente
+        # agent = load_agent(business_profile)
+        # response = agent.run(incoming_msg)
+        resp.message(f"🤖 [Modo Agente {target_business.business_name}] Función en construcción.")
+        
     return str(resp)
 
 if __name__ == '__main__':

@@ -3,3 +3,6 @@ twilio
 openai
 python-dotenv
 psycopg2-binary
+pandas
+xlsxwriter
+flask-sqlalchemy

@@ -27,18 +27,9 @@ def process_ticket(media_url, user_phone):
             return "⚠️ No pude descargar la imagen de Twilio."
             
         # 2. Guardar imagen localmente (para que sea "nuestra")
-        import uuid
-        filename = f"{uuid.uuid4()}.jpg"
-        upload_dir = os.path.join("static", "uploads")
-        os.makedirs(upload_dir, exist_ok=True)
-        local_path = os.path.join(upload_dir, filename)
-        
-        # Escribir archivo en disco
-        with open(local_path, 'wb') as f:
-            f.write(response.content)
-            
-        # Path relativo para la DB/Web
-        db_image_path = f"/static/uploads/{filename}"
+        from core.storage import StorageService
+        # Detectar extensión si es posible, por defecto es jpg
+        db_image_path = StorageService.save_file(response.content, extension=".jpg")
 
         # 3. Convertir a Base64 para OpenAI
         image_data = base64.b64encode(response.content).decode('utf-8')
