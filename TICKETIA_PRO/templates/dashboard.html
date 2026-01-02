@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="px-6 py-8 pb-24 max-w-lg mx-auto w-full">
+
+    <!-- Welcome Header -->
+    <header class="mb-8">
+        <h1 class="text-3xl font-bold text-slate-800 tracking-tight">Hola, <br>{{ current_user.business_name }}</h1>
+        <p class="text-slate-500 mt-2 font-medium">Resumen de Octubre</p>
+    </header>
+
+    <!-- Main KPI Card -->
+    <div class="bg-indigo-600 rounded-[2rem] p-8 shadow-xl shadow-indigo-200 text-white mb-8 relative overflow-hidden">
+        <div class="relative z-10">
+            <p class="text-indigo-200 text-sm font-medium uppercase tracking-wider mb-1">Gastos Totales</p>
+            <div class="text-5xl font-bold tracking-tight mb-6">
+                {{ total_gastos }}<span class="text-2xl text-indigo-300 ml-1">€</span>
+            </div>
+
+            <a href="{{ url_for('export_excel') }}"
+                class="inline-flex items-center gap-2 bg-white/20 hover:bg-white/30 backdrop-blur-md px-4 py-2.5 rounded-xl transition-all text-sm font-semibold border border-white/10">
+                <span>📥</span> Descargar Excel
+            </a>
+        </div>
+
+        <!-- Decorative Circle -->
+        <div class="absolute -bottom-10 -right-10 w-40 h-40 bg-indigo-500 rounded-full blur-2xl opacity-50"></div>
+    </div>
+
+    <!-- AI Bot Status Card -->
+    {% if current_user.bot_status == 'active' %}
+    <div class="bg-emerald-50 border border-emerald-100 rounded-2xl p-5 mb-8 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center text-xl">🤖</div>
+            <div>
+                <h3 class="font-bold text-emerald-800 text-sm">Asistente Activo</h3>
+                <p class="text-emerald-600 text-xs">Atendiendo clientes</p>
+            </div>
+        </div>
+        <a href="{{ url_for('wizard') }}"
+            class="text-xs font-bold bg-white text-emerald-700 px-3 py-2 rounded-lg border border-emerald-200 shadow-sm">Ajustar</a>
+    </div>
+    {% else %}
+    <div class="bg-amber-50 border border-amber-100 rounded-2xl p-5 mb-8 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center text-xl">😴</div>
+            <div>
+                <h3 class="font-bold text-amber-800 text-sm">Asistente Dormido</h3>
+                <p class="text-amber-600 text-xs">Configúralo para empezar</p>
+            </div>
+        </div>
+        <a href="{{ url_for('wizard') }}"
+            class="text-xs font-bold bg-white text-amber-700 px-3 py-2 rounded-lg border border-amber-200 shadow-sm">Despertar
+            ⚡</a>
+    </div>
+    {% endif %}
+
+    <!-- Recent Transactions List -->
+    <div>
+        <div class="flex justify-between items-end mb-4">
+            <h2 class="text-lg font-bold text-slate-800">Últimos Tickets</h2>
+            <a href="{{ url_for('transactions') }}" class="text-xs font-bold text-indigo-600 hover:text-indigo-800">Ver
+                todos</a>
+        </div>
+
+        <div class="space-y-3">
+            {% for ticket in tickets %}
+            <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center text-lg">
+                        🧾
+                    </div>
+                    <div>
+                        <h4 class="font-bold text-slate-800 text-sm">{{ ticket.provider or 'Desconocido' }}</h4>
+                        <p class="text-slate-400 text-xs">{{ ticket.date.strftime('%d %b, %H:%M') }}</p>
+                    </div>
+                </div>
+                <span class="font-bold text-slate-800">-{{ ticket.total }}€</span>
+            </div>
+            {% else %}
+            <div
+                class="text-center py-8 text-slate-400 text-sm bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                No hay tickets recientes
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+</div>
+{% endblock %}

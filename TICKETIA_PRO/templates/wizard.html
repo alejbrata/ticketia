@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="px-6 py-8 max-w-lg mx-auto w-full">
+
+    <a href="{{ url_for('dashboard') }}"
+        class="inline-flex items-center text-sm font-medium text-slate-400 hover:text-indigo-600 transition-colors mb-6">
+        ← Volver al inicio
+    </a>
+
+    <header class="mb-8">
+        <h1 class="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">
+            🧠 Entrena a tu Asistente
+        </h1>
+        <p class="text-slate-500 text-sm mt-1">Define cómo debe comportarse tu IA.</p>
+    </header>
+
+    <form action="{{ url_for('save_config') }}" method="POST" class="space-y-6">
+
+        <!-- Nombre -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Nombre Comercial</label>
+            <input type="text" name="business_name" value="{{ current_user.business_name }}"
+                placeholder="Ej: Clínica Dental Sonrisas"
+                class="w-full px-0 py-2 bg-transparent border-b border-slate-200 focus:border-indigo-500 outline-none transition-colors text-slate-800 font-medium placeholder-slate-300">
+        </div>
+
+        <!-- Sector & Tone -->
+        <div class="grid grid-cols-2 gap-4">
+            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+                <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Sector</label>
+                <select name="sector" class="w-full bg-transparent outline-none text-slate-800 font-medium text-sm">
+                    <option value="Restauración">🍔 Restauración</option>
+                    <option value="Salud / Clínica">🏥 Salud</option>
+                    <option value="Comercio">🛍️ Comercio</option>
+                    <option value="Servicios">💼 Servicios</option>
+                </select>
+            </div>
+            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+                <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Tono</label>
+                <select name="tone" class="w-full bg-transparent outline-none text-slate-800 font-medium text-sm">
+                    <option value="Profesional">👔 Serio</option>
+                    <option value="Cercano y Amable">🤝 Amable</option>
+                    <option value="Entusiasta">⚡ Energético</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Knowledge Base -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+            <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                📚 Conocimiento Base
+            </h3>
+
+            <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Horario de Atención</label>
+                <input type="text" name="schedule" placeholder="L-V: 9:00 - 20:00"
+                    class="w-full px-3 py-2 bg-slate-50 rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500 border border-slate-100">
+            </div>
+
+            <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Servicios Principales</label>
+                <input type="text" name="services" placeholder="Ej: Menú del día, Cafés, Desayunos"
+                    class="w-full px-3 py-2 bg-slate-50 rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500 border border-slate-100">
+            </div>
+
+            <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Métodos de Pago</label>
+                <input type="text" name="payment_methods" placeholder="Efectivo, Tarjeta, Bizum"
+                    class="w-full px-3 py-2 bg-slate-50 rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500 border border-slate-100">
+            </div>
+
+            <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Instrucciones Específicas del
+                    Negocio</label>
+                <textarea name="business_instructions" rows="4"
+                    placeholder="Ej: No aceptamos reservas en terraza por teléfono, la cocina cierra 30 min antes del cierre, somos Pet Friendly solo en la zona de barra..."
+                    class="w-full px-3 py-2 bg-slate-50 rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500 border border-slate-100"></textarea>
+            </div>
+        </div>
+
+        <button type="submit"
+            class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-indigo-200 transition-all transform active:scale-[0.98]">
+            💾 Guardar y Activar IA
+        </button>
+    </form>
+</div>
+{% endblock %}
