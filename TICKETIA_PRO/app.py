@@ -14,6 +14,7 @@ from core.config import Config
 from core.db_models import db, BusinessProfile, Ticket
 from modules.tickets.logic import process_ticket
 from modules.chatbot.logic import generate_response
+from modules.agents.manager import run_agent
 from sqlalchemy.sql import func
 
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -280,12 +281,24 @@ def export_excel():
     
     # 3. Preparar Datos para DataFrame
     data_list = []
+    base_url = request.host_url.rstrip('/') 
+    urls = [] # Lista auxiliar para guardar las URLs
     
     for t in tickets:
         # Calcular Cuota IVA (Fee) si falta
         fee = t.fee
         if (fee is None or fee == 0) and t.base and t.tax_percent:
              fee = t.base * (t.tax_percent / 100)
+             
+        # Construir URL de imagen
+        full_img_url = ""
+        if t.image_path:
+            if t.image_path.startswith(('http://', 'https://')):
+                full_img_url = t.image_path
+            else:
+                full_img_url = f"{base_url}{t.image_path}"
+        
+        urls.append(full_img_url)
 
         data_list.append({
             "ID": t.id,
@@ -300,11 +313,12 @@ def export_excel():
             "Base": t.base,
             "%IVA": t.tax_percent,
             "Fee": fee,
-            "Total": t.total
+            "Total": t.total,
+            "Enlace Imagen": "Ver Recibo" if full_img_url else ""
         })
         
     # 4. Crear DataFrame y Excel con XlsxWriter
-    column_order = ["ID", "Date", "Month", "Year", "NIF", "Name", "Ticket_Number", "Concept", "Expense_Account", "Base", "%IVA", "Fee", "Total"]
+    column_order = ["ID", "Date", "Month", "Year", "NIF", "Name", "Ticket_Number", "Concept", "Expense_Account", "Base", "%IVA", "Fee", "Total", "Enlace Imagen"]
     
     df = pd.DataFrame(data_list)
     # Asegurarse que todas las columnas existan
@@ -345,6 +359,9 @@ def export_excel():
         # 4. Centro
         center_format = workbook.add_format({'align': 'center'})
         
+        # 5. Enlaces
+        link_format = workbook.add_format({'font_color': 'blue', 'underline': 1})
+        
         # Aplicar formato a columnas (0-index based)
         # ID (A)
         worksheet.set_column('A:A', 8, center_format)
@@ -372,10 +389,18 @@ def export_excel():
         worksheet.set_column('L:L', 12, currency_format)
         # Total (M)
         worksheet.set_column('M:M', 15, currency_format)
+        # Enlace (N)
+        worksheet.set_column('N:N', 15, center_format)
 
         # Sobreescribir Cabeceras con Estilo
         for col_num, value in enumerate(df.columns.values):
             worksheet.write(0, col_num, value, header_format)
+            
+        # Re-escribir enlaces
+        link_col_idx = 13 # Columna N (0-based index 13)
+        for i, url in enumerate(urls):
+            if url:
+                worksheet.write_url(i + 1, link_col_idx, url, link_format, string="Ver Recibo")
         
     output.seek(0)
     
@@ -453,11 +478,15 @@ def bot():
         # => CASO 2: Escriben a un NÚMERO DEDICADO DE CLIENTE
         # target_business es la empresa a la que quieren contactar
         
-        # TODO: Invocar Agente con Herramientas
-        # Aquí iría la lógica específica del agente del cliente
-        # agent = load_agent(business_profile)
-        # response = agent.run(incoming_msg)
-        resp.message(f"🤖 [Modo Agente {target_business.business_name}] Función en construcción.")
+        # Invocar Agente con Herramientas
+        try:
+            # Llama al "Cerebro" del agente
+            agent_response = run_agent(incoming_msg, sender, target_business)
+            resp.message(agent_response)
+            
+        except Exception as e:
+            print(f"Error invocado agente: {e}")
+            resp.message("⚠️ El agente está experimentando problemas técnicos.")
         
     return str(resp)
 

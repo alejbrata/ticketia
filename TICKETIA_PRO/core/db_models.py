@@ -41,3 +41,12 @@ class Ticket(db.Model):
     fee = db.Column(db.Float)
     
     raw_data = db.Column(db.Text) # JSON respaldo
+
+class Appointment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    business_phone = db.Column(db.String(20), nullable=False) # Dueño del calendario
+    date = db.Column(db.String(20), nullable=False) # YYYY-MM-DD
+    time = db.Column(db.String(10), nullable=False) # HH:MM
+    client_name = db.Column(db.String(100))
+    client_phone = db.Column(db.String(20))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
