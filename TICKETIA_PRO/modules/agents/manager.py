@@ -2,25 +2,36 @@ import os
 import json
 from openai import OpenAI
 from modules.agents.tools import CalendarTools, TOOLS_SCHEMA
+from modules.agents.history import HistoryService
 
 # Inicializar cliente OpenAI
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 def run_agent(user_message, phone_number, business_profile):
     """
-    Ejecuta el ciclo del agente con capacidad de usar herramientas.
+    Ejecuta el ciclo del agente con capacidad de usar herramientas y memoria.
     """
     try:
         if not business_profile.system_prompt:
             return "El asistente no está configurado."
 
-        # 1. Preparar Historial Mensajes
-        messages = [
-            {"role": "system", "content": business_profile.system_prompt},
-            {"role": "user", "content": user_message}
-        ]
+        # 1. Guardar Mensaje del Usuario
+        # (Guardamos lo que acaba de escribir el usuario en la DB)
+        HistoryService.save_interaction(
+            phone=phone_number,
+            role="user",
+            content=user_message
+        )
 
-        # 2. Primera llamada a OpenAI (con Tools)
+        # 2. Reconstruir Contexto (System + Historial Reciente)
+        history = HistoryService.get_recent_history(phone_number, limit=10)
+        
+        # El historial ya incluye el último mensaje del user que acabamos de guardar
+        # [System] + [History (Old -> New)]
+        messages = [{"role": "system", "content": business_profile.system_prompt}]
+        messages.extend(history)
+
+        # 3. Primera llamada a OpenAI (con Tools)
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=messages,
@@ -29,10 +40,11 @@ def run_agent(user_message, phone_number, business_profile):
         )
         
         response_message = response.choices[0].message
+        final_content = response_message.content
         
-        # 3. Verificar si la IA quiere usar una herramienta
+        # 4. Verificar si la IA quiere usar una herramienta
         if response_message.tool_calls:
-            # Añadir la intención de la IA al historial
+            # Añadir la intención de la IA al historial en memoria para el loop
             messages.append(response_message)
             
             # Ejecutar cada herramienta solicitada
@@ -67,17 +79,24 @@ def run_agent(user_message, phone_number, business_profile):
                     "content": tool_output
                 })
             
-            # 4. Segunda llamada a OpenAI (con el resultado de la herramienta)
+            # 5. Segunda llamada a OpenAI (con el resultado de la herramienta)
             final_response = client.chat.completions.create(
                 model="gpt-4o",
                 messages=messages
             )
             
-            return final_response.choices[0].message.content
+            final_content = final_response.choices[0].message.content
             
-        else:
-            # No hubo tools, devolver respuesta directa
-            return response_message.content
+        # 6. Guardar Respuesta Final del Asistente
+        # (Si hubo tools, guardamos el resultado final. Si no, la respuesta directa)
+        if final_content:
+            HistoryService.save_interaction(
+                phone=phone_number,
+                role="assistant",
+                content=final_content
+            )
+
+        return final_content
 
     except Exception as e:
         print(f"Error Agente: {e}")

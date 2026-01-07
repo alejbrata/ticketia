@@ -8,6 +8,9 @@ load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
 import io
 import pandas as pd
 from flask import Flask, request, render_template, redirect, url_for, flash, send_file, session
+from flask_mail import Mail, Message
+import secrets
+from datetime import timedelta
 from twilio.twiml.messaging_response import MessagingResponse
 
 from core.config import Config
@@ -24,6 +27,7 @@ app.config.from_object(Config)
 
 # Inicializar Base de Datos
 db.init_app(app)
+mail = Mail(app)
 
 with app.app_context():
     db.create_all()
@@ -37,24 +41,26 @@ def index():
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
+        email = request.form.get('email', '').strip().lower()
         phone = request.form.get('phone', '').strip()
         password = request.form.get('password', '').strip()
         business_name = request.form.get('business_name', '').strip()
 
         # Validaciones básicas
-        if not phone or not password:
+        if not email or not phone or not password:
             flash('Por favor completa todos los campos.', 'error')
             return redirect(url_for('register'))
 
         # Check duplicados
-        if BusinessProfile.query.filter_by(user_phone=phone).first():
-            flash('Este teléfono ya está registrado.', 'error')
+        if BusinessProfile.query.filter((BusinessProfile.user_phone == phone) | (BusinessProfile.email == email)).first():
+            flash('Este teléfono o email ya está registrado.', 'error')
             return redirect(url_for('register'))
 
         # Crear Usuario
         hashed_pw = generate_password_hash(password)
         new_user = BusinessProfile(
             user_phone=phone,
+            email=email,
             password_hash=hashed_pw,
             business_name=business_name,
             plan_tier='BASIC', # Plan por defecto
@@ -72,15 +78,16 @@ def register():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        phone = request.form.get('phone', '').strip()
+        email = request.form.get('email', '').strip().lower()
         password = request.form.get('password', '').strip()
         
-        # Buscar usuario
-        profile = BusinessProfile.query.filter_by(user_phone=phone).first()
+        # Buscar usuario por EMAIL
+        profile = BusinessProfile.query.filter_by(email=email).first()
         
         if profile and check_password_hash(profile.password_hash, password):
             # Login exitoso
-            session['user_phone'] = profile.user_phone
+            session['user_phone'] = profile.user_phone # Mantenemos phone para logs y lógica
+            session['user_email'] = profile.email
             session['business_name'] = profile.business_name
             flash(f'Bienvenido, {profile.business_name}', 'success')
             return redirect(url_for('dashboard'))
@@ -94,6 +101,86 @@ def logout():
     session.clear()
     flash('Sesión cerrada correctamente.', 'info')
     return redirect(url_for('login'))
+
+@app.route('/forgot_password', methods=['GET', 'POST'])
+def forgot_password():
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip().lower()
+        user = BusinessProfile.query.filter_by(email=email).first()
+        
+        if user:
+            token = secrets.token_urlsafe(32)
+            user.reset_token = token
+            user.reset_token_expiry = datetime.utcnow() + timedelta(hours=1)
+            db.session.commit()
+            
+            reset_url = url_for('reset_password', token=token, _external=True)
+            
+            msg = Message('Restablecer Contraseña - Ticketia',
+                          sender=app.config['MAIL_DEFAULT_SENDER'],
+                          recipients=[email])
+            msg.body = f'Para restablecer tu contraseña, haz clic en el siguiente enlace: {reset_url}\n\nSi no solicitaste esto, ignora este correo.'
+            
+            try:
+                mail.send(msg)
+                flash('Te hemos enviado un correo con instrucciones.', 'info')
+            except Exception as e:
+                print(f"Error enviando mail: {e}")
+                flash('Error al enviar el correo. Contacta soporte.', 'error')
+        else:
+            # Por seguridad, no decimos si el email existe o no, o sí? 
+            # UX estándar: "Si el correo existe, recibirás un mensaje."
+            flash('Si el correo existe, recibirás instrucciones.', 'info')
+            
+        return redirect(url_for('login'))
+        
+    return render_template('forgot_password.html')
+
+@app.route('/reset_password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    user = BusinessProfile.query.filter_by(reset_token=token).first()
+    
+    if not user or user.reset_token_expiry < datetime.utcnow():
+        flash('El enlace es inválido o ha expirado.', 'error')
+        return redirect(url_for('login'))
+        
+    if request.method == 'POST':
+        password = request.form.get('password', '').strip()
+        if not password:
+            flash('La contraseña no puede estar vacía.', 'error')
+            return redirect(request.url)
+            
+        user.password_hash = generate_password_hash(password)
+        user.reset_token = None
+        user.reset_token_expiry = None
+        db.session.commit()
+        
+        flash('¡Contraseña restablecida! Inicia sesión.', 'success')
+        return redirect(url_for('login'))
+        
+    return render_template('reset_token.html')
+
+@app.route('/profile', methods=['GET', 'POST'])
+def profile():
+    if 'user_phone' not in session:
+        return redirect(url_for('login'))
+        
+    user_phone = session['user_phone']
+    user = BusinessProfile.query.filter_by(user_phone=user_phone).first()
+    
+    if request.method == 'POST':
+        # Change Password Logic
+        current_password = request.form.get('current_password', '')
+        new_password = request.form.get('new_password', '')
+        
+        if not check_password_hash(user.password_hash, current_password):
+            flash('La contraseña actual es incorrecta.', 'error')
+        else:
+            user.password_hash = generate_password_hash(new_password)
+            db.session.commit()
+            flash('Contraseña actualizada correctamente.', 'success')
+            
+    return render_template('profile.html', user=user)
 
 @app.route('/dashboard')
 def dashboard():
@@ -258,6 +345,89 @@ def save_config():
     
     flash('¡Configuración guardada y Agente IA actualizado!', 'success')
     return redirect(url_for('dashboard'))
+
+    return redirect(url_for('dashboard'))
+
+@app.route('/marketplace')
+def marketplace():
+    # 1. Protección de Ruta
+    if 'user_phone' not in session:
+        return redirect(url_for('login'))
+        
+    user_phone = session['user_phone']
+    profile = BusinessProfile.query.filter_by(user_phone=user_phone).first()
+    
+    profile = BusinessProfile.query.filter_by(user_phone=user_phone).first()
+    
+    # --- PRODUDT CATALOG ---
+    
+    pricing_plans = [
+        {
+            "id": "plan_basic",
+            "name": "Ticketia Basic",
+            "price": "15€",
+            "features": ["Tickets Ilimitados 📸", "Exportación Excel", "OCR Básico"],
+            "recommended": False
+        },
+        {
+            "id": "plan_pro",
+            "name": "Ticketia Pro",
+            "price": "35€",
+            "features": ["Todo lo del Basic", "Chatbot con Memoria 🧠", "1 Agente Proactivo"],
+            "recommended": True
+        },
+        {
+            "id": "plan_business",
+            "name": "Ticketia Business",
+            "price": "69€",
+            "features": ["Todo lo del Pro", "Todos los Agentes Activos 🤖", "Networking Club"],
+            "recommended": False
+        }
+    ]
+    
+    # Agentes Individuales (Add-ons)
+    agents = [
+        {"id": "grant_hunter", "name": "Cazador de Ayudas", "desc": "Te avisa de subvenciones del BOE para tu sector.", "price": "+9€/mes"},
+        {"id": "networker", "name": "Networking Club", "desc": "Conecta con otros clientes para sinergias.", "price": "+15€/mes"},
+        {"id": "invoice_reclaimer", "name": "Auto-Reclamador", "desc": "Detecta facturas erróneas y reclama al proveedor.", "price": "+5€/mes"},
+        {"id": "business_health", "name": "Coach Financiero", "desc": "Analiza tus gastos y gamifica el ahorro.", "price": "+7€/mes"},
+        {"id": "admin_redactor", "name": "Secretario Virtual", "desc": "Digitaliza notas y servilletas a PDF formal.", "price": "+8€/mes"}
+    ]
+    
+    current_active = profile.active_agents or []
+    
+    return render_template('marketplace.html', agents=agents, pricing_plans=pricing_plans, current_user_active_agents=current_active)
+
+@app.route('/activate_agent/<agent_id>', methods=['POST'])
+def activate_agent(agent_id):
+    # 1. Protección
+    if 'user_phone' not in session:
+        return redirect(url_for('login'))
+        
+    user_phone = session['user_phone']
+    profile = BusinessProfile.query.filter_by(user_phone=user_phone).first()
+    
+    if profile:
+        # TODO: Integrar Checkout de Stripe aquí
+        # Por ahora, activación directa (Simulación)
+        
+        current_list = list(profile.active_agents) if profile.active_agents else []
+        
+        if agent_id not in current_list:
+            current_list.append(agent_id)
+            # Forzamos actualización ya que JSON es mutable pero SQLAlchemy a veces necesita empujón
+            profile.active_agents = current_list
+            
+            # Force mutable update if needed (alternatively reassign)
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(profile, "active_agents")
+            
+            db.session.commit()
+            flash(f'¡Agente {agent_id} activado correctamente! 🚀', 'success')
+        else:
+            flash('Este agente ya estaba activo.', 'info')
+            
+    return redirect(url_for('marketplace'))
 
 @app.route('/export_excel')
 def export_excel():

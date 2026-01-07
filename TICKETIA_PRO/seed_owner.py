@@ -22,6 +22,7 @@ def seed():
             print("   - Usuario no existe. Creando...")
             new_profile = BusinessProfile(
                 user_phone=MI_TELEFONO,
+                email="admin@ticketia.com",
                 password_hash=generate_password_hash("1234"),
                 business_name=NOMBRE_NEGOCIO,
                 plan_tier='PRO_FULL',
