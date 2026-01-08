@@ -1,5 +1,6 @@
 import os
 import json
+from flask import request
 from openai import OpenAI
 from modules.agents.tools import CalendarTools, TOOLS_SCHEMA
 from modules.agents.history import HistoryService
@@ -7,13 +8,28 @@ from modules.agents.history import HistoryService
 # Inicializar cliente OpenAI
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-def run_agent(user_message, phone_number, business_profile):
+def run_agent(user_message, phone_number, business_profile, media_url=None):
     """
-    Ejecuta el ciclo del agente con capacidad de usar herramientas y memoria.
+    Ejecuta el ciclo del agente con capacidad de usar herramientas, memoria y visión.
     """
     try:
         if not business_profile.system_prompt:
             return "El asistente no está configurado."
+
+        # --- DISPATCHER DE IMÁGENES (ADMIN REDACTOR) ---
+        if media_url and "admin_redactor" in (business_profile.active_agents or []):
+            from modules.proactive.admin_redactor import AdminAssistantAgent
+            pdf_path = AdminAssistantAgent().process_image_request(media_url, {
+                "business_name": business_profile.business_name,
+                "phone": business_profile.user_phone,
+                "email": business_profile.email,
+                "extra_info": business_profile.static_knowledge or {}
+            })
+            if pdf_path:
+                return f"✅ ¡Hecho! Aquí tienes tu documento formalizado:\n{request.host_url.rstrip('/')}{pdf_path}"
+            else:
+                return "❌ No pude procesar la imagen. Asegúrate de que se ve bien el texto."
+        # ------------------------------------------------
 
         # 1. Guardar Mensaje del Usuario
         # (Guardamos lo que acaba de escribir el usuario en la DB)

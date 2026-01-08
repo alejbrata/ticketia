@@ -41,6 +41,10 @@
                 class="text-sm font-medium text-slate-500 hover:text-indigo-600 flex items-center gap-1 transition-colors">
                 ✨ Entrenar IA
             </a>
+            <a href="{{ url_for('marketplace') }}"
+                class="text-sm font-medium text-slate-500 hover:text-indigo-600 flex items-center gap-1 transition-colors">
+                🛍️ Tienda IA
+            </a>
             <a href="{{ url_for('logout') }}"
                 class="text-sm font-medium text-red-500 hover:text-red-600 transition-colors">
                 Salir
@@ -87,6 +91,11 @@
         <a href="{{ url_for('wizard') }}" class="flex flex-col items-center gap-1 text-slate-400 hover:text-indigo-600">
             <span class="text-xl">✨</span>
             <span class="text-[10px] font-medium">Agente</span>
+        </a>
+        <a href="{{ url_for('marketplace') }}"
+            class="flex flex-col items-center gap-1 text-slate-400 hover:text-indigo-600">
+            <span class="text-xl">🛍️</span>
+            <span class="text-[10px] font-medium">Tienda</span>
         </a>
     </div>
     {% endif %}

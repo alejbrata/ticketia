@@ -27,6 +27,8 @@ class BusinessProfile(db.Model):
     # Marketplace (Suscripciones a Agentes)
     # Lista de IDs de agentes activos ej: ["grant_hunter", "networker"]
     active_agents = db.Column(db.JSON, default=[])
+    # Configuración específica de cada agente ej: {"post_sales_service": {"ask_feedback": True}}
+    agent_config = db.Column(db.JSON, default={})
     
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -66,4 +68,16 @@ class ChatMessage(db.Model):
     role = db.Column(db.String(20), nullable=False) # 'user', 'assistant', 'tool'
     content = db.Column(db.Text)
     tool_call_id = db.Column(db.String(100), nullable=True) # Para enlazar respuestas de tools
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class Grant(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text)
+    sector_focus = db.Column(db.String(100)) # Ej: "Hostelería", "Tech", "General"
+    amount = db.Column(db.String(50)) # Ej: "Hasta 2.000€"
+    link = db.Column(db.String(300))
+    deadline = db.Column(db.String(50))
+    # Lista de teléfonos notificados (JSON) para evitar spam
+    notified_phones = db.Column(db.JSON, default=[]) 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

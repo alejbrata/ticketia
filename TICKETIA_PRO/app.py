@@ -14,7 +14,10 @@ from datetime import timedelta
 from twilio.twiml.messaging_response import MessagingResponse
 
 from core.config import Config
-from core.db_models import db, BusinessProfile, Ticket
+from core.config import Config
+from core.db_models import db, BusinessProfile, Ticket, ChatMessage, Grant, Appointment
+from flask_admin import Admin
+from flask_admin.contrib.sqla import ModelView
 from modules.tickets.logic import process_ticket
 from modules.chatbot.logic import generate_response
 from modules.agents.manager import run_agent
@@ -28,6 +31,41 @@ app.config.from_object(Config)
 # Inicializar Base de Datos
 db.init_app(app)
 mail = Mail(app)
+
+# --- ADMIN PANEL CONFIGURATION ---
+class SecureModelView(ModelView):
+    """Clase base para proteger el panel de administración."""
+    def is_accessible(self):
+        # Solo permite acceso al email del 'Super Admin' (definido en seed_owner.py)
+        # Ojo: Asegúrate de loguearte con este email.
+        return session.get('user_email') == 'admin@ticketia.com'
+
+    def inaccessible_callback(self, name, **kwargs):
+        # Si no es admin, redirige al login
+        flash('⚠️ Acceso restringido a administradores.', 'error')
+        return redirect(url_for('login'))
+
+# Inicializar el Panel
+# Nota: template_mode='bootstrap4' puede requerir temas compatibles, si falla lo quitamos o usamos default
+try:
+    admin = Admin(app, name='Panel de Control Ticketia', template_mode='bootstrap4')
+except TypeError:
+    # Fallback si la versión instalada no soporta template_mode en init
+    admin = Admin(app, name='Panel de Control Ticketia')
+
+# Añadir Vistas (Tablas visuales)
+# 1. Gestión de Ayudas (Lo más importante para el Grant Hunter)
+admin.add_view(SecureModelView(Grant, db.session, name='💰 Subvenciones'))
+
+# 2. Gestión de Usuarios y Negocios
+admin.add_view(SecureModelView(BusinessProfile, db.session, name='👥 Usuarios'))
+
+# 3. Auditoría de Tickets
+admin.add_view(SecureModelView(Ticket, db.session, name='🧾 Tickets'))
+
+# 4. Logs del Chat y Citas
+admin.add_view(SecureModelView(ChatMessage, db.session, name='💬 Chats'))
+# admin.add_view(SecureModelView(Appointment, db.session, name='📅 Citas'))
 
 with app.app_context():
     db.create_all()
@@ -159,6 +197,97 @@ def reset_password(token):
         return redirect(url_for('login'))
         
     return render_template('reset_token.html')
+
+@app.route('/marketplace')
+def marketplace():
+    if 'user_phone' not in session:
+        return redirect(url_for('login'))
+        
+    user = BusinessProfile.query.filter_by(user_phone=session['user_phone']).first()
+    # Asegurar que active_agents sea una lista
+    if user.active_agents is None:
+        user.active_agents = []
+        
+    return render_template('marketplace.html', current_user=user)
+
+@app.route('/toggle_agent/<agent_id>', methods=['POST'])
+def toggle_agent(agent_id):
+    if 'user_phone' not in session:
+        return redirect(url_for('login'))
+        
+    user = BusinessProfile.query.filter_by(user_phone=session['user_phone']).first()
+    current_agents = list(user.active_agents or []) # Copia explícita
+    
+    if agent_id in current_agents:
+        current_agents.remove(agent_id)
+        flash(f'Agente desactivado.', 'info')
+    else:
+        current_agents.append(agent_id)
+        flash(f'¡Agente activado! 🚀', 'success')
+        
+    user.active_agents = current_agents
+    # Forzar actualización en Postgres (detectar cambios en JSON)
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(user, "active_agents")
+    
+    db.session.commit()
+    return redirect(url_for('marketplace'))
+
+@app.route('/agent_config/<agent_id>')
+def agent_config(agent_id):
+    if 'user_phone' not in session:
+        return redirect(url_for('login'))
+    
+    user = BusinessProfile.query.filter_by(user_phone=session['user_phone']).first()
+    
+    # Obtener configuración actual del agente (o dict vacío)
+    current_config = user.agent_config.get(agent_id, {}) if user.agent_config else {}
+    
+    # Nombres bonitos
+    agent_names = {
+        "post_sales_service": "Servicio Post-Venta",
+        "grant_hunter": "Grant Hunter",
+        "networker": "Networking Agent"
+    }
+    name = agent_names.get(agent_id, agent_id)
+
+    return render_template('agent_config.html', agent_id=agent_id, agent_name=name, config=current_config)
+
+@app.route('/save_agent_config/<agent_id>', methods=['POST'])
+def save_agent_config(agent_id):
+    if 'user_phone' not in session:
+        return redirect(url_for('login'))
+        
+    user = BusinessProfile.query.filter_by(user_phone=session['user_phone']).first()
+    
+    # 1. Leer checkboxes (si no están, es False)
+    enable_feedback = 'enable_feedback' in request.form
+    enable_reactivation = 'enable_reactivation' in request.form
+    # 1.5 Leer Ofertas
+    offer_type = request.form.get('offer_type', '10% de Descuento')
+    custom_offer_text = request.form.get('custom_offer_text', '')
+    
+    # 2. Actualizar JSON
+    # Necesitamos copiar el dict completo para que SQLAlchemy detecte el cambio si anidamos
+    full_config = dict(user.agent_config) if user.agent_config else {}
+    
+    # Actualizamos solo la key de este agente
+    full_config[agent_id] = {
+        "enable_feedback": enable_feedback,
+        "enable_reactivation": enable_reactivation,
+        "offer_type": offer_type,
+        "custom_offer_text": custom_offer_text
+    }
+    
+    user.agent_config = full_config
+    
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(user, "agent_config")
+    
+    db.session.commit()
+    
+    flash('Configuración actualizada.', 'success')
+    return redirect(url_for('marketplace'))
 
 @app.route('/profile', methods=['GET', 'POST'])
 def profile():
@@ -348,86 +477,9 @@ def save_config():
 
     return redirect(url_for('dashboard'))
 
-@app.route('/marketplace')
-def marketplace():
-    # 1. Protección de Ruta
-    if 'user_phone' not in session:
-        return redirect(url_for('login'))
-        
-    user_phone = session['user_phone']
-    profile = BusinessProfile.query.filter_by(user_phone=user_phone).first()
-    
-    profile = BusinessProfile.query.filter_by(user_phone=user_phone).first()
-    
-    # --- PRODUDT CATALOG ---
-    
-    pricing_plans = [
-        {
-            "id": "plan_basic",
-            "name": "Ticketia Basic",
-            "price": "15€",
-            "features": ["Tickets Ilimitados 📸", "Exportación Excel", "OCR Básico"],
-            "recommended": False
-        },
-        {
-            "id": "plan_pro",
-            "name": "Ticketia Pro",
-            "price": "35€",
-            "features": ["Todo lo del Basic", "Chatbot con Memoria 🧠", "1 Agente Proactivo"],
-            "recommended": True
-        },
-        {
-            "id": "plan_business",
-            "name": "Ticketia Business",
-            "price": "69€",
-            "features": ["Todo lo del Pro", "Todos los Agentes Activos 🤖", "Networking Club"],
-            "recommended": False
-        }
-    ]
-    
-    # Agentes Individuales (Add-ons)
-    agents = [
-        {"id": "grant_hunter", "name": "Cazador de Ayudas", "desc": "Te avisa de subvenciones del BOE para tu sector.", "price": "+9€/mes"},
-        {"id": "networker", "name": "Networking Club", "desc": "Conecta con otros clientes para sinergias.", "price": "+15€/mes"},
-        {"id": "invoice_reclaimer", "name": "Auto-Reclamador", "desc": "Detecta facturas erróneas y reclama al proveedor.", "price": "+5€/mes"},
-        {"id": "business_health", "name": "Coach Financiero", "desc": "Analiza tus gastos y gamifica el ahorro.", "price": "+7€/mes"},
-        {"id": "admin_redactor", "name": "Secretario Virtual", "desc": "Digitaliza notas y servilletas a PDF formal.", "price": "+8€/mes"}
-    ]
-    
-    current_active = profile.active_agents or []
-    
-    return render_template('marketplace.html', agents=agents, pricing_plans=pricing_plans, current_user_active_agents=current_active)
 
-@app.route('/activate_agent/<agent_id>', methods=['POST'])
-def activate_agent(agent_id):
-    # 1. Protección
-    if 'user_phone' not in session:
-        return redirect(url_for('login'))
-        
-    user_phone = session['user_phone']
-    profile = BusinessProfile.query.filter_by(user_phone=user_phone).first()
-    
-    if profile:
-        # TODO: Integrar Checkout de Stripe aquí
-        # Por ahora, activación directa (Simulación)
-        
-        current_list = list(profile.active_agents) if profile.active_agents else []
-        
-        if agent_id not in current_list:
-            current_list.append(agent_id)
-            # Forzamos actualización ya que JSON es mutable pero SQLAlchemy a veces necesita empujón
-            profile.active_agents = current_list
-            
-            # Force mutable update if needed (alternatively reassign)
-            from sqlalchemy.orm.attributes import flag_modified
-            flag_modified(profile, "active_agents")
-            
-            db.session.commit()
-            flash(f'¡Agente {agent_id} activado correctamente! 🚀', 'success')
-        else:
-            flash('Este agente ya estaba activo.', 'info')
-            
-    return redirect(url_for('marketplace'))
+
+
 
 @app.route('/export_excel')
 def export_excel():
@@ -607,56 +659,92 @@ def bot():
     target_number = request.values.get('To', '').replace('whatsapp:', '') # A quién escriben
     num_media = int(request.values.get('NumMedia', 0))
     
+    print(f"📩 WhatsApp In: {sender} -> {target_number} | Msg: {incoming_msg} | Media: {num_media}")
+    
     resp = MessagingResponse()
     
-    # --- CONSTANTES ---
-    CENTRAL_NUMBER_ID = os.environ.get('CENTRAL_WHATSAPP_NUMBER', 'ticketia_central') 
-    # (En producción esto debería ser el número real de Twilio de la plataforma)
-    
-    # 2. ENRUTAMIENTO
-    
-    # A) ¿Están escribiendo al NÚMERO CENTRAL?
-    # (Asumimos que si no matchea con un cliente dedicado, es central, o chequeamos un ID fijo)
-    # Para este MVP, verificaremos si el target_number coincide con algún cliente.
-    
-    target_business = BusinessProfile.query.filter_by(whatsapp_number=target_number).first()
-    
-    if not target_business:
-        # => CASO 1: Escriben a TICKETIA CENTRAL (o número desconocido)
-        # Lógica: Solo permitimos subir tickets a usuarios registrados.
+    try:
+        # --- CONSTANTES ---
+        CENTRAL_NUMBER_ID = os.environ.get('CENTRAL_WHATSAPP_NUMBER', 'ticketia_central') 
+        # (En producción esto debería ser el número real de Twilio de la plataforma)
         
-        user_profile = BusinessProfile.query.filter_by(user_phone=sender).first()
+        # 2. ENRUTAMIENTO
         
-        if user_profile:
-            # Es un usuario (Dueño) hablando con la central
-            if num_media > 0:
-                # Chequeo de Plan (Features)
-                features = user_profile.features or {}
-                if features.get('can_upload_tickets', True):
+        # A) ¿Están escribiendo al NÚMERO CENTRAL?
+        # (Asumimos que si no matchea con un cliente dedicado, es central, o chequeamos un ID fijo)
+        # Para este MVP, verificaremos si el target_number coincide con algún cliente.
+        
+        target_business = BusinessProfile.query.filter_by(whatsapp_number=target_number).first()
+        
+        if not target_business:
+            # => CASO 1: Escriben a TICKETIA CENTRAL (o número desconocido)
+            # Lógica: Solo permitimos subir tickets a usuarios registrados.
+            
+            user_profile = BusinessProfile.query.filter_by(user_phone=sender).first()
+            
+            if user_profile:
+                print(f"   -> Usuario reconocido: {user_profile.business_name}")
+                # Es un usuario (Dueño) hablando con la central
+                if num_media > 0:
                     media_url = request.values.get('MediaUrl0')
-                    logic_response = process_ticket(media_url, sender)
-                    resp.message(logic_response)
+                    msg_text = incoming_msg.lower()
+                    
+                    # Routing Inteligente: ¿Es Gasto o es Documento?
+                    features = user_profile.features or {}
+                    active_agents = user_profile.active_agents or []
+                    
+                    if "admin_redactor" in active_agents:
+                        # --- CEREBRO HÍBRIDO: IA decide si es Gasto o Borrador ---
+                        print(f"   -> Consultando Redactor para clasificar...")
+                        from modules.proactive.admin_redactor import AdminAssistantAgent
+                        intent = AdminAssistantAgent().classify_image_intent(media_url, msg_text)
+                        
+                        if intent == 'draft':
+                            print(f"   -> Intent: BORRADOR (Redactor)")
+                            agent_resp = run_agent(incoming_msg, sender, user_profile, media_url)
+                            resp.message(agent_resp)
+                        else:
+                            print(f"   -> Intent: TICKET (Accounting)")
+                            # Fallback a Ticket logic
+                            if features.get('can_upload_tickets', True):
+                                logic_response = process_ticket(media_url, sender)
+                                resp.message(logic_response)
+                            else:
+                                resp.message("⛔ Tu plan no permite subir tickets, y esto parece un ticket.")
+
+                    elif features.get('can_upload_tickets', True):
+                        # --- CEREBRO TICKETIA (GASTOS) ---
+                        print(f"   -> Procesando como Gasto (Ticketia).")
+                        logic_response = process_ticket(media_url, sender)
+                        resp.message(logic_response)
+                    else:
+                        resp.message("⛔ Tu plan actual no incluye gestión de tickets.")
                 else:
-                    resp.message("⛔ Tu plan actual no incluye gestión de tickets.")
+                    # Texto normal (Chat con el Asistente - si quisierámos habilitarlo para el dueño)
+                    # Por ahora el dueño solo sube tickets, pero podríamos habilitar chat
+                    resp.message(f"Hola {user_profile.business_name}. Envíame una foto del ticket o 'presupuesto' para generar PDF. 📸")
             else:
-                resp.message(f"Hola {user_profile.business_name}. Envíame una foto del ticket para procesarlo. 📸")
+                # Usuario NO registrado
+                print("   -> Usuario NO reconocido.")
+                resp.message("🤖 Bienvenido a Zeptai. Para usar este bot de gastos, por favor regístrate en nuestra web.")
+                
         else:
-            # Usuario NO registrado
-            resp.message("🤖 Bienvenido a Zeptai. Para usar este bot de gastos, por favor regístrate en nuestra web.")
+            # => CASO 2: Escriben a un NÚMERO DEDICADO DE CLIENTE
+            # target_business es la empresa a la que quieren contactar
             
-    else:
-        # => CASO 2: Escriben a un NÚMERO DEDICADO DE CLIENTE
-        # target_business es la empresa a la que quieren contactar
-        
-        # Invocar Agente con Herramientas
-        try:
-            # Llama al "Cerebro" del agente
-            agent_response = run_agent(incoming_msg, sender, target_business)
-            resp.message(agent_response)
-            
-        except Exception as e:
-            print(f"Error invocado agente: {e}")
-            resp.message("⚠️ El agente está experimentando problemas técnicos.")
+            # Invocar Agente con Herramientas
+            try:
+                # Llama al "Cerebro" del agente
+                agent_response = run_agent(incoming_msg, sender, target_business)
+                resp.message(agent_response)
+                
+            except Exception as e:
+                print(f"Error invocado agente: {e}")
+                resp.message("⚠️ El agente está experimentando problemas técnicos.")
+    
+    except Exception as e:
+        print(f"❌ CRITICAL ERROR in /whatsapp: {e}")
+        resp.message("⚠️ Error interno del servidor.")
         
     return str(resp)
 

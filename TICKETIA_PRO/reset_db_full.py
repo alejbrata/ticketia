@@ -26,7 +26,14 @@ def reset_and_seed():
             password_hash=generate_password_hash("1234"),
             business_name=NOMBRE_NEGOCIO,
             plan_tier='PRO_FULL',
-            features={"tickets_allowed": True, "bot_enabled": True, "dashboard_access": True}
+            features={"tickets_allowed": True, "bot_enabled": True, "dashboard_access": True},
+            active_agents=["grant_hunter", "networker", "business_health", "admin_redactor", "post_sales_service"],
+            agent_config={
+                "post_sales_service": {
+                    "enable_feedback": False, 
+                    "enable_reactivation": True
+                }
+            }
         )
         db.session.add(new_profile)
         db.session.commit()

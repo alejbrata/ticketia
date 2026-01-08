@@ -5,7 +5,7 @@ from modules.proactive.grant_hunter import GrantHunterAgent
 from modules.proactive.networker import SynergyAgent
 from modules.proactive.business_health import BusinessCoachAgent
 from modules.proactive.admin_redactor import AdminAssistantAgent
-from modules.proactive.invoice_reclaimer import ReclaimerAgent
+from modules.proactive.post_sales import PostSalesAgent
 
 def run_daily_tasks():
     """
@@ -29,10 +29,11 @@ def run_daily_tasks():
             
             # A) Chequeo de Subvenciones
             if "grant_hunter" in active_list:
-                # grant_hunter = GrantHunterAgent()
-                # opportunities = grant_hunter.check_new_grants(user)
-                # ...
-                print("   -> Ejecutando Grant Hunter...")
+                print(f"   -> Ejecutando Grant Hunter para {user.business_name}...")
+                try:
+                    GrantHunterAgent().check_new_grants(user)
+                except Exception as e:
+                    print(f"Error Hunter: {e}")
             
             # B) Análisis de Salud Financiera
             if "business_health" in active_list:
@@ -50,10 +51,13 @@ def run_daily_tasks():
                 # ...
                 print("   -> Ejecutando Admin Assistant...")
             
-            # E) Invoice Reclaimer
-            if "invoice_reclaimer" in active_list:
-                # ...
-                print("   -> Ejecutando Invoice Reclaimer...")
+            # E) Post-Sales Service (Antes Invoice Reclaimer)
+            if "post_sales_service" in active_list:
+                print(f"   -> Ejecutando Post-Sales Service para {user.business_name}...")
+                try:
+                    PostSalesAgent().run_daily_checks(user)
+                except Exception as e:
+                    print(f"Error Post-Sales: {e}")
             
         except Exception as e:
             print(f"Error procesando tareas para usuario {user.id}: {e}")
