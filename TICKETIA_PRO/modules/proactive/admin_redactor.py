@@ -1,5 +1,6 @@
 import os
 import json
+import base64
 from fpdf import FPDF
 from openai import OpenAI
 from datetime import datetime
@@ -53,16 +54,48 @@ class AdminAssistantAgent:
         return pdf_path
 
     def _analyze_image_with_vision(self, image_url):
+        """
+        Analiza una imagen (URL pública o Path Local) usando GPT-4o Vision.
+        """
+        image_content = []
+        
+        # A) Es una URL pública (ej: Twilio Media)
+        if image_url.startswith(('http://', 'https://')):
+            image_content = [{"type": "image_url", "image_url": {"url": image_url}}]
+        
+        # B) Es una ruta local (ej: /static/uploads/...)
+        else:
+            # Construir ruta absoluta del sistema
+            # Asumimos que image_url viene como '/static/...'
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            # Eliminar slash inicial si existe para usar os.path.join correctamente
+            rel_path = image_url.lstrip('/') 
+            local_path = os.path.join(base_dir, rel_path)
+            
+            try:
+                with open(local_path, "rb") as image_file:
+                    base64_image = base64.b64encode(image_file.read()).decode('utf-8')
+                    image_content = [{
+                        "type": "image_url", 
+                        "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+                    }]
+            except FileNotFoundError:
+                print(f"❌ Error: No encuentro el archivo local: {local_path}")
+                return None
+
+        prompt = """
+        Analiza esta imagen (presupuesto manuscrito o nota).
+        Extrae: client_name, date, items (desc, qty, price, total), total.
+        Devuelve JSON estricto. Si faltan datos, infiérelos coherentemente.
+        """
+
         try:
             response = self.openai.chat.completions.create(
                 model="gpt-4o",
                 messages=[
                     {
                         "role": "user",
-                        "content": [
-                            {"type": "text", "text": "Analiza esta imagen. Parece un borrador de presupuesto o factura (quizás en una servilleta o nota). Extrae la información en JSON estricto con estructura: {client_name, date, items: [{desc, qty, price, total}], subtotal, tax, total, notes}. Si falta algo, 'invéntalo' de forma coherente o pon 'A determinar'."},
-                            {"type": "image_url", "image_url": {"url": image_url}}
-                        ]
+                        "content": [{"type": "text", "text": prompt}] + image_content
                     }
                 ],
                 response_format={"type": "json_object"},

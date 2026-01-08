@@ -2,6 +2,7 @@ import os
 import json
 from flask import request
 from openai import OpenAI
+from core.db_models import Ticket
 from modules.agents.tools import CalendarTools, TOOLS_SCHEMA
 from modules.agents.history import HistoryService
 
@@ -84,6 +85,28 @@ def run_agent(user_message, phone_number, business_profile, media_url=None):
                         phone=function_args.get("phone"),
                         business_phone=business_profile.user_phone
                     )
+                elif function_name == "create_proposal_from_last_image":
+                    # Lógica para recuperar la última imagen y procesarla con Redactor
+                    last_ticket = Ticket.query.filter_by(user_phone=phone_number).order_by(Ticket.date.desc()).first()
+                    
+                    if last_ticket and last_ticket.image_path:
+                        from modules.proactive.admin_redactor import AdminAssistantAgent
+                        assistant = AdminAssistantAgent()
+                        
+                        # Pasamos image_path directamente (ej: /static/uploads/xyz.jpg)
+                        # El agente ahora sabrá leerlo en local gracias a nuestro fix.
+                        pdf_path = assistant.process_image_request(last_ticket.image_path, {
+                            "business_name": business_profile.business_name,
+                            "phone": business_profile.user_phone,
+                            "email": business_profile.email,
+                            "extra_info": business_profile.static_knowledge or {}
+                        })
+                        if pdf_path:
+                            tool_output = f"✅ Documento generado de la última imagen: {request.host_url.rstrip('/')}{pdf_path}"
+                        else:
+                            tool_output = "❌ Hubo un error procesando la imagen."
+                    else:
+                        tool_output = "❌ No encuentro ninguna imagen reciente subida como ticket."
                 else:
                     tool_output = "Error: Herramienta desconocida."
                 

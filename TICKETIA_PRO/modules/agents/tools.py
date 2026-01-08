@@ -113,5 +113,17 @@ TOOLS_SCHEMA = [
                 "required": ["date", "time", "client_name", "phone"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_proposal_from_last_image",
+            "description": "Utiliza la última imagen subida por el usuario (nota manuscrita o servilleta) para redactar un presupuesto formal en PDF.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
     }
 ]
