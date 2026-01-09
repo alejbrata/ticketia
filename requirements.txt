@@ -10,3 +10,4 @@ flask-mail
 flask-admin
 schedule
 fpdf
+python-dateutil

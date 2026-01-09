@@ -37,14 +37,19 @@ def run_daily_tasks():
             
             # B) Análisis de Salud Financiera
             if "business_health" in active_list:
-                # coach = BusinessCoachAgent()
-                # ...
-                print("   -> Ejecutando Business Coach...")
+                print(f"   -> Ejecutando Business Coach para {user.business_name}...")
+                try:
+                    BusinessCoachAgent().run_daily_analysis(user)
+                except Exception as e:
+                    print(f"Error Coach: {e}")
             
             # C) Networking
             if "networker" in active_list:
-                 # ...
-                 print("   -> Ejecutando Networker...")
+                print(f"   -> Ejecutando Networker para {user.business_name}...")
+                try:
+                    SynergyAgent().run_daily_networking(user)
+                except Exception as e:
+                    print(f"Error Networker: {e}")
                  
             # D) Admin Assistant
             if "admin_redactor" in active_list:

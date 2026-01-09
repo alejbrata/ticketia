@@ -81,3 +81,12 @@ class Grant(db.Model):
     # Lista de teléfonos notificados (JSON) para evitar spam
     notified_phones = db.Column(db.JSON, default=[]) 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class SynergyMatch(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_a_phone = db.Column(db.String(20), nullable=False) # Quien recibe la sugerencia
+    user_b_phone = db.Column(db.String(20), nullable=False) # El candidato sugerido
+    score = db.Column(db.Integer) # 0-100 Puntuación de la IA
+    reason = db.Column(db.Text)   # Por qué hacen buena pareja
+    status = db.Column(db.String(20), default='suggested') # suggested, accepted, rejected
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)

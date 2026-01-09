@@ -15,7 +15,7 @@ from twilio.twiml.messaging_response import MessagingResponse
 
 from core.config import Config
 from core.config import Config
-from core.db_models import db, BusinessProfile, Ticket, ChatMessage, Grant, Appointment
+from core.db_models import db, BusinessProfile, Ticket, ChatMessage, Grant, Appointment, SynergyMatch
 from flask_admin import Admin
 from flask_admin.contrib.sqla import ModelView
 from modules.tickets.logic import process_ticket
@@ -65,6 +65,7 @@ admin.add_view(SecureModelView(Ticket, db.session, name='🧾 Tickets'))
 
 # 4. Logs del Chat y Citas
 admin.add_view(SecureModelView(ChatMessage, db.session, name='💬 Chats'))
+admin.add_view(SecureModelView(SynergyMatch, db.session, name='🤝 Matches'))
 # admin.add_view(SecureModelView(Appointment, db.session, name='📅 Citas'))
 
 with app.app_context():
@@ -701,7 +702,7 @@ def bot():
                         
                         if intent == 'draft':
                             print(f"   -> Intent: BORRADOR (Redactor)")
-                            agent_resp = run_agent(incoming_msg, sender, user_profile, media_url)
+                            agent_resp = run_agent(incoming_msg, sender, user_profile, media_url, mail_service=mail)
                             resp.message(agent_resp)
                         else:
                             print(f"   -> Intent: TICKET (Accounting)")

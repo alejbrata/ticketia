@@ -9,7 +9,7 @@ from modules.agents.history import HistoryService
 # Inicializar cliente OpenAI
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-def run_agent(user_message, phone_number, business_profile, media_url=None):
+def run_agent(user_message, phone_number, business_profile, media_url=None, mail_service=None):
     """
     Ejecuta el ciclo del agente con capacidad de usar herramientas, memoria y visión.
     """
@@ -27,7 +27,39 @@ def run_agent(user_message, phone_number, business_profile, media_url=None):
                 "extra_info": business_profile.static_knowledge or {}
             })
             if pdf_path:
-                return f"✅ ¡Hecho! Aquí tienes tu documento formalizado:\n{request.host_url.rstrip('/')}{pdf_path}"
+                msg_text = f"✅ ¡Hecho! Aquí tienes tu documento formalizado:\n{request.host_url.rstrip('/')}{pdf_path}"
+                
+                # Enviar por correo si está disponible el servicio
+                if mail_service and business_profile.email:
+                    try:
+                        from flask_mail import Message
+                        
+                        # Construir ruta al archivo
+                        file_path = pdf_path.lstrip('/') # Remove leading /
+                        
+                        # Leer archivo
+                        with open(file_path, 'rb') as fp:
+                            file_data = fp.read()
+                            
+                        email = Message(
+                            subject=f"Nuevo Documento Generado: {os.path.basename(file_path)}",
+                            sender="no-reply@ticketia.com", # Configurar sender real en .env
+                            recipients=[business_profile.email],
+                            body=f"Hola {business_profile.business_name},\n\nAquí tienes el documento generado desde tu última captura en WhatsApp.\n\nSaludos,\nTu Agente IA."
+                        )
+                        email.attach(
+                            filename=os.path.basename(file_path),
+                            content_type="application/pdf",
+                            data=file_data
+                        )
+                        mail_service.send(email)
+                        msg_text += "\n\n📧 También te lo he enviado a tu correo."
+                        print(f"📧 Email enviado a {business_profile.email}.")
+                        
+                    except Exception as e:
+                        print(f"❌ Error enviando email: {e}")
+                
+                return msg_text
             else:
                 return "❌ No pude procesar la imagen. Asegúrate de que se ve bien el texto."
         # ------------------------------------------------
