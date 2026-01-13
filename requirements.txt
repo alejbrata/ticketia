@@ -11,3 +11,7 @@ flask-admin
 schedule
 fpdf
 python-dateutil
+matplotlib
+requests
+python-pptx
+Pillow

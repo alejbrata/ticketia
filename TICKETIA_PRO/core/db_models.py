@@ -8,6 +8,7 @@ class BusinessProfile(db.Model):
     user_phone = db.Column(db.String(20), unique=False, nullable=False) # Phone still mandatory for bot, but not primary login
     email = db.Column(db.String(120), unique=True, nullable=False) # New Login ID
     business_name = db.Column(db.String(100))
+    logo_path = db.Column(db.String(300)) # Logo URL for PPTX/Web
     password_hash = db.Column(db.String(200)) # Auth
     
     # Password Recovery

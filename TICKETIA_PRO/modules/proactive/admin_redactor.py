@@ -16,15 +16,56 @@ class AdminAssistantAgent:
         """
         try:
             print(f"🧠 Clasificando imagen: {image_url[:15]}...")
+            
+            # --- PREPARAR IMAGEN (Local vs URL) ---
+            image_content = []
+            if image_url.startswith(('http://', 'https://')):
+                image_content = [{"type": "image_url", "image_url": {"url": image_url}}]
+            else:
+                # Local Path logic
+                try:
+                    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                    rel_path = image_url.lstrip('/') 
+                    local_path = os.path.join(base_dir, rel_path)
+                    
+                    with open(local_path, "rb") as image_file:
+                        base64_image = base64.b64encode(image_file.read()).decode('utf-8')
+                        image_content = [{
+                            "type": "image_url", 
+                            "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+                        }]
+                except Exception as e:
+                    print(f"⚠️ Error cargando imagen local para clasificación: {e}")
+                    # Fallback tentativo, aunque probablemente falle si es local path
+                    image_content = [{"type": "image_url", "image_url": {"url": image_url}}]
+
+            prompt = f"""
+            Eres un experto clasificador visual para "Ticketia".
+            Clasifica la imagen en UNA de dos categorías:
+            
+            A) 'receipt': SOLO si ves un TICKET TÉRMICO DE CAJA (supermercado, restaurante) o una FACTURA IMPRESA FORMAL. Debe parecer un documento final de pago.
+            
+            B) 'draft': Para TODO lo demás.
+            - Notas manuscritas (papel, cuaderno, servilleta).
+            - Dibujos o esquemas con precios.
+            - Hojas de pedido manuales.
+            - Pantallas de ordenador o fotos de otros dispositivos.
+            - Cualquier cosa que NO sea claramente un ticket de compra final.
+            
+            CONTEXTO EXTRA: "{user_text}"
+            (Si el usuario pide presupuesto, cotización, o dice "hazme", ES DRAFT).
+            
+            SI NO ESTÁS 100% SEGURO QUE ES UN TICKET TÉRMICO/OFICIAL -> CLASIFICA COMO 'draft'.
+            
+            Responde JSON estricto: {{"type": "receipt" | "draft"}}
+            """
+
             response = self.openai.chat.completions.create(
                 model="gpt-4o",
                 messages=[
                     {
                         "role": "user",
-                        "content": [
-                            {"type": "text", "text": f"Contexto usuario: '{user_text}'. Analiza la imagen. ¿Es un 'ticket/factura de compra' (receipt) para contabilidad, o es un 'borrador/nota manuscrita' (draft) para redactar un presupuesto/factura nueva? Responde JSON estricto: {{'type': 'receipt' | 'draft'}}"},
-                            {"type": "image_url", "image_url": {"url": image_url}}
-                        ]
+                        "content": [{"type": "text", "text": prompt}] + image_content
                     }
                 ],
                 response_format={"type": "json_object"},
@@ -32,7 +73,7 @@ class AdminAssistantAgent:
             )
             data = json.loads(response.choices[0].message.content)
             result = data.get('type', 'receipt')
-            print(f"   -> Clasificación: {result.upper()}")
+            print(f"   -> Clasificación (v3 Aggressive): {result.upper()} | Context: {user_text}")
             return result
         except Exception as e:
             print(f"❌ Error Clasificación: {e}")
@@ -52,6 +93,14 @@ class AdminAssistantAgent:
         # 2. Generar PDF
         pdf_path = self._generate_professional_pdf(extracted_data, user_context)
         return pdf_path
+
+    def generate_proposal_from_data(self, data, user_context):
+        """
+        Genera PDF directamente desde datos estructurados (sin imagen).
+        Útil para comandos de voz/texto.
+        """
+        print(f"📄 AdminRedactor: Generando PDF desde datos texto...")
+        return self._generate_professional_pdf(data, user_context)
 
     def _analyze_image_with_vision(self, image_url):
         """
@@ -84,9 +133,30 @@ class AdminAssistantAgent:
                 return None
 
         prompt = """
-        Analiza esta imagen (presupuesto manuscrito o nota).
-        Extrae: client_name, date, items (desc, qty, price, total), total.
-        Devuelve JSON estricto. Si faltan datos, infiérelos coherentemente.
+        ACT AS: Expert Accountant / Data Extractor.
+        INPUT: Handwritten note, budget draft, or text description of a service proposal.
+        OBJECTIVE: Extract structured data for a professional quote/invoice.
+        
+        CRITICAL EXTRACTION RULES:
+        1. "masiva" or "+iva" means "Plus VAT" (Tax Excluded from the number).
+        2. "iva incluido" means Tax Included.
+        3. "X masiva" -> Unit Price = X.
+        4. If a line has NO price but the total exists, estimate unit price.
+        
+        OUTPUT JSON:
+        {
+            "client_name": "Name inferred or 'Estimado Cliente'",
+            "date": "dd/mm/yyyy",
+            "items": [
+                {
+                    "desc": "Description",
+                    "qty": 1,
+                    "unit_price": 100.00, # BASE PRICE excluding Tax
+                    "total_line": 100.00 # qty * unit_price
+                }
+            ],
+            "notes": "Any payment terms or specific notes"
+        }
         """
 
         try:
@@ -112,6 +182,15 @@ class AdminAssistantAgent:
             pdf = FPDF()
             pdf.add_page()
             
+            # --- VAT Logic ---
+            sector = user_context.get('sector', 'Servicios').lower()
+            # Default logic
+            vat_rate = 0.21
+            if 'restauración' in sector or 'restauracion' in sector:
+                vat_rate = 0.10
+            elif 'salud' in sector:
+                vat_rate = 0.04 # Or 0.0 depending on service, generic 4 for now
+                
             # --- Colors & Fonts ---
             pdf.set_text_color(50, 50, 50)
             
@@ -165,38 +244,60 @@ class AdminAssistantAgent:
             # --- Table Header ---
             pdf.set_fill_color(240, 240, 240)
             pdf.set_font("Arial", 'B', 10)
-            pdf.cell(110, 10, "DESCRIPCIÓN", 0, 0, 'L', 1)
+            pdf.cell(100, 10, "DESCRIPCIÓN", 0, 0, 'L', 1)
             pdf.cell(20, 10, "CANT", 0, 0, 'C', 1)
-            pdf.cell(30, 10, "PRECIO", 0, 0, 'R', 1)
+            pdf.cell(30, 10, "PRECIO UNIT", 0, 0, 'R', 1)
             pdf.cell(30, 10, "TOTAL", 0, 1, 'R', 1)
             
             # --- Table Body ---
             pdf.set_font("Arial", '', 10)
+            
+            subtotal = 0.0
+            
             for item in data.get('items', []):
                 desc = str(item.get('desc', 'Item'))
-                qty = str(item.get('qty', 1))
-                price = str(item.get('price', 0))
-                total = str(item.get('total', 0))
+                qty = float(item.get('qty', 1))
+                price = float(item.get('unit_price', 0))
+                # Recalculate line total to ensure consistency
+                line_total = qty * price
+                subtotal += line_total
                 
                 # Line drawing
-                pdf.cell(110, 8, desc, "B")
-                pdf.cell(20, 8, qty, "B", 0, 'C')
-                pdf.cell(30, 8, f"{price} EUR", "B", 0, 'R')
-                pdf.cell(30, 8, f"{total} EUR", "B", 1, 'R')
+                pdf.cell(100, 8, desc, "B")
+                pdf.cell(20, 8, f"{int(qty) if qty.is_integer() else qty}", "B", 0, 'C')
+                pdf.cell(30, 8, f"{price:,.2f} \u20ac", "B", 0, 'R')
+                pdf.cell(30, 8, f"{line_total:,.2f} \u20ac", "B", 1, 'R')
                 
             pdf.ln(5)
             
-            # --- Totals ---
+            # --- Totals Calculation ---
+            vat_amount = subtotal * vat_rate
+            total_final = subtotal + vat_amount
+            
+            # --- Totals Box ---
+            # Move to right
+            pdf.set_x(110)
+            pdf.set_font("Arial", '', 10)
+            pdf.cell(50, 6, "Subtotal (Base Imponible):", 0, 0, 'R')
+            pdf.cell(30, 6, f"{subtotal:,.2f} \u20ac", 0, 1, 'R')
+            
+            pdf.set_x(110)
+            pdf.cell(50, 6, f"IVA ({int(vat_rate*100)}%):", 0, 0, 'R')
+            pdf.cell(30, 6, f"{vat_amount:,.2f} \u20ac", 0, 1, 'R')
+            
+            pdf.set_x(110)
             pdf.set_font("Arial", 'B', 12)
-            pdf.cell(160, 10, "TOTAL A PAGAR:", 0, 0, 'R')
             pdf.set_fill_color(230, 255, 230) # Light Green
-            pdf.cell(30, 10, f"{data.get('total', 0)} EUR", 1, 1, 'R', 1)
+            pdf.cell(50, 10, "TOTAL A PAGAR:", 0, 0, 'R', 1)
+            pdf.cell(30, 10, f"{total_final:,.2f} \u20ac", 0, 1, 'R', 1)
             
             # --- Footer ---
-            pdf.ln(20)
+            pdf.ln(15)
+            pdf.set_x(10)
             pdf.set_font("Arial", 'I', 9)
             pdf.set_text_color(100, 100, 100)
-            pdf.multi_cell(0, 5, f"Notas: {data.get('notes', 'Gracias por su confianza. Presupuesto válido por 15 días.')}")
+            notes = data.get('notes', 'Gracias por su confianza. Presupuesto válido por 15 días.')
+            pdf.multi_cell(0, 5, f"Notas: {notes}\nEl precio final incluye los impuestos aplicables.")
             
             # Save
             filename = f"budget_{int(datetime.now().timestamp())}.pdf"

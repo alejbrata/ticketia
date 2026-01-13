@@ -125,5 +125,56 @@ TOOLS_SCHEMA = [
                 "required": []
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_proposal_from_text",
+            "description": "Genera un presupuesto PDF formal directamente desde los datos proporcionados por texto/voz (sin imagen).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "client_name": {"type": "string", "description": "Nombre del cliente."},
+                    "items": {
+                        "type": "array",
+                        "description": "Lista de items/servicios.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "desc": {"type": "string", "description": "Descripción del servicio/producto"},
+                                "qty": {"type": "integer", "description": "Cantidad"},
+                                "price": {"type": "number", "description": "Precio unitario"},
+                                "total": {"type": "number", "description": "Total de línea"}
+                            }
+                        }
+                    },
+                    "total": {"type": "number", "description": "Total del presupuesto."},
+                    "notes": {"type": "string", "description": "Notas adicionales o pie de página."}
+                },
+                "required": ["client_name", "items", "total"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_marketing_material",
+            "description": "Crea material visual de marketing (imágenes publicitarias o diapositivas PPT) basado en una descripción o idea.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "prompt": {
+                        "type": "string",
+                        "description": "La idea o descripción del contenido a generar."
+                    },
+                    "format": {
+                        "type": "string",
+                        "enum": ["image", "slide"],
+                        "description": "Usa 'image' para carteles/fotos o 'slide' para presentaciones."
+                    }
+                },
+                "required": ["prompt", "format"]
+            }
+        }
     }
 ]

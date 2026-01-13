@@ -14,8 +14,10 @@ def run_agent(user_message, phone_number, business_profile, media_url=None, mail
     Ejecuta el ciclo del agente con capacidad de usar herramientas, memoria y visión.
     """
     try:
-        if not business_profile.system_prompt:
-            return "El asistente no está configurado."
+        system_prompt = business_profile.system_prompt
+        if not system_prompt:
+            # Fallback por defecto para usuarios nuevos
+            system_prompt = f"Eres un asistente IA inteligente para la empresa {business_profile.business_name}. Ayuda al usuario con sus tareas de gestión, presupuestos y dudas."
 
         # --- DISPATCHER DE IMÁGENES (ADMIN REDACTOR) ---
         if media_url and "admin_redactor" in (business_profile.active_agents or []):
@@ -77,7 +79,7 @@ def run_agent(user_message, phone_number, business_profile, media_url=None, mail
         
         # El historial ya incluye el último mensaje del user que acabamos de guardar
         # [System] + [History (Old -> New)]
-        messages = [{"role": "system", "content": business_profile.system_prompt}]
+        messages = [{"role": "system", "content": system_prompt}]
         messages.extend(history)
 
         # 3. Primera llamada a OpenAI (con Tools)
@@ -125,13 +127,20 @@ def run_agent(user_message, phone_number, business_profile, media_url=None, mail
                         from modules.proactive.admin_redactor import AdminAssistantAgent
                         assistant = AdminAssistantAgent()
                         
+                        # Ensure static_knowledge is a dict
+                        sk = business_profile.static_knowledge or {}
+                        if isinstance(sk, str):
+                            try: sk = json.loads(sk)
+                            except: sk = {}
+                            
                         # Pasamos image_path directamente (ej: /static/uploads/xyz.jpg)
                         # El agente ahora sabrá leerlo en local gracias a nuestro fix.
                         pdf_path = assistant.process_image_request(last_ticket.image_path, {
                             "business_name": business_profile.business_name,
                             "phone": business_profile.user_phone,
                             "email": business_profile.email,
-                            "extra_info": business_profile.static_knowledge or {}
+                            "sector": sk.get('sector', 'Servicios'), # PASS SECTOR
+                            "extra_info": sk
                         })
                         if pdf_path:
                             tool_output = f"✅ Documento generado de la última imagen: {request.host_url.rstrip('/')}{pdf_path}"
@@ -139,6 +148,93 @@ def run_agent(user_message, phone_number, business_profile, media_url=None, mail
                             tool_output = "❌ Hubo un error procesando la imagen."
                     else:
                         tool_output = "❌ No encuentro ninguna imagen reciente subida como ticket."
+
+                elif function_name == "create_proposal_from_text":
+                    # Lógica para crear PDF desde datos de texto (Audio/Chat)
+                    from modules.proactive.admin_redactor import AdminAssistantAgent
+                    
+                    # Construir payload de datos
+                    data_payload = {
+                        "client_name": function_args.get("client_name"),
+                        "items": function_args.get("items"),
+                        "total": function_args.get("total"),
+                        "notes": function_args.get("notes"),
+                        "date": None # Se auto-asigna hoy
+                    }
+                    
+                    assistant = AdminAssistantAgent()
+                    
+                    # Ensure static_knowledge is a dict
+                    sk = business_profile.static_knowledge or {}
+                    if isinstance(sk, str):
+                        try: sk = json.loads(sk)
+                        except: sk = {}
+                        
+                    pdf_path = assistant.generate_proposal_from_data(data_payload, {
+                        "business_name": business_profile.business_name,
+                        "phone": business_profile.user_phone,
+                        "email": business_profile.email,
+                        "sector": sk.get('sector', 'Servicios'), # PASS SECTOR
+                        "extra_info": sk
+                    })
+                    
+                    if pdf_path:
+                         tool_output = f"✅ Documento generado correctamente: {request.host_url.rstrip('/')}{pdf_path}"
+                    else:
+                         tool_output = "❌ Hubo un error generando el PDF."
+                elif function_name == "generate_marketing_material":
+                    prompt_text = function_args.get("prompt")
+                    fmt = function_args.get("format")
+                    
+                    # Capturar datos para el thread
+                    import threading
+                    from twilio.rest import Client
+                    
+                    # URL base (necesaria porque request context se pierde en el thread)
+                    base_url = request.host_url.rstrip('/')
+                    target_phone = phone_number
+                    empresa = business_profile.business_name  # Capturar nombre
+                    logo_path_db = business_profile.logo_path # Capturar logo (si existe)
+                    
+                    def background_generation(p_text, p_fmt, p_phone, p_base_url, p_business_name, p_logo_path):
+                        try:
+                            print(f"🧵 Thread Start: Generando {p_fmt} para {p_phone}...")
+                            from modules.proactive.marketing_agent import MarketingAgent
+                            agent = MarketingAgent()
+                            # Pasar nombre de empresa Y Logo
+                            file_url = agent.generate_marketing_content(p_text, p_fmt, business_name=p_business_name, logo_path=p_logo_path)
+                            
+                            if file_url:
+                                full_url = f"{p_base_url}{file_url}"
+                                msg_body = f"✨ ¡Aquí tienes tu {p_fmt} sobre '{p_text}'! Disfrútalo."
+                                
+                                # Enviar WhatsApp Proactivo
+                                account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
+                                auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
+                                twilio_client = Client(account_sid, auth_token)
+                                
+                                # Asegurar formato whatsapp:+
+                                to_num = p_phone if p_phone.startswith('whatsapp:') else f"whatsapp:{p_phone}"
+                                if not to_num.startswith('whatsapp:+'): 
+                                    pass
+
+                                msg = twilio_client.messages.create(
+                                    from_="whatsapp:+14155238886",
+                                    to=to_num,
+                                    body=msg_body,
+                                    media_url=[full_url]
+                                )
+                                print(f"✅ Thread Success: Mensaje enviado SID: {msg.sid}")
+                            else:
+                                print(f"❌ Thread Error: No se generó file_url")
+                        except Exception as e:
+                            print(f"❌ Thread Crash: {e}")
+
+                    # Lancer hilo con argumento extra
+                    thread = threading.Thread(target=background_generation, args=(prompt_text, fmt, target_phone, base_url, empresa, logo_path_db))
+                    thread.start()
+                    
+                    tool_output = "SYSTEM_OK: El proceso de generación ha comenzado CORRCTAMENTE en segundo plano. Dile al usuario que espere unos 30 segundos y que se lo enviarás por WhatsApp en cuanto esté terminar. NO TE DISCULPES."
                 else:
                     tool_output = "Error: Herramienta desconocida."
                 

@@ -402,13 +402,21 @@ def transactions():
 
 @app.route('/wizard')
 def wizard():
-    # Mock user for Authentication
-    class MockUser:
-        phone = "+34600123456"
-        subscription_status = "active"
-        is_authenticated = True
+    if 'user_phone' not in session:
+        return redirect(url_for('login'))
+        
+    user_phone = session['user_phone']
+    profile = BusinessProfile.query.filter_by(user_phone=user_phone).first()
     
-    return render_template('wizard.html', current_user=MockUser())
+    # Si no existe perfil, pasar un objeto vacío o usar valores por defecto
+    if not profile:
+        class MockProfile:
+            business_name = ""
+            static_knowledge = {}
+            logo_path = None
+        profile = MockProfile()
+        
+    return render_template('wizard.html', current_user=profile)
 
 @app.route('/save_config', methods=['POST'])
 def save_config():
@@ -446,14 +454,28 @@ def save_config():
     Si te preguntan algo que no sabes, pide amablemente que contacten por teléfono.
     """
     
+    # 3.5 Guardar Logo si existe
+    logo_path = None
+    if 'logo_file' in request.files:
+        file = request.files['logo_file']
+        if file and file.filename != '':
+            from werkzeug.utils import secure_filename
+            filename = secure_filename(f"logo_{user_phone}_{file.filename}")
+            upload_dir = os.path.join(app.root_path, 'static', 'uploads', 'logos')
+            os.makedirs(upload_dir, exist_ok=True)
+            file.save(os.path.join(upload_dir, filename))
+            logo_path = f"/static/uploads/logos/{filename}"
+    
     # 4. Guardar en Base de Datos
     profile = BusinessProfile.query.filter_by(user_phone=user_phone).first()
     
     static_data = {
         "sector": sector,
+        "tone": tone, # Guardar tono también
         "schedule": schedule,
         "payment_methods": payment_methods,
-        "services": services
+        "services": services,
+        "instructions": instructions # Guardar instrucciones para rellenar
     }
     
     if profile:
@@ -461,13 +483,16 @@ def save_config():
         profile.business_name = b_name
         profile.system_prompt = generated_system_prompt.strip()
         profile.static_knowledge = static_data
+        if logo_path:
+            profile.logo_path = logo_path
     else:
         # Crear nuevo
         new_profile = BusinessProfile(
             user_phone=user_phone,
             business_name=b_name,
             system_prompt=generated_system_prompt.strip(),
-            static_knowledge=static_data
+            static_knowledge=static_data,
+            logo_path=logo_path
         )
         db.session.add(new_profile)
     
@@ -688,7 +713,31 @@ def bot():
                 # Es un usuario (Dueño) hablando con la central
                 if num_media > 0:
                     media_url = request.values.get('MediaUrl0')
+                    media_type = request.values.get('MediaContentType0', '') # Ej: audio/ogg
                     msg_text = incoming_msg.lower()
+                    
+                    # --- A) ES AUDIO (Whisper) ---
+                    if 'audio' in media_type:
+                        from modules.utils.transcriber import AudioTranscriber
+                        print("🎤 Detectado Audio -> Transcribiendo...")
+                        transcribed_text = AudioTranscriber().transcribe(media_url)
+                        
+                        if transcribed_text:
+                            # Tratamos la transcripción como si fuera texto escrito por el usuario
+                            # Esto permite que funcione con 'hazme un presupuesto' o comandos normales
+                            try:
+                                agent_resp = run_agent(transcribed_text, sender, user_profile)
+                                resp.message(f"🎤 (Entendido: \"{transcribed_text}\")\n\n{agent_resp}")
+                                return str(resp)
+                            except Exception as e:
+                                print(f"Error Agent execution from audio: {e}")
+                                resp.message("⚠️ Entendí el audio pero fallé procesando la orden.")
+                                return str(resp)
+                        else:
+                            resp.message("⚠️ No he podido escuchar el audio.")
+                            return str(resp)
+
+                    # --- B) ES IMAGEN (Lógica Original) ---
                     
                     # Routing Inteligente: ¿Es Gasto o es Documento?
                     features = user_profile.features or {}
@@ -748,6 +797,36 @@ def bot():
         resp.message("⚠️ Error interno del servidor.")
         
     return str(resp)
+
+@app.route('/demo')
+def demo_panel():
+    if 'user_phone' not in session: return redirect(url_for('login'))
+    return render_template('demo_panel.html')
+
+@app.route('/demo/seed_data', methods=['POST'])
+def demo_seed():
+    from seed_demo import generate_fake_history
+    generate_fake_history(session['user_phone'])
+    flash('✅ Datos históricos inyectados.', 'success')
+    return redirect(url_for('demo_panel'))
+
+@app.route('/demo/trigger/<agent_name>', methods=['POST'])
+def demo_trigger(agent_name):
+    user = BusinessProfile.query.filter_by(user_phone=session['user_phone']).first()
+    try:
+        if agent_name == 'coach':
+            from modules.proactive.business_health import BusinessCoachAgent
+            BusinessCoachAgent().run_daily_analysis(user)
+        elif agent_name == 'hunter':
+            from modules.proactive.grant_hunter import GrantHunterAgent
+            GrantHunterAgent().check_new_grants(user)
+        elif agent_name == 'networker':
+            from modules.proactive.networker import SynergyAgent
+            SynergyAgent().run_daily_networking(user)
+        flash(f'🚀 Agente {agent_name} ejecutado con éxito.', 'success')
+    except Exception as e:
+        flash(f'Error: {e}', 'error')
+    return redirect(url_for('demo_panel'))
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001) # Puerto 5001 para no chocar con el otro bot
