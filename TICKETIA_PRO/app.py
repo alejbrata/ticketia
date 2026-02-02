@@ -1079,6 +1079,31 @@ def upload_web_audio():
     except Exception as e:
         print(f"Error web audio: {e}")
         return jsonify({'error': str(e)}), 500
+# --- ZONA DE EMERGENCIA PARA TFM (Borrar en producción real) ---
+@app.route('/setup_magic_db_force')
+def setup_magic_db():
+    try:
+        # Importamos aquí para evitar ciclos
+        from reset_db_full import reset_and_seed
+        
+        # Ejecutamos el script que borra y crea todo
+        reset_and_seed()
+        
+        return """
+        <div style="font-family: sans-serif; padding: 2rem; text-align: center;">
+            <h1 style="color: green;">✅ Instalación Completada</h1>
+            <p>La base de datos se ha reiniciado y el usuario Admin ha sido restaurado.</p>
+            <div style="background: #f0f0f0; padding: 1rem; display: inline-block; border-radius: 8px; text-align: left;">
+                <p><strong>Usuario:</strong> 34630339601</p>
+                <p><strong>Contraseña:</strong> 1234</p>
+            </div>
+            <br><br>
+            <a href="/login" style="background: blue; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Ir al Login</a>
+        </div>
+        """
+    except Exception as e:
+        return f"<h1 style='color: red'>❌ Error: {str(e)}</h1>"
+# ---------------------------------------------------------------        
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001) # Puerto 5001 para no chocar con el otro bot
