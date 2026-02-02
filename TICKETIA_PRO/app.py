@@ -482,19 +482,81 @@ def documents_page():
     # Obtener documentos
     all_docs = GeneratedDocument.query.filter_by(user_phone=user_phone).order_by(GeneratedDocument.created_at.desc()).all()
     
-    # Categorizar
+    def group_by_date(docs):
+        grouped = {}
+        for doc in docs:
+            year = doc.created_at.year
+            month = doc.created_at.strftime('%B').capitalize() # Enero, Febrero... (depende de locale, por ahora usamos inglés o map)
+            
+            # Map simple de meses por si acaso el locale no está en ES
+            months_es = {
+                1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 
+                5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto", 
+                9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
+            }
+            month = months_es.get(doc.created_at.month, month)
+
+            if year not in grouped: grouped[year] = {}
+            if month not in grouped[year]: grouped[year][month] = []
+            grouped[year][month].append(doc)
+        return grouped
+
+    # Categorizar y Agrupar
     docs_proposals = [d for d in all_docs if d.doc_type in ['proposal', 'invoice', 'report']]
     docs_images = [d for d in all_docs if d.doc_type == 'image']
     docs_presentations = [d for d in all_docs if d.doc_type == 'presentation']
     docs_video_prompts = [d for d in all_docs if d.doc_type == 'video_prompt']
-    docs_other = [d for d in all_docs if d.doc_type not in ['proposal', 'invoice', 'report', 'image', 'presentation', 'video_prompt']]
+    
+    # Convertir a Árbol
+    tree_proposals = group_by_date(docs_proposals)
+    tree_images = group_by_date(docs_images)
+    tree_presentations = group_by_date(docs_presentations)
+    tree_videos = group_by_date(docs_video_prompts)
     
     return render_template('documents.html', 
-                           proposals=docs_proposals, 
-                           images=docs_images, 
-                           presentations=docs_presentations,
-                           videos=docs_video_prompts,
-                           others=docs_other)
+                           tree_proposals=tree_proposals, 
+                           tree_images=tree_images, 
+                           tree_presentations=tree_presentations,
+                           tree_videos=tree_videos,
+                           # Pasamos contadores para los badges
+                           count_proposals=len(docs_proposals),
+                           count_images=len(docs_images),
+                           count_presentations=len(docs_presentations),
+                           count_videos=len(docs_video_prompts))
+
+@app.route('/delete_document/<int:doc_id>', methods=['POST'])
+def delete_document(doc_id):
+    if 'user_phone' not in session:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    
+    doc = GeneratedDocument.query.get(doc_id)
+    if not doc:
+        return jsonify({"success": False, "error": "Document not found"}), 404
+        
+    if doc.user_phone != session['user_phone']:
+        return jsonify({"success": False, "error": "Forbidden"}), 403
+        
+    try:
+        # 1. Borrar archivo físico
+        try:
+            # doc.file_path es relativo: /static/generated_docs/file.pdf
+            # Convertir a absoluto
+            relative_path = doc.file_path.lstrip('/')
+            absolute_path = os.path.join(app.root_path, relative_path)
+            if os.path.exists(absolute_path):
+                os.remove(absolute_path)
+        except Exception as e:
+            print(f"Error borrando archivo físico {doc.file_path}: {e}")
+            # Continuamos para borrar de DB aunque falle disco
+            
+        # 2. Borrar de DB
+        db.session.delete(doc)
+        db.session.commit()
+        return jsonify({"success": True})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/wizard')
 def wizard():
@@ -597,7 +659,39 @@ def save_config():
     flash('¡Configuración guardada y Agente IA actualizado!', 'success')
     return redirect(url_for('dashboard'))
 
-    return redirect(url_for('dashboard'))
+@app.route('/agents')
+def agents_page():
+    if 'user_phone' not in session:
+        return redirect(url_for('login'))
+    return render_template('agents.html')
+
+@app.route('/api/chat', methods=['POST'])
+def chat_api():
+    if 'user_phone' not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    data = request.get_json()
+    user_message = data.get('message')
+    if not user_message:
+         return jsonify({"error": "No message"}), 400
+
+    user_phone = session['user_phone']
+    profile = BusinessProfile.query.filter_by(user_phone=user_phone).first()
+
+    if not profile:
+        return jsonify({"response": "Error: Perfil no encontrado."})
+
+    # Run Agent
+    # We pass 'web' as channel to optimize responses (no sending WP messages if possible)
+    from modules.agents.manager import run_agent
+    response_text = run_agent(
+        user_message=user_message, 
+        phone_number=user_phone, 
+        business_profile=profile,
+        channel='web'
+    )
+    
+    return jsonify({"response": response_text})
 
 
 

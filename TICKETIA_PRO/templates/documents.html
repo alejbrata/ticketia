@@ -45,12 +45,24 @@
 
     <!-- CONTENT: PROPOSALS -->
     <div x-show="tab === 'proposals'" class="py-6 animate-fade-in">
-        {% if proposals %}
-        <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {% for doc in proposals %}
-            {% include 'components/doc_card.html' %}
+        {% if tree_proposals %}
+        {% for year, months in tree_proposals.items()|sort(reverse=True) %}
+        <div class="mb-8">
+            <h3 class="text-xl font-bold text-slate-400 mb-4 border-b border-slate-100 pb-2">{{ year }}</h3>
+            {% for month, docs in months.items() %}
+            <div class="mb-6 ml-4">
+                <h4 class="text-sm font-bold text-indigo-600 uppercase tracking-wider mb-3">{{ month }}</h4>
+                <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {% for doc in docs %}
+                    {% with can_delete=True %}
+                    {% include 'components/doc_card.html' %}
+                    {% endwith %}
+                    {% endfor %}
+                </div>
+            </div>
             {% endfor %}
         </div>
+        {% endfor %}
         {% else %}
         {% with empty_msg="No hay presupuestos generados aún." %}
         {% include 'components/empty_state.html' %}
@@ -60,12 +72,24 @@
 
     <!-- CONTENT: IMAGES -->
     <div x-show="tab === 'images'" class="py-6 animate-fade-in" style="display: none;">
-        {% if images %}
-        <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {% for doc in images %}
-            {% include 'components/doc_card.html' %}
+        {% if tree_images %}
+        {% for year, months in tree_images.items()|sort(reverse=True) %}
+        <div class="mb-8">
+            <h3 class="text-xl font-bold text-slate-400 mb-4 border-b border-slate-100 pb-2">{{ year }}</h3>
+            {% for month, docs in months.items() %}
+            <div class="mb-6 ml-4">
+                <h4 class="text-sm font-bold text-purple-600 uppercase tracking-wider mb-3">{{ month }}</h4>
+                <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {% for doc in docs %}
+                    {% with can_delete=True %}
+                    {% include 'components/doc_card.html' %}
+                    {% endwith %}
+                    {% endfor %}
+                </div>
+            </div>
             {% endfor %}
         </div>
+        {% endfor %}
         {% else %}
         {% with empty_msg="No hay imágenes generadas." %}
         {% include 'components/empty_state.html' %}
@@ -75,12 +99,24 @@
 
     <!-- CONTENT: PRESENTATIONS -->
     <div x-show="tab === 'presentations'" class="py-6 animate-fade-in" style="display: none;">
-        {% if presentations %}
-        <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {% for doc in presentations %}
-            {% include 'components/doc_card.html' %}
+        {% if tree_presentations %}
+        {% for year, months in tree_presentations.items()|sort(reverse=True) %}
+        <div class="mb-8">
+            <h3 class="text-xl font-bold text-slate-400 mb-4 border-b border-slate-100 pb-2">{{ year }}</h3>
+            {% for month, docs in months.items() %}
+            <div class="mb-6 ml-4">
+                <h4 class="text-sm font-bold text-orange-600 uppercase tracking-wider mb-3">{{ month }}</h4>
+                <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {% for doc in docs %}
+                    {% with can_delete=True %}
+                    {% include 'components/doc_card.html' %}
+                    {% endwith %}
+                    {% endfor %}
+                </div>
+            </div>
             {% endfor %}
         </div>
+        {% endfor %}
         {% else %}
         {% with empty_msg="No hay presentaciones creadas." %}
         {% include 'components/empty_state.html' %}
@@ -90,20 +126,30 @@
 
     <!-- CONTENT: VIDEOS -->
     <div x-show="tab === 'videos'" class="py-6 animate-fade-in" style="display: none;">
-        {% if videos %}
-        <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {% for doc in videos %}
-            {% include 'components/doc_card.html' %}
+        {% if tree_videos %}
+        {% for year, months in tree_videos.items()|sort(reverse=True) %}
+        <div class="mb-8">
+            <h3 class="text-xl font-bold text-slate-400 mb-4 border-b border-slate-100 pb-2">{{ year }}</h3>
+            {% for month, docs in months.items() %}
+            <div class="mb-6 ml-4">
+                <h4 class="text-sm font-bold text-pink-600 uppercase tracking-wider mb-3">{{ month }}</h4>
+                <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {% for doc in docs %}
+                    {% with can_delete=True %}
+                    {% include 'components/doc_card.html' %}
+                    {% endwith %}
+                    {% endfor %}
+                </div>
+            </div>
             {% endfor %}
         </div>
+        {% endfor %}
         {% else %}
         {% with empty_msg="No hay estrategias de vídeo generadas." %}
         {% include 'components/empty_state.html' %}
         {% endwith %}
         {% endif %}
     </div>
-
-
 
     <!-- FAB Floating Action Button for Video -->
     <div class="fixed bottom-6 right-6 z-50" x-show="tab === 'videos'">
@@ -114,7 +160,7 @@
         <input type="file" id="videoUploadInput" class="hidden" accept="image/*" onchange="uploadImageForVideo(this)">
     </div>
 
-    <!-- Script for Video Upload -->
+    <!-- Script for Video Upload & Deletion -->
     <script>
         async function uploadImageForVideo(input) {
             if (input.files && input.files[0]) {
@@ -155,6 +201,52 @@
                     console.error(e);
                     btn.innerHTML = originalHtml;
                     btn.disabled = false;
+                }
+            }
+        }
+
+        async function deleteDocument(docId, btnElement) {
+            if (!confirm("¿Estás seguro de que quieres eliminar este archivo? Esta acción no se puede deshacer.")) {
+                return;
+            }
+
+            // Animación inmediata de "borrado" (optimista)
+            const card = btnElement.closest('.bg-white');
+            if (card) {
+                card.style.transition = "all 0.3s ease";
+                card.style.opacity = "0.5";
+                card.style.pointerEvents = "none";
+            }
+
+            try {
+                const response = await fetch(`/delete_document/${docId}`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    if (card) {
+                        card.style.opacity = "0";
+                        card.style.transform = "scale(0.9)";
+                        setTimeout(() => {
+                            card.remove();
+                        }, 300);
+                    } else {
+                        location.reload();
+                    }
+                } else {
+                    alert("❌ Error eliminando: " + data.error);
+                    if (card) {
+                        card.style.opacity = "1";
+                        card.style.pointerEvents = "all";
+                    }
+                }
+            } catch (e) {
+                console.error(e);
+                alert("Error de conexión al eliminar.");
+                if (card) {
+                    card.style.opacity = "1";
+                    card.style.pointerEvents = "all";
                 }
             }
         }

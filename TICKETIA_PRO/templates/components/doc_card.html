@@ -47,13 +47,21 @@
 
     <div class="flex gap-2 mt-auto">
         <a href="{{ doc.file_path }}" download
-            class="flex-1 text-center text-xs font-bold py-2 rounded-lg bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 transition-colors">
+            class="w-10 flex items-center justify-center text-xs font-bold py-2 rounded-lg bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 transition-colors"
+            title="Descargar">
             ⬇️
         </a>
         <a href="{{ doc.file_path }}" target="_blank"
             class="flex-1 text-center text-xs font-bold py-2 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-100 transition-colors">
             Ver Documento
         </a>
+        {% if can_delete %}
+        <button onclick="deleteDocument({{ doc.id }}, this)"
+            class="w-10 flex items-center justify-center text-xs font-bold py-2 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 border border-red-100 transition-colors"
+            title="Eliminar">
+            🗑️
+        </button>
+        {% endif %}
     </div>
 
 </div>
