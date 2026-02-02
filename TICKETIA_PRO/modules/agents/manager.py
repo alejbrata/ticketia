@@ -1,15 +1,18 @@
+import threading
+from datetime import datetime
+from twilio.rest import Client
 import os
 import json
 from flask import request
 from openai import OpenAI
-from core.db_models import Ticket
+from core.db_models import Ticket, ActivityLog
 from modules.agents.tools import CalendarTools, TOOLS_SCHEMA
 from modules.agents.history import HistoryService
 
 # Inicializar cliente OpenAI
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-def run_agent(user_message, phone_number, business_profile, media_url=None, mail_service=None):
+def run_agent(user_message, phone_number, business_profile, media_url=None, mail_service=None, channel='whatsapp'):
     """
     Ejecuta el ciclo del agente con capacidad de usar herramientas, memoria y visión.
     """
@@ -30,6 +33,7 @@ def run_agent(user_message, phone_number, business_profile, media_url=None, mail
             })
             if pdf_path:
                 msg_text = f"✅ ¡Hecho! Aquí tienes tu documento formalizado:\n{request.host_url.rstrip('/')}{pdf_path}"
+                ActivityLog.log(phone_number, "Admin Redactor", "Procesada imagen (Multimodal)")
                 
                 # Enviar por correo si está disponible el servicio
                 if mail_service and business_profile.email:
@@ -45,7 +49,7 @@ def run_agent(user_message, phone_number, business_profile, media_url=None, mail
                             
                         email = Message(
                             subject=f"Nuevo Documento Generado: {os.path.basename(file_path)}",
-                            sender="no-reply@ticketia.com", # Configurar sender real en .env
+                            sender="no-reply@ticketia.com", 
                             recipients=[business_profile.email],
                             body=f"Hola {business_profile.business_name},\n\nAquí tienes el documento generado desde tu última captura en WhatsApp.\n\nSaludos,\nTu Agente IA."
                         )
@@ -67,22 +71,18 @@ def run_agent(user_message, phone_number, business_profile, media_url=None, mail
         # ------------------------------------------------
 
         # 1. Guardar Mensaje del Usuario
-        # (Guardamos lo que acaba de escribir el usuario en la DB)
         HistoryService.save_interaction(
             phone=phone_number,
             role="user",
             content=user_message
         )
 
-        # 2. Reconstruir Contexto (System + Historial Reciente)
+        # 2. Reconstruir Contexto
         history = HistoryService.get_recent_history(phone_number, limit=10)
-        
-        # El historial ya incluye el último mensaje del user que acabamos de guardar
-        # [System] + [History (Old -> New)]
         messages = [{"role": "system", "content": system_prompt}]
         messages.extend(history)
 
-        # 3. Primera llamada a OpenAI (con Tools)
+        # 3. Primera llamada a OpenAI
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=messages,
@@ -93,24 +93,22 @@ def run_agent(user_message, phone_number, business_profile, media_url=None, mail
         response_message = response.choices[0].message
         final_content = response_message.content
         
-        # 4. Verificar si la IA quiere usar una herramienta
+        # 4. Verificar Herramientas
         if response_message.tool_calls:
-            # Añadir la intención de la IA al historial en memoria para el loop
             messages.append(response_message)
             
-            # Ejecutar cada herramienta solicitada
             for tool_call in response_message.tool_calls:
                 function_name = tool_call.function.name
                 function_args = json.loads(tool_call.function.arguments)
-                
                 tool_output = None
-                
-                # Despachador Dinámico (Simple)
+
                 if function_name == "check_availability":
                     tool_output = CalendarTools.check_availability(
                         date=function_args.get("date"),
                         business_phone=business_profile.user_phone
                     )
+                    ActivityLog.log(phone_number, "Calendar Agent", f"Consultada agenda: {function_args.get('date')}")
+
                 elif function_name == "book_appointment":
                     tool_output = CalendarTools.book_appointment(
                         date=function_args.get("date"),
@@ -119,6 +117,8 @@ def run_agent(user_message, phone_number, business_profile, media_url=None, mail
                         phone=function_args.get("phone"),
                         business_phone=business_profile.user_phone
                     )
+                    ActivityLog.log(phone_number, "Calendar Agent", f"Cita agendada: {function_args.get('client_name')}")
+
                 elif function_name == "create_proposal_from_last_image":
                     # Lógica para recuperar la última imagen y procesarla con Redactor
                     last_ticket = Ticket.query.filter_by(user_phone=phone_number).order_by(Ticket.date.desc()).first()
@@ -144,6 +144,7 @@ def run_agent(user_message, phone_number, business_profile, media_url=None, mail
                         })
                         if pdf_path:
                             tool_output = f"✅ Documento generado de la última imagen: {request.host_url.rstrip('/')}{pdf_path}"
+                            ActivityLog.log(phone_number, "Admin Redactor", "Generado presupuesto desde Imagen")
                         else:
                             tool_output = "❌ Hubo un error procesando la imagen."
                     else:
@@ -159,7 +160,7 @@ def run_agent(user_message, phone_number, business_profile, media_url=None, mail
                         "items": function_args.get("items"),
                         "total": function_args.get("total"),
                         "notes": function_args.get("notes"),
-                        "date": None # Se auto-asigna hoy
+                        "date": datetime.now().strftime('%d/%m/%Y') # Se auto-asigna hoy
                     }
                     
                     assistant = AdminAssistantAgent()
@@ -179,62 +180,136 @@ def run_agent(user_message, phone_number, business_profile, media_url=None, mail
                     })
                     
                     if pdf_path:
-                         tool_output = f"✅ Documento generado correctamente: {request.host_url.rstrip('/')}{pdf_path}"
+                        # Save to DB
+                        try:
+                            from core.db_models import GeneratedDocument, db
+                            
+                            new_doc = GeneratedDocument(
+                                user_phone=phone_number,
+                                file_path=pdf_path,
+                                doc_type='proposal',
+                                client_name=function_args.get("client_name")
+                            )
+                            db.session.add(new_doc)
+                            db.session.commit()
+                        except Exception as e:
+                            print(f"Error saving GeneratedDocument: {e}")
+
+                        tool_output = "Se ha generado el documento solicitado."
+                        ActivityLog.log(phone_number, "Admin Redactor", f"Generado presupuesto: {function_args.get('client_name')}")
                     else:
-                         tool_output = "❌ Hubo un error generando el PDF."
+                        tool_output = "❌ Hubo un error generando el PDF."
+
                 elif function_name == "generate_marketing_material":
                     prompt_text = function_args.get("prompt")
                     fmt = function_args.get("format")
                     
-                    # Capturar datos para el thread
-                    import threading
-                    from twilio.rest import Client
+                    # Capturar datos adicionales para el thread (Branding)
+                    empresa = business_profile.business_name
+                    logo_path_db = business_profile.logo_path
+                    base_url = request.host_url
                     
-                    # URL base (necesaria porque request context se pierde en el thread)
-                    base_url = request.host_url.rstrip('/')
-                    target_phone = phone_number
-                    empresa = business_profile.business_name  # Capturar nombre
-                    logo_path_db = business_profile.logo_path # Capturar logo (si existe)
-                    
-                    def background_generation(p_text, p_fmt, p_phone, p_base_url, p_business_name, p_logo_path):
-                        try:
-                            print(f"🧵 Thread Start: Generando {p_fmt} para {p_phone}...")
-                            from modules.proactive.marketing_agent import MarketingAgent
-                            agent = MarketingAgent()
-                            # Pasar nombre de empresa Y Logo
-                            file_url = agent.generate_marketing_content(p_text, p_fmt, business_name=p_business_name, logo_path=p_logo_path)
-                            
-                            if file_url:
-                                full_url = f"{p_base_url}{file_url}"
-                                msg_body = f"✨ ¡Aquí tienes tu {p_fmt} sobre '{p_text}'! Disfrútalo."
+                    # FUNCIÓN INTERNA PARA EL HILO (Background Worker)
+                    def _async_marketing_worker(user_phone, prompt, format_type, host_url, p_business_name, p_logo_path, context_app, p_channel): # Pass channel
+                        with context_app.app_context(): # Use app context
+                            try:
+                                print(f"🧵 Thread: Iniciando generación background para {user_phone} via {p_channel}...")
                                 
-                                # Enviar WhatsApp Proactivo
-                                account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
-                                auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
-                                twilio_client = Client(account_sid, auth_token)
+                                # 1. Instanciar Agente (importación diferida para evitar ciclos)
+                                from modules.proactive.marketing_agent import MarketingAgent
+                                agent = MarketingAgent()
                                 
-                                # Asegurar formato whatsapp:+
-                                to_num = p_phone if p_phone.startswith('whatsapp:') else f"whatsapp:{p_phone}"
-                                if not to_num.startswith('whatsapp:+'): 
-                                    pass
+                                # 2. Generar Contenido (Esto tarda 15-30s)
+                                file_path = agent.generate_marketing_content(prompt, format_type, business_name=p_business_name, logo_path=p_logo_path)
+                                
+                                if file_path:
+                                    # Save to DB
+                                    try:
+                                        from core.db_models import GeneratedDocument, db as local_db
+                                        new_doc = GeneratedDocument(
+                                            user_phone=user_phone,
+                                            file_path=file_path,
+                                            doc_type='video_prompt' if format_type == 'video' else ('image' if format_type == 'image' else 'presentation')
+                                        )
+                                        local_db.session.add(new_doc)
+                                        local_db.session.commit()
+                                    except Exception as e:
+                                        print(f"Error saving GeneratedDocument (Thread): {e}")
 
-                                msg = twilio_client.messages.create(
-                                    from_="whatsapp:+14155238886",
-                                    to=to_num,
-                                    body=msg_body,
-                                    media_url=[full_url]
-                                )
-                                print(f"✅ Thread Success: Mensaje enviado SID: {msg.sid}")
-                            else:
-                                print(f"❌ Thread Error: No se generó file_url")
-                        except Exception as e:
-                            print(f"❌ Thread Crash: {e}")
+                                    # 3. Notificar según Canal
+                                    if not file_path.startswith('http'):
+                                         file_path = f"{host_url.rstrip('/')}{file_path}"
+                                    
+                                    if p_channel == 'whatsapp':
+                                        account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
+                                        auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
+                                        client = Client(account_sid, auth_token)
+                                        
+                                        to_number = user_phone if user_phone.startswith('+') else f"whatsapp:+34{user_phone}"
+                                        if "whatsapp:" in user_phone:
+                                            to_number = user_phone
+                                        else:
+                                            to_number = f"whatsapp:{to_number}"
 
-                    # Lancer hilo con argumento extra
-                    thread = threading.Thread(target=background_generation, args=(prompt_text, fmt, target_phone, base_url, empresa, logo_path_db))
+                                        msg_body = "🎨 ¡Aquí tienes tu diseño!" if format_type == 'image' else "📊 ¡Presentación lista!"
+                                        if format_type == 'video': msg_body = "🎬 ¡Estrategia de Vídeo Lista!"
+                                        
+                                        client.messages.create(
+                                            from_="whatsapp:+14155238886",
+                                            to=to_number,
+                                            body=f"{msg_body}\n{file_path}",
+                                            media_url=[file_path]
+                                        )
+                                        print(f"🧵 Thread: ✅ Enviado a {user_phone} (WhatsApp)")
+                                    else:
+                                        # WEB: No enviar mensaje proactivo (ya está en Docs).
+                                        # Podríamos loguear o enviar socket si tuviéramos
+                                        print(f"🧵 Thread: ✅ Guardado para Web. No se envía WhatsApp.")
+                                        ActivityLog.log(user_phone, "Marketing Agent", f"Diseño listo en Documentos: {format_type}")
+
+                                else:
+                                    print("🧵 Thread: ❌ Falló la generación (path vacío).")
+                                    
+                            except Exception as e:
+                                print(f"🧵 Thread: ❌ Error Crítico: {e}")
+
+                    # LANZAR HILO
+                    from flask import current_app
+                    app_obj = current_app._get_current_object()
+
+                    thread = threading.Thread(
+                        target=_async_marketing_worker, 
+                        args=(phone_number, prompt_text, fmt, base_url, empresa, logo_path_db, app_obj, channel) # Pass channel
+                    )
                     thread.start()
                     
-                    tool_output = "SYSTEM_OK: El proceso de generación ha comenzado CORRCTAMENTE en segundo plano. Dile al usuario que espere unos 30 segundos y que se lo enviarás por WhatsApp en cuanto esté terminar. NO TE DISCULPES."
+                    # LOG DE INICIO
+                    ActivityLog.log(phone_number, "Marketing Agent", f"Iniciado diseño: {prompt_text[:30]}...")
+
+                    # RESPUESTA INMEDIATA AL CHAT (Para evitar Timeout)
+                    tool_output = "⏳ ¡Oído! Me pongo a diseñarlo ahora mismo. Como soy una IA detallista, tardaré unos 20-30 segundos.\n\nSigue con lo tuyo, te mandaré un WhatsApp en cuanto lo tenga listo. 🚀"
+                elif function_name == "handle_customer_service":
+                    from modules.proactive.post_sales import PostSalesAgent
+                    print(f"🛠️ [TOOL CALL] handle_customer_service()")
+                    
+                    # Usamos el último mensaje del usuario para el contexto, ya que la tool call no tiene todos los detalles
+                    last_user_msg = "Quiero devolver un pedido" # Fallback
+                    for m in reversed(messages):
+                        # Safely access role/content whether it's a dict or an object
+                        role = m.get('role') if isinstance(m, dict) else getattr(m, 'role', None)
+                        content = m.get('content') if isinstance(m, dict) else getattr(m, 'content', None)
+                        
+                        if role == 'user':
+                            last_user_msg = content
+                            break
+                            
+                    agent = PostSalesAgent()
+                    # Pasamos el canal al agente para que sepa cómo responder (Twilio vs Web)
+                    resp_text, media_url = agent.handle_inquiry(phone_number, last_user_msg, business_profile, channel=channel)
+                    
+                    # El agente ya se encargó de enviar los adjuntos vía NotifierService si era necesario
+                    tool_output = resp_text
+
                 else:
                     tool_output = "Error: Herramienta desconocida."
                 
@@ -245,6 +320,15 @@ def run_agent(user_message, phone_number, business_profile, media_url=None, mail
                     "name": function_name,
                     "content": tool_output
                 })
+
+                # --- OPTIMIZACIÓN ASYNC (Marketing) ---
+                # Si acabamos de lanzar un hilo de generación de imagen, no necesitamos que la IA vuelva a pensar.
+                # Devolvemos directamente el mensaje de "Estoy en ello" para responder rápido al usuario y evitar timeouts.
+                if function_name == "generate_marketing_material":
+                    # Guardamos la interacción para que conste en el historial
+                    HistoryService.save_interaction(phone_number, "assistant", tool_output)
+                    return tool_output
+
             
             # 5. Segunda llamada a OpenAI (con el resultado de la herramienta)
             final_response = client.chat.completions.create(

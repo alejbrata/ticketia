@@ -95,3 +95,91 @@ def process_ticket(media_url, user_phone):
     except Exception as e:
         print(f"Error procesando ticket: {e}")
         return "⚠️ Error leyendo el ticket. Inténtalo de nuevo."
+
+def process_ticket_image(file_path, user_phone):
+    """
+    Procesa un ticket subido directamente desde la web (App).
+    file_path: Ruta absoluta local del archivo ya guardado.
+    """
+    try:
+        # 1. Leer archivo local
+        with open(file_path, "rb") as image_file:
+            content = image_file.read()
+
+        # 2. Convertir a Base64
+        image_data = base64.b64encode(content).decode('utf-8')
+        data_url = f"data:image/jpeg;base64,{image_data}"
+
+        # 3. Prompt (Reutilizado)
+        prompt = f"""
+        Actúa como experto contable español. Extrae datos de este ticket.
+        HOY ES: {datetime.now().strftime('%d/%m/%Y')}.
+        
+        Devuelve JSON ESTRICTO:
+        {{
+            "fecha": "DD/MM/YYYY",
+            "nif": "string",
+            "proveedor": "string", 
+            "numero_ticket": "string",
+            "base": float,
+            "iva_percent": float, 
+            "cuota_iva": float,
+            "total": float,
+            "concepto": "resumen corto"
+        }}
+        Si falta algo, estima o pon null/0.
+        """
+        
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "user", "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": data_url}}
+                ]}
+            ],
+            max_tokens=300
+        )
+        
+        content = response.choices[0].message.content.replace("```json", "").replace("```", "").strip()
+        try:
+            data = json.loads(content)
+        except:
+            # Fallback simple si falla JSON
+            data = {"proveedor": "Unknown", "total": 0.0}
+
+        # 4. Calcular ruta relativa para DB
+        # Asumimos que file_path está en .../static/uploads/...
+        # Buscamos 'static' en el path
+        if 'static' in file_path:
+            # Normalizar path 
+            rel_path = file_path.split('static')[-1].replace('\\', '/')
+            db_image_path = f"/static{rel_path}"
+        else:
+            db_image_path = f"/static/uploads/{os.path.basename(file_path)}"
+
+        # 5. Guardar en DB
+        new_ticket = Ticket(
+            user_phone=user_phone,
+            image_path=db_image_path,
+            status='processed',
+            concept=data.get('concepto', 'Gasto Web'),
+            total=data.get('total', 0.0),
+            date=datetime.strptime(data.get('fecha', datetime.now().strftime('%d/%m/%Y')), '%d/%m/%Y'),
+            nif=data.get('nif'),
+            provider=data.get('proveedor'),
+            ticket_number=data.get('numero_ticket'),
+            base=data.get('base', 0.0),
+            tax_percent=data.get('iva_percent', 0.0),
+            fee=data.get('cuota_iva', 0.0),
+            raw_data=json.dumps(data)
+        )
+        
+        db.session.add(new_ticket)
+        db.session.commit()
+        
+        return f"Ticket de {data.get('proveedor')} ({data.get('total')}€) guardado."
+
+    except Exception as e:
+        print(f"Error process_ticket_image: {e}")
+        return f"Error procesando imagen: {e}"

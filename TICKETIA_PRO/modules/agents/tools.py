@@ -176,5 +176,22 @@ TOOLS_SCHEMA = [
                 "required": ["prompt", "format"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "handle_customer_service",
+            "description": "Utiliza esta herramienta para problemas de postventa: devoluciones, quejas, estado de pedidos o reclamaciones.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "issue_summary": {
+                        "type": "string",
+                        "description": "Resumen del problema del cliente"
+                    }
+                },
+                "required": ["issue_summary"]
+            }
+        }
     }
 ]

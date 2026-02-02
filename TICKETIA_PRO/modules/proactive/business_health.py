@@ -5,37 +5,48 @@ import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from sqlalchemy import func
-from twilio.rest import Client
 from openai import OpenAI
 from core.db_models import db, Ticket
+from core.notifier import NotifierService
+
+from core.config import Config
 
 class BusinessCoachAgent:
     def __init__(self):
         self.openai = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-        self.twilio = Client(os.environ.get("TWILIO_ACCOUNT_SID"), os.environ.get("TWILIO_AUTH_TOKEN"))
-        self.whatsapp_from = "whatsapp:+14155238886"
+        self.notifier = NotifierService()
+        # Eliminar self.twilio y self.whatsapp_from (ahora gestionado por NotifierService)
 
     def run_daily_analysis(self, user):
         """
-        Analiza la salud financiera y envía feedback.
+        Analiza la salud financiera y envía feedback MULTIMODAL (Texto + Gráfico + Audio).
         """
         print(f"🩺 Coach: Analizando finanzas de {user.business_name}...")
         
-        # 1. Obtener Datos (Mes Actual vs Mes Pasado)
+        # 1. Obtener Datos
         stats = self._get_financial_stats(user.user_phone)
         
-        # Si no hay datos suficientes, no decimos nada aún (o para demo, sí)
+        # Check simple para no hablar si no hay datos (ajustar según necesidad demo)
         if stats['current_month'] == 0 and stats['last_month_mtd'] == 0:
             print("   -> Sin datos suficientes.")
             return
 
-        # 2. Generar Mensaje + Gráfico
-        message = self._generate_coach_message(user.business_name, stats)
+        # 2. Generar Contenido
+        message_text = self._generate_coach_message(user.business_name, stats)
+        
+        # Generar Gráfico (Visual)
         chart_url = self._generate_chart(user, stats)
         
-        # 3. Enviar WhatsApp Multimodal
-        if message:
-            self._send_whatsapp_with_media(user.user_phone, message, chart_url)
+        # Generar Audio (Voz) - NUEVO
+        audio_url = self._generate_audio(message_text)
+        
+        # 3. Enviar Multimodal (Texto + Array de Media)
+        if message_text:
+            media_list = []
+            if chart_url: media_list.append(chart_url)
+            if audio_url: media_list.append(audio_url)
+            
+            self._send_whatsapp_multimodal(user.user_phone, message_text, media_list)
 
     def _get_financial_stats(self, phone):
         today = datetime.now()
@@ -117,13 +128,6 @@ class BusinessCoachAgent:
             filename = f"chart_{user.user_phone}_{datetime.now().strftime('%Y%m%d%H%M')}.png"
             # Ruta absoluta para guardar
             base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            # Ajustar ruta: TICKETIA_PRO es donde está este módulo. Subir 2 niveles desde 'modules/proactive'
-            # base_dir debería ser la raíz de TICKETIA_PRO si __file__ es .../modules/proactive/business_health.py
-            # __file__ = .../TICKETIA_PRO/modules/proactive/business_health.py
-            # dirname = .../modules/proactive
-            # dirname = .../modules
-            # dirname = .../TICKETIA_PRO
-            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
             
             save_path = os.path.join(base_dir, "static", "generated_docs", filename)
             os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -132,42 +136,47 @@ class BusinessCoachAgent:
             plt.close()
             
             # Devolver ruta relativa web
-            return f"/static/generated_docs/{filename}"
+            return f"{Config.PUBLIC_URL}/static/generated_docs/{filename}"
         except Exception as e:
             print(f"❌ Error Chart: {e}")
             return None
 
-    def _send_whatsapp_with_media(self, phone, body, media_path):
+    def _generate_audio(self, text):
+        """Genera un archivo de audio MP3 usando OpenAI TTS."""
         try:
-            to_num = phone if phone.startswith('+') else f"+34{phone}"
+            print("   🎙️ Generando voz del coach...")
+            response = self.openai.audio.speech.create(
+                model="tts-1",
+                voice="onyx", # Voces disponibles: alloy, echo, fable, onyx, nova, shimmer
+                input=text
+            )
             
-            # Twilio necesita URL absoluta. Usamos Ngrok/Dominio si existe, o IP local.
-            # Para DEMO: Asumimos que app.py corre en el dominio público configurado.
-            # Intenta obtener el dominio de una variable, si no, usa una placeholder para que lo cambies.
-            # IMPORTANTE: En producción usar request.host_url si es request context, pero aquí es background task.
-            # Hardcodearemos el ngrok actual del usuario para que funcione YA en la demo,
-            # O mejor, usar una variable de entorno.
-            domain = os.environ.get("Config.PUBLIC_URL", "https://ticketia.alejbrata.ngrok.app") # Placeholder safe
-            # Nota: Si el usuario tiene otro ngrok, fallará la imagen. Le avisaré para que configure .env o similar.
+            filename = f"voice_{int(datetime.now().timestamp())}.mp3"
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            save_path = os.path.join(base_dir, "static", "generated_docs", filename)
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
             
-            # Recuperar dominio dinámicamente si es posible? No fácil en background task sin app_context request.
-            # Usaré una variable de entorno ficticia que asumo está seteada o el usuario debe setear.
-            # El prompt sugiere: domain = os.environ.get("PUBLIC_URL", "https://tudominio.ngrok-free.app")
+            # Guardar archivo
+            response.stream_to_file(save_path)
             
-            domain = os.environ.get("PUBLIC_URL", "http://localhost:5000") # Fallback local
+            # Devolver URL Absoluta
+            return f"{Config.PUBLIC_URL}/static/generated_docs/{filename}"
             
-            if media_path:
-                # Asegurar slash
-                if not media_path.startswith('/'): media_path = '/' + media_path
-                media_url = f"{domain}{media_path}"
-            else:
-                media_url = None
-            
-            msg_args = {"from_": self.whatsapp_from, "to": f"whatsapp:{to_num}", "body": body}
-            if media_url:
-                msg_args["media_url"] = [media_url]
-                
-            self.twilio.messages.create(**msg_args)
-            print(f"✅ Mensaje Visual enviado a {to_num} (Media: {media_url})")
         except Exception as e:
-            print(f"❌ Error Twilio: {e}")
+            print(f"❌ Error TTS: {e}")
+            return None
+
+    def _send_whatsapp_multimodal(self, phone, body, media_urls=[]):
+        """Envía mensaje con lista de adjuntos usando el NotifierService."""
+        # Enviar Texto primero
+        self.notifier.send(phone, body, channel='whatsapp') # Por defecto Coach usa whatsapp
+        
+        # Enviar Medios
+        # Nota: El NotifierService simple envía 1 adjunto por mensaje.
+        # Si queremos enviar todos juntos, tendríamos que mejorar el NotifierService o iterar.
+        # Iteramos por simplicidad y compatibilidad con el código anterior.
+        for media in media_urls:
+            if media:
+                self.notifier.send(phone, "Adjunto:", media_url=media, channel='whatsapp')
+
+

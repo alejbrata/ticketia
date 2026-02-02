@@ -59,8 +59,14 @@
     <div>
         <div class="flex justify-between items-end mb-4">
             <h2 class="text-lg font-bold text-slate-800">Últimos Tickets</h2>
-            <a href="{{ url_for('transactions') }}" class="text-xs font-bold text-indigo-600 hover:text-indigo-800">Ver
-                todos</a>
+            <div class="flex gap-3">
+                <a href="{{ url_for('documents_page') }}"
+                    class="text-xs font-bold text-purple-600 hover:text-purple-800 bg-purple-50 px-3 py-1 rounded-full border border-purple-100">
+                    📂 Documentos
+                </a>
+                <a href="{{ url_for('transactions') }}"
+                    class="text-xs font-bold text-indigo-600 hover:text-indigo-800">Ver todos</a>
+            </div>
         </div>
 
         <div class="space-y-3">
@@ -86,5 +92,214 @@
         </div>
     </div>
 
+    <!-- Activity Log (New) -->
+    <div class="mt-8 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+        <h3 class="text-xl font-bold text-slate-800 mb-4">🤖 Actividad de los Agentes (Tiempo Real)</h3>
+
+        {% if logs %}
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="text-slate-400 text-sm border-b border-slate-100">
+                        <th class="py-3 font-medium">Hora</th>
+                        <th class="py-3 font-medium">Agente</th>
+                        <th class="py-3 font-medium">Acción Realizada</th>
+                    </tr>
+                </thead>
+                <tbody class="text-slate-600">
+                    {% for log in logs %}
+                    <tr class="border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
+                        <td class="py-3 text-sm font-mono text-slate-400">
+                            {{ log.timestamp.strftime('%H:%M') }}
+                        </td>
+                        <td class="py-3">
+                            <span class="px-2 py-1 rounded-md text-xs font-bold 
+                                {% if 'Coach' in log.agent_name %} bg-indigo-100 text-indigo-700
+                                {% elif 'Marketing' in log.agent_name %} bg-pink-100 text-pink-700
+                                {% elif 'Hunter' in log.agent_name %} bg-emerald-100 text-emerald-700
+                                {% else %} bg-slate-100 text-slate-700 {% endif %}">
+                                {{ log.agent_name }}
+                            </span>
+                        </td>
+                        <td class="py-3 text-sm">{{ log.action }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-slate-400 text-sm italic">No hay actividad reciente. Despierta a los agentes en el Panel Demo.
+        </p>
+        {% endif %}
+    </div>
+
 </div>
+
+<div class="fixed bottom-6 left-0 right-0 px-4 flex justify-center gap-4 z-50">
+
+    <!-- Ticket Upload Form (Hidden Inputs) -->
+    <form id="ticketForm" enctype="multipart/form-data">
+        <!-- Input for Camera (Direct Access) -->
+        <input type="file" id="cameraInput" name="ticket" accept="image/*" capture="environment" class="hidden"
+            onchange="uploadTicket(this)">
+        <!-- Input for Gallery (File Picker) -->
+        <input type="file" id="galleryInput" name="ticket" accept="image/*" class="hidden"
+            onchange="uploadTicket(this)">
+    </form>
+
+    <!-- Floating Action Button (Main) -->
+    <button type="button" onclick="openSourceModal()"
+        class="bg-indigo-600 hover:bg-indigo-700 text-white p-4 rounded-full shadow-lg transition-transform transform active:scale-95 flex items-center gap-2">
+        📸 <span class="hidden md:inline">Escanear Ticket</span>
+    </button>
+
+    <button id="recordBtn" type="button" onmousedown="startRecording()" onmouseup="stopRecording()"
+        ontouchstart="startRecording()" ontouchend="stopRecording()"
+        class="bg-rose-500 hover:bg-rose-600 text-white p-4 rounded-full shadow-lg transition-transform transform active:scale-95 flex items-center gap-2 select-none">
+        🎙️ <span class="hidden md:inline">Mantener para hablar</span>
+    </button>
+</div>
+
+<!-- Source Selection Modal -->
+<div id="sourceModal"
+    class="fixed inset-0 bg-black/50 z-[60] hidden flex items-end md:items-center justify-center p-4 backdrop-blur-sm"
+    onclick="closeSourceModal()">
+    <div class="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl transform transition-all translate-y-full md:translate-y-0 duration-300"
+        id="sourceModalContent" onclick="event.stopPropagation()">
+        <div class="flex justify-between items-center mb-6">
+            <h3 class="text-lg font-bold text-slate-800">Añadir Ticket</h3>
+            <button onclick="closeSourceModal()" class="text-slate-400 hover:text-slate-600 p-2">✕</button>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+            <button onclick="document.getElementById('cameraInput').click(); closeSourceModal()"
+                class="flex flex-col items-center justify-center gap-3 p-6 rounded-2xl bg-indigo-50 hover:bg-indigo-100 transition-colors border border-indigo-100 group">
+                <div
+                    class="w-12 h-12 bg-indigo-600 rounded-full flex items-center justify-center text-white text-2xl shadow-lg shadow-indigo-200 group-hover:scale-110 transition-transform">
+                    📸
+                </div>
+                <span class="font-bold text-indigo-900 text-sm">Cámara</span>
+            </button>
+
+            <button onclick="document.getElementById('galleryInput').click(); closeSourceModal()"
+                class="flex flex-col items-center justify-center gap-3 p-6 rounded-2xl bg-purple-50 hover:bg-purple-100 transition-colors border border-purple-100 group">
+                <div
+                    class="w-12 h-12 bg-purple-600 rounded-full flex items-center justify-center text-white text-2xl shadow-lg shadow-purple-200 group-hover:scale-110 transition-transform">
+                    🖼️
+                </div>
+                <span class="font-bold text-purple-900 text-sm">Galería</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<div id="recordingIndicator"
+    class="fixed top-20 left-1/2 transform -translate-x-1/2 bg-red-600 text-white px-4 py-2 rounded-full shadow-lg hidden z-50 animate-pulse">
+    Grabando... 🔴
+</div>
+
+<script>
+    // --- MODAL LOGIC ---
+    function openSourceModal() {
+        const modal = document.getElementById('sourceModal');
+        const content = document.getElementById('sourceModalContent');
+        modal.classList.remove('hidden');
+        // Small delay to allow display:block to apply before animating opacity/transform
+        setTimeout(() => {
+            content.classList.remove('translate-y-full');
+        }, 10);
+    }
+
+    function closeSourceModal() {
+        const modal = document.getElementById('sourceModal');
+        const content = document.getElementById('sourceModalContent');
+        content.classList.add('translate-y-full');
+        setTimeout(() => {
+            modal.classList.add('hidden');
+        }, 300);
+    }
+
+    // --- LÓGICA DE SUBIDA DE TICKET ---
+    async function uploadTicket(input) {
+        if (input.files && input.files[0]) {
+            const formData = new FormData();
+            formData.append('ticket', input.files[0]);
+
+            // Feedback visual
+            alert("Subiendo ticket... ⏳");
+
+            try {
+                const response = await fetch('/upload_web_ticket', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                if (data.success) {
+                    alert("✅ Ticket procesado: " + data.message);
+                    location.reload(); // Recargar para ver el gasto
+                } else {
+                    alert("❌ Error: " + data.error);
+                }
+            } catch (e) {
+                alert("Error de conexión");
+            }
+        }
+    }
+
+    // --- LÓGICA DE AUDIO (MediaRecorder) ---
+    let mediaRecorder;
+    let audioChunks = [];
+
+    async function startRecording() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            audioChunks = [];
+
+            mediaRecorder.ondataavailable = event => {
+                audioChunks.push(event.data);
+            };
+
+            mediaRecorder.onstop = uploadAudio;
+            mediaRecorder.start();
+
+            document.getElementById('recordingIndicator').classList.remove('hidden');
+            document.getElementById('recordBtn').classList.add('scale-110', 'ring-4', 'ring-rose-300');
+        } catch (err) {
+            alert("Necesitamos permiso de micrófono 🎤");
+        }
+    }
+
+    function stopRecording() {
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop();
+            document.getElementById('recordingIndicator').classList.add('hidden');
+            document.getElementById('recordBtn').classList.remove('scale-110', 'ring-4', 'ring-rose-300');
+        }
+    }
+
+    async function uploadAudio() {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        const formData = new FormData();
+        formData.append('audio', audioBlob, 'recording.webm');
+
+        // Feedback
+        const originalText = document.getElementById('recordBtn').innerHTML;
+        document.getElementById('recordBtn').innerHTML = "⏳ Procesando...";
+
+        try {
+            const response = await fetch('/upload_web_audio', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+            alert(data.response); // Respuesta del agente
+            location.reload();
+        } catch (e) {
+            console.error(e);
+        } finally {
+            document.getElementById('recordBtn').innerHTML = originalText;
+        }
+    }
+</script>
 {% endblock %}

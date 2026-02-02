@@ -7,9 +7,14 @@ class Config:
     uri = os.environ.get('DATABASE_URL')
     if uri and uri.startswith("postgres://"):
         uri = uri.replace("postgres://", "postgresql://", 1)
-        
-    SQLALCHEMY_DATABASE_URI = uri or 'sqlite:///instance/zeptai.db'
+    
+    basedir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+    SQLALCHEMY_DATABASE_URI = uri or 'sqlite:///' + os.path.join(basedir, 'instance', 'zeptai.db')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    
+    # NUEVO: URL Pública para webhooks y medios (ngrok o dominio real)
+    # Elimina la barra final si el usuario la pone
+    PUBLIC_URL = os.environ.get('PUBLIC_URL', 'https://stepless-janel-bashfully.ngrok-free.dev').rstrip('/')
 
     # Mail Config
     MAIL_SERVER = os.environ.get('MAIL_SERVER') or 'smtp.gmail.com'
@@ -18,3 +23,6 @@ class Config:
     MAIL_USERNAME = os.environ.get('MAIL_USERNAME')
     MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD')
     MAIL_DEFAULT_SENDER = os.environ.get('MAIL_DEFAULT_SENDER')
+    
+    # RunwayML Config
+    RUNWAYML_API_SECRET = os.environ.get('RUNWAYML_API_SECRET')

@@ -1,15 +1,23 @@
 {
     "name": "Ticketia",
     "short_name": "Ticketia",
-    "start_url": "/",
+    "start_url": "/dashboard",
     "display": "standalone",
     "background_color": "#ffffff",
     "theme_color": "#4f46e5",
+    "orientation": "portrait",
     "icons": [
         {
-            "src": "/static/icon.png",
+            "src": "https://cdn-icons-png.flaticon.com/512/2504/2504957.png",
             "sizes": "192x192",
-            "type": "image/png"
+            "type": "image/png",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "https://cdn-icons-png.flaticon.com/512/2504/2504957.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any maskable"
         }
     ]
 }

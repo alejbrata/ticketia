@@ -91,3 +91,39 @@ class SynergyMatch(db.Model):
     reason = db.Column(db.Text)   # Por qué hacen buena pareja
     status = db.Column(db.String(20), default='suggested') # suggested, accepted, rejected
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class ActivityLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_phone = db.Column(db.String(20), nullable=False)
+    agent_name = db.Column(db.String(50), nullable=False) # Ej: "Business Coach", "Redactor"
+    action = db.Column(db.Text, nullable=False) # Ej: "Generado gráfico de gastos"
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+
+    @staticmethod
+    def log(phone, agent, action):
+        """Helper para guardar logs rápidamente desde cualquier agente"""
+        try:
+            new_log = ActivityLog(user_phone=phone, agent_name=agent, action=action)
+            db.session.add(new_log)
+            db.session.commit()
+            print(f"📝 Log guardado: {agent} -> {action}")
+        except Exception as e:
+            print(f"❌ Error guardando log: {e}")
+            db.session.rollback()
+
+class Incident(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_phone = db.Column(db.String(20), nullable=False)
+    order_id = db.Column(db.String(50), nullable=True) # Ej: "ORD-2024-001"
+    type = db.Column(db.String(50)) # "Devolución", "Queja", "Info"
+    status = db.Column(db.String(20), default="Abierto")
+    description = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class GeneratedDocument(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_phone = db.Column(db.String(20), nullable=False, index=True)
+    file_path = db.Column(db.String(300), nullable=False) # e.g. /static/generated_docs/budget_123.pdf
+    doc_type = db.Column(db.String(50)) # 'proposal', 'invoice', 'marketing_image', 'other'
+    client_name = db.Column(db.String(100), nullable=True) # Optional client context
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)

@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="px-6 py-8 pb-24 max-w-4xl mx-auto w-full" x-data="{ tab: 'proposals' }">
+
+    <header class="mb-8 flex justify-between items-center">
+        <div>
+            <h1 class="text-3xl font-bold text-slate-800 tracking-tight">Mis Documentos</h1>
+            <p class="text-slate-500 mt-2 font-medium">Presupuestos e imágenes generadas</p>
+        </div>
+        <a href="{{ url_for('dashboard') }}" class="text-indigo-600 hover:text-indigo-800 text-sm font-bold">
+            ← Volver
+        </a>
+    </header>
+
+    <!-- TABS NAVIGATION -->
+    <div class="mb-6 border-b border-slate-200">
+        <div class="flex gap-6 -mb-px">
+            <button @click="tab = 'proposals'"
+                :class="{ 'border-indigo-600 text-indigo-600': tab === 'proposals', 'border-transparent text-slate-500 hover:text-slate-700': tab !== 'proposals' }"
+                class="pb-4 font-bold text-sm border-b-2 transition-colors flex items-center gap-2">
+                📄 Presupuestos <span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-xs">{{
+                    proposals|length }}</span>
+            </button>
+            <button @click="tab = 'images'"
+                :class="{ 'border-purple-600 text-purple-600': tab === 'images', 'border-transparent text-slate-500 hover:text-slate-700': tab !== 'images' }"
+                class="pb-4 font-bold text-sm border-b-2 transition-colors flex items-center gap-2">
+                🖼️ Imágenes <span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-xs">{{ images|length
+                    }}</span>
+            </button>
+            <button @click="tab = 'presentations'"
+                :class="{ 'border-orange-500 text-orange-500': tab === 'presentations', 'border-transparent text-slate-500 hover:text-slate-700': tab !== 'presentations' }"
+                class="pb-4 font-bold text-sm border-b-2 transition-colors flex items-center gap-2">
+                📊 Presentaciones <span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-xs">{{
+                    presentations|length }}</span>
+            </button>
+            <button @click="tab = 'videos'"
+                :class="{ 'border-pink-500 text-pink-500': tab === 'videos', 'border-transparent text-slate-500 hover:text-slate-700': tab !== 'videos' }"
+                class="pb-4 font-bold text-sm border-b-2 transition-colors flex items-center gap-2">
+                🎬 Video Prompts <span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-xs">{{
+                    videos|length }}</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- CONTENT: PROPOSALS -->
+    <div x-show="tab === 'proposals'" class="py-6 animate-fade-in">
+        {% if proposals %}
+        <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {% for doc in proposals %}
+            {% include 'components/doc_card.html' %}
+            {% endfor %}
+        </div>
+        {% else %}
+        {% with empty_msg="No hay presupuestos generados aún." %}
+        {% include 'components/empty_state.html' %}
+        {% endwith %}
+        {% endif %}
+    </div>
+
+    <!-- CONTENT: IMAGES -->
+    <div x-show="tab === 'images'" class="py-6 animate-fade-in" style="display: none;">
+        {% if images %}
+        <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {% for doc in images %}
+            {% include 'components/doc_card.html' %}
+            {% endfor %}
+        </div>
+        {% else %}
+        {% with empty_msg="No hay imágenes generadas." %}
+        {% include 'components/empty_state.html' %}
+        {% endwith %}
+        {% endif %}
+    </div>
+
+    <!-- CONTENT: PRESENTATIONS -->
+    <div x-show="tab === 'presentations'" class="py-6 animate-fade-in" style="display: none;">
+        {% if presentations %}
+        <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {% for doc in presentations %}
+            {% include 'components/doc_card.html' %}
+            {% endfor %}
+        </div>
+        {% else %}
+        {% with empty_msg="No hay presentaciones creadas." %}
+        {% include 'components/empty_state.html' %}
+        {% endwith %}
+        {% endif %}
+    </div>
+
+    <!-- CONTENT: VIDEOS -->
+    <div x-show="tab === 'videos'" class="py-6 animate-fade-in" style="display: none;">
+        {% if videos %}
+        <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {% for doc in videos %}
+            {% include 'components/doc_card.html' %}
+            {% endfor %}
+        </div>
+        {% else %}
+        {% with empty_msg="No hay estrategias de vídeo generadas." %}
+        {% include 'components/empty_state.html' %}
+        {% endwith %}
+        {% endif %}
+    </div>
+
+
+
+    <!-- FAB Floating Action Button for Video -->
+    <div class="fixed bottom-6 right-6 z-50" x-show="tab === 'videos'">
+        <button onclick="document.getElementById('videoUploadInput').click()"
+            class="bg-pink-600 hover:bg-pink-700 text-white p-4 rounded-full shadow-lg transition-transform transform active:scale-95 flex items-center gap-2 animate-bounce-in">
+            ✨ <span class="hidden md:inline font-bold">Crear Nuevo Vídeo</span>
+        </button>
+        <input type="file" id="videoUploadInput" class="hidden" accept="image/*" onchange="uploadImageForVideo(this)">
+    </div>
+
+    <!-- Script for Video Upload -->
+    <script>
+        async function uploadImageForVideo(input) {
+            if (input.files && input.files[0]) {
+                const formData = new FormData();
+                formData.append('image', input.files[0]);
+
+                // Feedback visual inmediato
+                const btn = document.querySelector('button[onclick*="videoUploadInput"]');
+                const originalHtml = btn.innerHTML;
+                btn.innerHTML = "⏳ Analizando & Renderizando (1-2 min)...";
+                btn.classList.add('opacity-75', 'cursor-wait');
+                btn.disabled = true;
+
+                try {
+                    const response = await fetch('/generate_video_from_image', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const data = await response.json();
+
+                    if (data.success) {
+                        // Success Feedback
+                        btn.innerHTML = "✅ ¡Vídeo Listo!";
+                        btn.classList.remove('bg-pink-600');
+                        btn.classList.add('bg-green-600');
+
+                        setTimeout(() => {
+                            location.reload(); // Recargar para ver el nuevo video
+                        }, 2000);
+                    } else {
+                        alert("❌ Error: " + data.error);
+                        btn.innerHTML = originalHtml;
+                        btn.disabled = false;
+                        btn.classList.remove('opacity-75', 'cursor-wait');
+                    }
+                } catch (e) {
+                    alert("Error de conexión");
+                    console.error(e);
+                    btn.innerHTML = originalHtml;
+                    btn.disabled = false;
+                }
+            }
+        }
+    </script>
+
+    <!-- Alpine.js for Tabs (Simple injection if not present in base) -->
+    <script src="//unpkg.com/alpinejs" defer></script>
+
+</div>
+{% endblock %}

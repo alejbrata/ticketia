@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
 import io
 import pandas as pd
-from flask import Flask, request, render_template, redirect, url_for, flash, send_file, session
+from flask import Flask, request, render_template, redirect, url_for, flash, send_file, session, jsonify
 from flask_mail import Mail, Message
 import secrets
 from datetime import timedelta
@@ -15,12 +15,13 @@ from twilio.twiml.messaging_response import MessagingResponse
 
 from core.config import Config
 from core.config import Config
-from core.db_models import db, BusinessProfile, Ticket, ChatMessage, Grant, Appointment, SynergyMatch
+from core.db_models import db, BusinessProfile, Ticket, ChatMessage, Grant, Appointment, SynergyMatch, ActivityLog, GeneratedDocument
 from flask_admin import Admin
 from flask_admin.contrib.sqla import ModelView
-from modules.tickets.logic import process_ticket
+from modules.tickets.logic import process_ticket, process_ticket_image
 from modules.chatbot.logic import generate_response
 from modules.agents.manager import run_agent
+from modules.utils.transcriber import AudioTranscriber
 from sqlalchemy.sql import func
 
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -53,6 +54,9 @@ except TypeError:
     # Fallback si la versión instalada no soporta template_mode en init
     admin = Admin(app, name='Panel de Control Ticketia')
 
+from flask_admin.menu import MenuLink
+admin.add_link(MenuLink(name='🏠 Volver a Web', category='', url='/dashboard'))
+
 # Añadir Vistas (Tablas visuales)
 # 1. Gestión de Ayudas (Lo más importante para el Grant Hunter)
 admin.add_view(SecureModelView(Grant, db.session, name='💰 Subvenciones'))
@@ -72,6 +76,69 @@ with app.app_context():
     db.create_all()
 
 # --- RUTAS WEB (Frontend) ---
+
+@app.route('/generate_video_from_image', methods=['POST'])
+def generate_video_from_image():
+    if 'user_phone' not in session:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    
+    user_phone = session['user_phone']
+    profile = BusinessProfile.query.filter_by(user_phone=user_phone).first()
+
+    if 'image' not in request.files:
+        return jsonify({"success": False, "error": "No image provided"}), 400
+    
+    file = request.files['image']
+    if file.filename == '':
+        return jsonify({"success": False, "error": "Empty filename"}), 400
+        
+    try:
+        # 1. Guardar imagen temporalmente
+        from werkzeug.utils import secure_filename
+        filename = secure_filename(f"video_input_{int(datetime.now().timestamp())}_{file.filename}")
+        upload_dir = os.path.join(app.root_path, 'static', 'uploads', 'temp')
+        os.makedirs(upload_dir, exist_ok=True)
+        local_path = os.path.join(upload_dir, filename)
+        file.save(local_path)
+        
+        # 2. Llamar al Marketing Agent
+        from modules.proactive.marketing_agent import MarketingAgent
+        agent = MarketingAgent()
+        
+        # Generar video (Visual Intelligence + Runway)
+        video_url = agent.generate_marketing_content(
+            prompt_text="", # El prompt se genera de la imagen
+            content_type="video",
+            business_name=profile.business_name,
+            logo_path=local_path # Pasamos la ruta de la imagen
+        )
+        
+        if video_url:
+            # 3. Guardar en Base de Datos (GeneratedDocument)
+            # El agente ya guarda el MP4 en disk, necesitamos crear el registro DB
+            # generated_marketing_content devuelve URL pública. 
+            # Parseamos path relativo para la DB.
+            # URL ej: https://.../static/generated_docs/runway_123.mp4
+            
+            relative_path = "/static/generated_docs/" + os.path.basename(video_url)
+            
+            new_doc = GeneratedDocument(
+                user_phone=user_phone,
+                file_path=relative_path,
+                doc_type='video_prompt', # Usamos este tipo para que salga en la pestaña Video
+                client_name="Video Strategy AI",
+                created_at=datetime.utcnow()
+            )
+            db.session.add(new_doc)
+            db.session.commit()
+
+            return jsonify({"success": True, "message": "Video generando...", "url": video_url})
+        else:
+            return jsonify({"success": False, "error": "Falló la generación"}), 500
+
+    except Exception as e:
+        print(f"Error generating video: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/')
 def index():
@@ -341,23 +408,30 @@ def dashboard():
     # Formatear bonito (ej: 1.250,50)
     total_gastos_fmt = f"{total_gastos:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     
-    
-    # B. Tickets Pendientes (SQL Count directo)
+    # B. Tickets Pendientes
     tickets_pendientes = Ticket.query.filter_by(
         user_phone=user_phone, 
         status='pending'
     ).count()
 
-    # B2. Tickets Procesados (SQL Count directo)
+    # B2. Tickets Procesados
     tickets_procesados = Ticket.query.filter_by(
         user_phone=user_phone, 
         status='processed'
     ).count()
     
-    # C. Chats Atendidos (Placeholder por ahora, ya que no guardamos logs de chat persistentes en DB aún)
-    chats_atendidos = 0
+    # C. Chats Atendidos
+    chats_atendidos = ChatMessage.query.filter_by(
+        user_phone=user_phone, 
+        role='user'
+    ).count()
+
+    # D. Activity Logs (NUEVO)
+    recent_activity = ActivityLog.query.filter_by(user_phone=user_phone)\
+        .order_by(ActivityLog.timestamp.desc())\
+        .limit(10).all()
     
-    # Nombre del mes actual en español
+    # Nombre del mes
     meses_es = {
         1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 
         5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto", 
@@ -369,10 +443,7 @@ def dashboard():
         is_authenticated = True
         phone = user_phone
         business_name = profile.business_name if profile else "Mi Negocio"
-        # Pasamos el estado de suscripción real también si existe en User, pero aquí usamos profile
-        # Vamos a asumir 'active' o leer de User. Por simplicidad en MVP:
         subscription_status = 'active' 
-        # Bot Logic
         has_bot = profile.features.get('bot_enabled', False) if profile and profile.features else False
         is_configured = True if (profile and profile.system_prompt) else False
         bot_status = 'active' if (has_bot and is_configured) else 'inactive' 
@@ -385,7 +456,8 @@ def dashboard():
         tickets_pendientes=tickets_pendientes,
         tickets_procesados=tickets_procesados,
         chats_atendidos=chats_atendidos,
-        current_month_name=month_name
+        current_month_name=month_name,
+        logs=recent_activity
     )
 
 @app.route('/transactions')
@@ -399,6 +471,30 @@ def transactions():
     tickets = Ticket.query.filter_by(user_phone=user_phone).order_by(Ticket.date.desc()).all()
     
     return render_template('transactions.html', tickets=tickets)
+
+@app.route('/documents')
+def documents_page():
+    if 'user_phone' not in session:
+        return redirect(url_for('login'))
+        
+    user_phone = session['user_phone']
+    
+    # Obtener documentos
+    all_docs = GeneratedDocument.query.filter_by(user_phone=user_phone).order_by(GeneratedDocument.created_at.desc()).all()
+    
+    # Categorizar
+    docs_proposals = [d for d in all_docs if d.doc_type in ['proposal', 'invoice', 'report']]
+    docs_images = [d for d in all_docs if d.doc_type == 'image']
+    docs_presentations = [d for d in all_docs if d.doc_type == 'presentation']
+    docs_video_prompts = [d for d in all_docs if d.doc_type == 'video_prompt']
+    docs_other = [d for d in all_docs if d.doc_type not in ['proposal', 'invoice', 'report', 'image', 'presentation', 'video_prompt']]
+    
+    return render_template('documents.html', 
+                           proposals=docs_proposals, 
+                           images=docs_images, 
+                           presentations=docs_presentations,
+                           videos=docs_video_prompts,
+                           others=docs_other)
 
 @app.route('/wizard')
 def wizard():
@@ -770,9 +866,10 @@ def bot():
                     else:
                         resp.message("⛔ Tu plan actual no incluye gestión de tickets.")
                 else:
-                    # Texto normal (Chat con el Asistente - si quisierámos habilitarlo para el dueño)
-                    # Por ahora el dueño solo sube tickets, pero podríamos habilitar chat
-                    resp.message(f"Hola {user_profile.business_name}. Envíame una foto del ticket o 'presupuesto' para generar PDF. 📸")
+                    # Texto normal (Chat con el Asistente - HABILITADO PARA PRUEBAS)
+                    # Ahora el dueño puede chatear con su propio asistente
+                    agent_reply = run_agent(incoming_msg, sender, user_profile)
+                    resp.message(agent_reply)
             else:
                 # Usuario NO registrado
                 print("   -> Usuario NO reconocido.")
@@ -827,6 +924,67 @@ def demo_trigger(agent_name):
     except Exception as e:
         flash(f'Error: {e}', 'error')
     return redirect(url_for('demo_panel'))
+
+@app.route('/upload_web_ticket', methods=['POST'])
+def upload_web_ticket():
+    if 'user_phone' not in session: return jsonify({'error': 'No logueado'}), 401
+    
+    if 'ticket' not in request.files:
+        return jsonify({'error': 'No file'}), 400
+        
+    file = request.files['ticket']
+    if file.filename == '': return jsonify({'error': 'No selected file'}), 400
+
+    if file:
+        # 1. Guardar archivo
+        filename = f"web_ticket_{int(datetime.now().timestamp())}.jpg"
+        upload_folder = os.path.join(app.root_path, 'static', 'uploads')
+        os.makedirs(upload_folder, exist_ok=True)
+        filepath = os.path.join(upload_folder, filename)
+        file.save(filepath)
+        
+        # 2. Procesar
+        user_phone = session['user_phone']
+        result_text = process_ticket_image(filepath, user_phone)
+        
+        return jsonify({'success': True, 'message': result_text})
+
+@app.route('/upload_web_audio', methods=['POST'])
+def upload_web_audio():
+    if 'user_phone' not in session: return jsonify({'error': 'No logueado'}), 401
+    
+    if 'audio' not in request.files: return jsonify({'error': 'No audio'}), 400
+    
+    file = request.files['audio']
+    
+    # 1. Guardar WebM
+    filename = f"web_audio_{int(datetime.now().timestamp())}.webm"
+    upload_folder = os.path.join(app.root_path, 'static', 'uploads')
+    os.makedirs(upload_folder, exist_ok=True)
+    filepath = os.path.join(upload_folder, filename)
+    file.save(filepath)
+    
+    # 2. Transcribir (Whisper) Inline
+    from openai import OpenAI
+    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    
+    try:
+        with open(filepath, "rb") as audio_file:
+            transcript = client.audio.transcriptions.create(
+                model="whisper-1", 
+                file=audio_file
+            )
+        user_text = transcript.text
+        print(f"🗣️ Web Audio Transcrito: {user_text}")
+        
+        # 3. Pasar al Manager (Agentes)
+        user_profile = BusinessProfile.query.filter_by(user_phone=session['user_phone']).first()
+        bot_response = run_agent(user_text, session['user_phone'], user_profile)
+        
+        return jsonify({'success': True, 'response': bot_response})
+    except Exception as e:
+        print(f"Error web audio: {e}")
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001) # Puerto 5001 para no chocar con el otro bot

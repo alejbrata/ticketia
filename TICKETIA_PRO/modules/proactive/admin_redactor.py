@@ -236,7 +236,7 @@ class AdminAssistantAgent:
             pdf.cell(0, 5, f"Cliente: {data.get('client_name', 'Cliente Contado')}", ln=1)
             
             pdf.set_xy(110, pdf.get_y() + 2)
-            pdf.cell(0, 5, f"Fecha: {data.get('date', datetime.now().strftime('%d/%m/%Y'))}", ln=1)
+            pdf.cell(0, 5, f"Fecha: {data.get('date') or datetime.now().strftime('%d/%m/%Y')}", ln=1)
             pdf.cell(0, 5, f"Ref: B-{int(datetime.now().timestamp())}", ln=1)
             
             pdf.ln(20)
@@ -254,19 +254,32 @@ class AdminAssistantAgent:
             
             subtotal = 0.0
             
+            # Helper to sanitize text for FPDF (Latin-1)
+            def clean_text(text):
+                if not text: return ""
+                # Replace common symbols not in Latin-1
+                text = str(text).replace("€", "EUR").replace("–", "-").replace("—", "-")
+                # Encode to Latin-1, replacing errors with ?
+                try:
+                    return text.encode('latin-1', 'replace').decode('latin-1')
+                except:
+                    return str(text)
+
             for item in data.get('items', []):
                 desc = str(item.get('desc', 'Item'))
                 qty = float(item.get('qty', 1))
-                price = float(item.get('unit_price', 0))
+                # Support both keys: 'unit_price' (Vision) and 'price' (Tools Schema)
+                price = float(item.get('unit_price') or item.get('price') or 0)
+                
                 # Recalculate line total to ensure consistency
                 line_total = qty * price
                 subtotal += line_total
                 
                 # Line drawing
-                pdf.cell(100, 8, desc, "B")
+                pdf.cell(100, 8, clean_text(desc), "B")
                 pdf.cell(20, 8, f"{int(qty) if qty.is_integer() else qty}", "B", 0, 'C')
-                pdf.cell(30, 8, f"{price:,.2f} \u20ac", "B", 0, 'R')
-                pdf.cell(30, 8, f"{line_total:,.2f} \u20ac", "B", 1, 'R')
+                pdf.cell(30, 8, f"{price:,.2f} EUR", "B", 0, 'R')
+                pdf.cell(30, 8, f"{line_total:,.2f} EUR", "B", 1, 'R')
                 
             pdf.ln(5)
             
@@ -279,17 +292,17 @@ class AdminAssistantAgent:
             pdf.set_x(110)
             pdf.set_font("Arial", '', 10)
             pdf.cell(50, 6, "Subtotal (Base Imponible):", 0, 0, 'R')
-            pdf.cell(30, 6, f"{subtotal:,.2f} \u20ac", 0, 1, 'R')
+            pdf.cell(30, 6, f"{subtotal:,.2f} EUR", 0, 1, 'R')
             
             pdf.set_x(110)
             pdf.cell(50, 6, f"IVA ({int(vat_rate*100)}%):", 0, 0, 'R')
-            pdf.cell(30, 6, f"{vat_amount:,.2f} \u20ac", 0, 1, 'R')
+            pdf.cell(30, 6, f"{vat_amount:,.2f} EUR", 0, 1, 'R')
             
             pdf.set_x(110)
             pdf.set_font("Arial", 'B', 12)
             pdf.set_fill_color(230, 255, 230) # Light Green
             pdf.cell(50, 10, "TOTAL A PAGAR:", 0, 0, 'R', 1)
-            pdf.cell(30, 10, f"{total_final:,.2f} \u20ac", 0, 1, 'R', 1)
+            pdf.cell(30, 10, f"{total_final:,.2f} EUR", 0, 1, 'R', 1)
             
             # --- Footer ---
             pdf.ln(15)
