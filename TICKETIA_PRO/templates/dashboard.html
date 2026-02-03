@@ -84,81 +84,173 @@
                 <span class="font-bold text-slate-800">-{{ ticket.total }}€</span>
             </div>
             {% else %}
-            <div
-                class="text-center py-8 text-slate-400 text-sm bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                No hay tickets recientes
+            <div class="bg-white rounded-3xl p-8 text-center border-2 border-dashed border-slate-200">
+                <div
+                    class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-3xl mx-auto mb-4 grayscale opacity-50">
+                    🧾
+                </div>
+                <p class="text-slate-400 font-medium mb-1">No hay tickets recientes</p>
+                <p class="text-xs text-slate-300">Usa el botón "Escanear" para subir el primero</p>
             </div>
             {% endfor %}
         </div>
     </div>
 
+    <!-- Pull to Refresh Container -->
+    <div id="pull-refresh-indicator"
+        class="fixed top-16 left-0 w-full flex justify-center pointer-events-none transition-transform duration-300 -translate-y-full z-40">
+        <div class="bg-white rounded-full p-2 shadow-lg border border-slate-100">
+            <svg class="w-6 h-6 text-indigo-600 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                </path>
+            </svg>
+        </div>
+    </div>
+
     <!-- Activity Log (New) -->
     <div class="mt-8 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-        <h3 class="text-xl font-bold text-slate-800 mb-4">🤖 Actividad de los Agentes (Tiempo Real)</h3>
+        <h3 class="text-xl font-bold text-slate-800 mb-4">🤖 Actividad Reciente</h3>
 
         {% if logs %}
-        <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse">
-                <thead>
-                    <tr class="text-slate-400 text-sm border-b border-slate-100">
-                        <th class="py-3 font-medium">Hora</th>
-                        <th class="py-3 font-medium">Agente</th>
-                        <th class="py-3 font-medium">Acción Realizada</th>
-                    </tr>
-                </thead>
-                <tbody class="text-slate-600">
-                    {% for log in logs %}
-                    <tr class="border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
-                        <td class="py-3 text-sm font-mono text-slate-400">
-                            {{ log.timestamp.strftime('%H:%M') }}
-                        </td>
-                        <td class="py-3">
-                            <span class="px-2 py-1 rounded-md text-xs font-bold 
-                                {% if 'Coach' in log.agent_name %} bg-indigo-100 text-indigo-700
-                                {% elif 'Marketing' in log.agent_name %} bg-pink-100 text-pink-700
-                                {% elif 'Hunter' in log.agent_name %} bg-emerald-100 text-emerald-700
-                                {% else %} bg-slate-100 text-slate-700 {% endif %}">
-                                {{ log.agent_name }}
+        <div class="space-y-6">
+            {% set grouped_logs = {} %}
+            {% for log in logs %}
+            {% set date_key = log.timestamp.strftime('%Y-%m-%d') %}
+            {% if date_key not in grouped_logs %}
+            {% set _ = grouped_logs.update({date_key: []}) %}
+            {% endif %}
+            {% set _ = grouped_logs[date_key].append(log) %}
+            {% endfor %}
+
+            {% for date, items in grouped_logs.items() %}
+            <div>
+                <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+                    {% if date == now_str %} HOY
+                    {% elif date == yesterday_str %} AYER
+                    {% else %} {{ date }} {% endif %}
+                </h4>
+                <div class="space-y-3">
+                    {% for item in items %}
+                    <div class="flex items-start gap-3">
+                        <div class="mt-0.5">
+                            <span class="w-2 h-2 rounded-full block 
+                                {% if 'Coach' in item.agent_name %} bg-indigo-500
+                                {% elif 'Marketing' in item.agent_name %} bg-pink-500
+                                {% elif 'Hunter' in item.agent_name %} bg-emerald-500
+                                {% else %} bg-slate-300 {% endif %}">
                             </span>
-                        </td>
-                        <td class="py-3 text-sm">{{ log.action }}</td>
-                    </tr>
+                        </div>
+                        <div class="flex-1">
+                            <p class="text-sm text-slate-700 leading-snug">{{ item.action }}</p>
+                            <div class="flex items-center gap-2 mt-1">
+                                <span class="text-[10px] font-bold text-slate-400">{{ item.timestamp.strftime('%H:%M')
+                                    }}</span>
+                                <span
+                                    class="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200">
+                                    {{ item.agent_name }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
                     {% endfor %}
-                </tbody>
-            </table>
+                </div>
+            </div>
+            {% endfor %}
         </div>
         {% else %}
-        <p class="text-slate-400 text-sm italic">No hay actividad reciente. Despierta a los agentes en el Panel Demo.
-        </p>
+        <div class="text-center py-6 text-slate-400 text-sm italic">
+            No hay actividad reciente.
+        </div>
         {% endif %}
     </div>
 
+    <script>
+        // --- PULL TO REFRESH LOGIC ---
+        let startY = 0;
+        let currentY = 0;
+        let isDragging = false;
+        const threshold = 150;
+        const mainContent = document.querySelector('main');
+        const indicator = document.getElementById('pull-refresh-indicator');
+
+        mainContent.addEventListener('touchstart', (e) => {
+            if (mainContent.scrollTop === 0) {
+                startY = e.touches[0].clientY;
+                isDragging = true;
+            }
+        }, { passive: true });
+
+        mainContent.addEventListener('touchmove', (e) => {
+            if (!isDragging) return;
+            currentY = e.touches[0].clientY;
+            const diff = currentY - startY;
+
+            if (diff > 0 && mainContent.scrollTop === 0) {
+                // Visualize pull
+                if (diff < threshold) {
+                    indicator.style.transform = `translateY(${diff - 50}px)`; // -50 to start hidden
+                }
+            } else {
+                isDragging = false;
+            }
+        }, { passive: true });
+
+        mainContent.addEventListener('touchend', () => {
+            if (!isDragging) return;
+            const diff = currentY - startY;
+
+            if (diff > threshold && mainContent.scrollTop === 0) {
+                // Trigger Refresh
+                indicator.style.transform = 'translateY(20px)';
+                if (navigator.vibrate) navigator.vibrate(20);
+                setTimeout(() => location.reload(), 500);
+            } else {
+                // Reset
+                indicator.style.transform = 'translateY(-100%)';
+            }
+            isDragging = false;
+        });
+    </script>
+
 </div>
 
-<div class="fixed bottom-6 left-0 right-0 px-4 flex justify-center gap-4 z-50">
+<!-- Floating Action Buttons (Sticky Bottom) -->
+<!-- Lifted to bottom-24 to clear Mobile Nav (approx 80px) and Safe Area -->
+<div
+    class="fixed bottom-24 left-0 w-full px-6 flex justify-between items-end z-40 pointer-events-none md:bottom-12 md:px-12">
 
-    <!-- Ticket Upload Form (Hidden Inputs) -->
-    <form id="ticketForm" enctype="multipart/form-data">
-        <!-- Input for Camera (Direct Access) -->
-        <input type="file" id="cameraInput" name="ticket" accept="image/*" capture="environment" class="hidden"
-            onchange="uploadTicket(this)">
-        <!-- Input for Gallery (File Picker) -->
-        <input type="file" id="galleryInput" name="ticket" accept="image/*" class="hidden"
-            onchange="uploadTicket(this)">
-    </form>
+    <!-- Scan Ticket Button (Left) -->
+    <div class="pointer-events-auto flex flex-col gap-2">
+        <button type="button" onclick="openSourceModal()"
+            class="flex items-center gap-2 bg-indigo-600 text-white px-5 py-4 rounded-full shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-transform hover:scale-105 active:scale-95 animate-bounce-in">
+            <span class="text-2xl">📸</span>
+            <span class="font-bold text-sm hidden sm:inline">Escanear</span>
+        </button>
+    </div>
 
-    <!-- Floating Action Button (Main) -->
-    <button type="button" onclick="openSourceModal()"
-        class="bg-indigo-600 hover:bg-indigo-700 text-white p-4 rounded-full shadow-lg transition-transform transform active:scale-95 flex items-center gap-2">
-        📸 <span class="hidden md:inline">Escanear Ticket</span>
-    </button>
-
-    <button id="recordBtn" type="button" onmousedown="startRecording()" onmouseup="stopRecording()"
-        ontouchstart="startRecording()" ontouchend="stopRecording()"
-        class="bg-rose-500 hover:bg-rose-600 text-white p-4 rounded-full shadow-lg transition-transform transform active:scale-95 flex items-center gap-2 select-none">
-        🎙️ <span class="hidden md:inline">Mantener para hablar</span>
-    </button>
+    <!-- Voice Button (Right side, adjusted to not overlap chat) -->
+    <div class="pointer-events-auto mr-14 md:mr-24 flex flex-col gap-2">
+        <button id="recordBtn" type="button" onmousedown="startRecording()" onmouseup="stopRecording()"
+            ontouchstart="startRecording()" ontouchend="stopRecording()"
+            class="flex items-center gap-2 bg-rose-500 text-white px-5 py-4 rounded-full shadow-xl shadow-rose-200 hover:bg-rose-600 transition-transform hover:scale-105 active:scale-95 animate-bounce-in relative overflow-hidden group select-none">
+            <div class="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform">
+            </div>
+            <span class="text-2xl">🎙️</span>
+            <span class="font-bold text-sm hidden sm:inline">Hablar</span>
+        </button>
+    </div>
 </div>
+
+<!-- Ticket Upload Form (Hidden Inputs) -->
+<form id="ticketForm" enctype="multipart/form-data" class="hidden">
+    <!-- Input for Camera (Direct Access) -->
+    <input type="file" id="cameraInput" name="ticket" accept="image/*" capture="environment"
+        onchange="uploadTicket(this)">
+    <!-- Input for Gallery (File Picker) -->
+    <input type="file" id="galleryInput" name="ticket" accept="image/*" onchange="uploadTicket(this)">
+</form>
 
 <!-- Source Selection Modal -->
 <div id="sourceModal"

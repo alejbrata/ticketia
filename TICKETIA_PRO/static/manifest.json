@@ -1,6 +1,6 @@
 {
-    "name": "Ticketia",
-    "short_name": "Ticketia",
+    "name": "Zeptai - Gestión IA",
+    "short_name": "Zeptai",
     "start_url": "/dashboard",
     "display": "standalone",
     "background_color": "#ffffff",
@@ -8,13 +8,7 @@
     "orientation": "portrait",
     "icons": [
         {
-            "src": "https://cdn-icons-png.flaticon.com/512/2504/2504957.png",
-            "sizes": "192x192",
-            "type": "image/png",
-            "purpose": "any maskable"
-        },
-        {
-            "src": "https://cdn-icons-png.flaticon.com/512/2504/2504957.png",
+            "src": "/static/logo_zeptai.png",
             "sizes": "512x512",
             "type": "image/png",
             "purpose": "any maskable"

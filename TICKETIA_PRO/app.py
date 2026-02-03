@@ -448,16 +448,24 @@ def dashboard():
         is_configured = True if (profile and profile.system_prompt) else False
         bot_status = 'active' if (has_bot and is_configured) else 'inactive' 
     
+    # --- Date Helpers for UI ---
+    from datetime import timedelta
+    yesterday = now - timedelta(days=1)
+    now_str = now.strftime('%Y-%m-%d')
+    yesterday_str = yesterday.strftime('%Y-%m-%d')
+
     return render_template(
         'dashboard.html', 
         current_user=UserContext(), 
         tickets=tickets,
         total_gastos=total_gastos_fmt,
         tickets_pendientes=tickets_pendientes,
-        tickets_procesados=tickets_procesados,
+        tickets_procesados=tickets_procesados, # Fix syntax error from previous view? No, comma is fine
         chats_atendidos=chats_atendidos,
         current_month_name=month_name,
-        logs=recent_activity
+        logs=recent_activity,
+        now_str=now_str,
+        yesterday_str=yesterday_str
     )
 
 @app.route('/transactions')
@@ -513,6 +521,13 @@ def documents_page():
     tree_presentations = group_by_date(docs_presentations)
     tree_videos = group_by_date(docs_video_prompts)
     
+    # --- Mobile UX helpers ---
+    from datetime import timedelta
+    now = datetime.now()
+    yesterday = now - timedelta(days=1)
+    now_str = now.strftime('%Y-%m-%d')
+    yesterday_str = yesterday.strftime('%Y-%m-%d')
+    
     return render_template('documents.html', 
                            tree_proposals=tree_proposals, 
                            tree_images=tree_images, 
@@ -522,7 +537,9 @@ def documents_page():
                            count_proposals=len(docs_proposals),
                            count_images=len(docs_images),
                            count_presentations=len(docs_presentations),
-                           count_videos=len(docs_video_prompts))
+                           count_videos=len(docs_video_prompts),
+                           now_str=now_str,
+                           yesterday_str=yesterday_str)
 
 @app.route('/delete_document/<int:doc_id>', methods=['POST'])
 def delete_document(doc_id):
