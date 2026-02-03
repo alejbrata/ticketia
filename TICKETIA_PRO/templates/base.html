@@ -248,6 +248,27 @@
         }
     </script>
     {% endif %}
+    <!-- PWA Install Banner (Hidden by default) -->
+    <div id="installBanner"
+        class="fixed bottom-0 left-0 w-full bg-indigo-900 text-white p-4 shadow-2xl z-[70] hidden safe-area-bottom animate-slide-up">
+        <div class="flex items-center justify-between max-w-lg mx-auto">
+            <div class="flex items-center gap-3">
+                <img src="{{ url_for('static', filename='logo_zeptai.png') }}"
+                    class="w-10 h-10 rounded-lg bg-white p-0.5">
+                <div>
+                    <h3 class="font-bold text-sm">Instalar Zeptai</h3>
+                    <p class="text-xs text-indigo-200">Acceso rápido y pantalla completa.</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <button onclick="dismissInstall()"
+                    class="text-indigo-300 hover:text-white px-2 py-1 text-sm font-medium">Ahora no</button>
+                <button onclick="triggerInstall()"
+                    class="bg-indigo-500 hover:bg-indigo-400 text-white px-3 py-1.5 rounded-lg text-sm font-bold shadow-lg transition-transform active:scale-95">Instalar</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
@@ -269,6 +290,62 @@
                     navigator.vibrate(10); // Light tap
                 }
             }
+        });
+
+        // --- PWA INSTALLATION LOGIC ---
+        let deferredPrompt;
+        const installBanner = document.getElementById('installBanner');
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            // Prevent the mini-infobar from appearing on mobile
+            e.preventDefault();
+            // Stash the event so it can be triggered later.
+            deferredPrompt = e;
+            // Update UI notify the user they can install the PWA
+            checkInstallBanner();
+        });
+
+        function checkInstallBanner() {
+            const dismissed = localStorage.getItem('installDismissed');
+            // Show only if not dismissed and prompt event is captured, AND not in standalone mode
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+
+            if (!dismissed && deferredPrompt && !isStandalone) {
+                installBanner.classList.remove('hidden');
+            }
+        }
+
+        function dismissInstall() {
+            installBanner.classList.add('hidden');
+            // Hide for 7 days
+            const expiry = new Date().getTime() + (7 * 24 * 60 * 60 * 1000);
+            localStorage.setItem('installDismissed', expiry);
+        }
+
+        // Check expiry on load
+        window.addEventListener('load', () => {
+            const dismissed = localStorage.getItem('installDismissed');
+            if (dismissed && new Date().getTime() > parseInt(dismissed)) {
+                localStorage.removeItem('installDismissed');
+            }
+        });
+
+        async function triggerInstall() {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                if (outcome === 'accepted') {
+                    console.log('User accepted the install prompt');
+                }
+                deferredPrompt = null;
+                installBanner.classList.add('hidden');
+            }
+        }
+
+        window.addEventListener('appinstalled', () => {
+            installBanner.classList.add('hidden');
+            deferredPrompt = null;
+            console.log('PWA was installed');
         });
     </script>
 </body>
