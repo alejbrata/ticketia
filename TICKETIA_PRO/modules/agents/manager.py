@@ -143,6 +143,24 @@ def run_agent(user_message, phone_number, business_profile, media_url=None, mail
                             "extra_info": sk
                         })
                         if pdf_path:
+                            # --- FIX PERSISTENCIA DB (IMAGEN) ---
+                            try:
+                                from core.db_models import GeneratedDocument, db
+                                print(f"💾 Guardando Presupuesto desde Imagen en DB...")
+                                new_doc = GeneratedDocument(
+                                    user_phone=phone_number,
+                                    file_path=pdf_path,
+                                    doc_type='proposal',
+                                    client_name="Presupuesto (Imagen)", 
+                                    created_at=datetime.utcnow()
+                                )
+                                db.session.add(new_doc)
+                                db.session.commit()
+                                print(f"✅ Guardado ID: {new_doc.id}")
+                            except Exception as e:
+                                db.session.rollback()
+                                print(f"❌ Error guardando doc imagen: {e}")
+
                             tool_output = f"✅ Documento generado de la última imagen: {request.host_url.rstrip('/')}{pdf_path}"
                             ActivityLog.log(phone_number, "Admin Redactor", "Generado presupuesto desde Imagen")
                         else:
@@ -180,25 +198,34 @@ def run_agent(user_message, phone_number, business_profile, media_url=None, mail
                     })
                     
                     if pdf_path:
-                        # Save to DB
+                        # --- FIX PERSISTENCIA DB ---
                         try:
+                            # Importamos aquí para asegurar el contexto
                             from core.db_models import GeneratedDocument, db
+                            
+                            print(f"💾 Intentando guardar Doc en DB para: {phone_number}")
                             
                             new_doc = GeneratedDocument(
                                 user_phone=phone_number,
                                 file_path=pdf_path,
                                 doc_type='proposal',
-                                client_name=function_args.get("client_name")
+                                client_name=function_args.get("client_name") or "Cliente General",
+                                created_at=datetime.utcnow()
                             )
                             db.session.add(new_doc)
                             db.session.commit()
+                            
+                            print(f"✅ ¡Guardado Exitoso! ID: {new_doc.id}")
+                            tool_output = "Se ha generado el documento correctamente. Puedes verlo en la sección Documentos."
+                            
                         except Exception as e:
-                            print(f"Error saving GeneratedDocument: {e}")
-
-                        tool_output = "Se ha generado el documento solicitado."
+                            db.session.rollback()
+                            print(f"❌ Error CRÍTICO guardando en DB: {e}")
+                            tool_output = "El PDF se generó físicamente, pero hubo un error guardándolo en tu historial."
+                        
                         ActivityLog.log(phone_number, "Admin Redactor", f"Generado presupuesto: {function_args.get('client_name')}")
                     else:
-                        tool_output = "❌ Hubo un error generando el PDF."
+                        tool_output = "❌ Hubo un error generando el PDF físico."
 
                 elif function_name == "generate_marketing_material":
                     prompt_text = function_args.get("prompt")

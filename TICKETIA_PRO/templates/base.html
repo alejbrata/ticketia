@@ -297,6 +297,7 @@
         const installBanner = document.getElementById('installBanner');
 
         window.addEventListener('beforeinstallprompt', (e) => {
+            // console.log('✅ Evento beforeinstallprompt capturado!');
             // Prevent the mini-infobar from appearing on mobile
             e.preventDefault();
             // Stash the event so it can be triggered later.
@@ -310,8 +311,13 @@
             // Show only if not dismissed and prompt event is captured, AND not in standalone mode
             const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
 
+            // console.log('🔍 Checking Banner:', { dismissed, hasPrompt: !!deferredPrompt, isStandalone });
+
             if (!dismissed && deferredPrompt && !isStandalone) {
+                // console.log('🚀 Showing Install Banner');
                 installBanner.classList.remove('hidden');
+            } else {
+                // console.log('🚫 Banner blocked by conditions.');
             }
         }
 
@@ -324,8 +330,12 @@
 
         // Check expiry on load
         window.addEventListener('load', () => {
+            // Debug: Force check (event might have fired before load)
+            if (deferredPrompt) checkInstallBanner();
+
             const dismissed = localStorage.getItem('installDismissed');
             if (dismissed && new Date().getTime() > parseInt(dismissed)) {
+                // console.log('⏰ Dismiss expired, resetting.');
                 localStorage.removeItem('installDismissed');
             }
         });
