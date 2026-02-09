@@ -19,3 +19,13 @@ pip-delete-this-directory.txt
 # IDE
 .vscode/
 .idea/
+
+# Secrets & Config
+client_secrets.json
+ticketia-bot-*.json
+token.json
+
+# Database
+instance/
+*.db
+*.sqlite3

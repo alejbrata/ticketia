@@ -13,6 +13,11 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='logo_zeptai.png') }}">
 
+    <!-- Preconnect for Performance -->
+    <link rel="preconnect" href="https://cdn.tailwindcss.com">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -67,12 +72,12 @@
 
     <!-- Main Content -->
     <main class="flex-grow flex flex-col relative overflow-y-auto mb-20 md:mb-0">
-        <!-- Flash Messages -->
+        <!-- Flash Messages (Server Side) -->
         {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
-        <div class="px-6 py-4 absolute top-0 w-full z-40 pointer-events-none">
+        <div class="px-6 py-4 absolute top-0 w-full z-40 pointer-events-none space-y-2">
             {% for category, message in messages %}
-            <div class="p-4 rounded-xl shadow-lg mb-2 text-sm font-bold animate-fade-in-up mx-auto max-w-sm pointer-events-auto
+            <div class="p-4 rounded-xl shadow-lg text-sm font-bold animate-fade-in-up mx-auto max-w-sm pointer-events-auto transition-opacity duration-500
                             {% if category == 'error' %} bg-red-500 text-white
                             {% elif category == 'success' %} bg-green-500 text-white
                             {% else %} bg-blue-500 text-white {% endif %}">
@@ -83,8 +88,38 @@
         {% endif %}
         {% endwith %}
 
+        <!-- Toast Messages (Client Side) -->
+        <div id="toast-container" class="px-6 py-4 absolute top-0 w-full z-50 pointer-events-none flex flex-col items-center gap-2"></div>
+
         {% block content %}{% endblock %}
     </main>
+
+    <script>
+        // Global Toast System
+        window.showToast = function(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            // Tailwind Colors
+            const bgClass = type === 'error' ? 'bg-red-500' : 
+                          type === 'success' ? 'bg-green-500' : 'bg-blue-600';
+            
+            toast.className = `p-4 rounded-xl shadow-lg text-white text-sm font-bold animate-bounce-in max-w-sm w-full pointer-events-auto transition-all duration-300 transform translate-y-0 opacity-100 flex items-center gap-3 ${bgClass}`;
+            
+            // Icon based on type
+            const icon = type === 'error' ? '⚠️' : type === 'success' ? '✅' : 'ℹ️';
+            
+            toast.innerHTML = `<span>${icon}</span><span class="flex-1">${message}</span>`;
+            
+            container.appendChild(toast);
+            
+            // Auto-remove after 3s
+            setTimeout(() => {
+                toast.classList.add('opacity-0', '-translate-y-4');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        };
+    </script>
 
     <!-- Bottom Nav (Mobile Only) -->
     {% if session.get('user_phone') %}
