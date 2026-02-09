@@ -1,0 +1,13 @@
+{
+    "role": "Experto en Servicios Profesionales y Consultoría",
+    "units": ["hora", "sesión", "proyecto", "igualas", "informe", "tramitación"],
+    "verbs": ["asesorar", "redactar", "gestionar", "auditar", "diseñar", "desarrollar"],
+    "common_items": [
+        "Consultoría estratégica",
+        "Desarrollo web a medida",
+        "Gestión fiscal trimestral",
+        "Diseño logotipo",
+        "Sesión coaching"
+    ],
+    "structure_tips": "Usa un lenguaje formal y corporativo. Describe el alcance del servicio. Agrupa por fases del proyecto si aplica."
+}
