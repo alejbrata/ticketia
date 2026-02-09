@@ -85,8 +85,8 @@ class AdminAssistantAgent:
         """
         print(f"📄 AdminRedactor: Procesando imagen... {image_url[:20]}...")
         
-        # 1. Vision API: Extraer datos
-        extracted_data = self._analyze_image_with_vision(image_url)
+        # 1. Vision API: Extraer datos (Pasamos contexto sectorial)
+        extracted_data = self._analyze_image_with_vision(image_url, extra_context=user_context)
         if not extracted_data:
             return None
             
@@ -102,25 +102,37 @@ class AdminAssistantAgent:
         print(f"📄 AdminRedactor: Generando PDF desde datos texto...")
         return self._generate_professional_pdf(data, user_context)
 
-    def _analyze_image_with_vision(self, image_url):
+    def _analyze_image_with_vision(self, image_url, extra_context={}):
         """
-        Analiza una imagen (URL pública o Path Local) usando GPT-4o Vision.
+        Analiza una imagen usando GPT-4o Vision + Contexto Sectorial Dinámico.
         """
-        image_content = []
+        # 1. Cargar "Cerebro Sectorial"
+        sector = str(extra_context.get('sector', 'General')).lower()
+        knowledge_file = "services.json" # Default
         
-        # A) Es una URL pública (ej: Twilio Media)
+        if any(x in sector for x in ['reform', 'construc', 'obra', 'albañil']):
+            knowledge_file = "construction.json"
+        elif any(x in sector for x in ['tienda', 'venta', 'retail', 'frut', 'aliment']):
+            knowledge_file = "retail.json"
+            
+        try:
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            k_path = os.path.join(base_dir, "modules", "knowledge", knowledge_file)
+            with open(k_path, 'r', encoding='utf-8') as f:
+                sector_knowledge = f.read() # Read as string
+        except Exception as e:
+            print(f"⚠️ Warning: No knowledge file for {sector} ({e})")
+            sector_knowledge = "Actúa como experto general."
+
+        # 2. Preparar Imagen
+        image_content = []
         if image_url.startswith(('http://', 'https://')):
             image_content = [{"type": "image_url", "image_url": {"url": image_url}}]
-        
-        # B) Es una ruta local (ej: /static/uploads/...)
         else:
-            # Construir ruta absoluta del sistema
-            # Asumimos que image_url viene como '/static/...'
+            # Local logic...
             base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            # Eliminar slash inicial si existe para usar os.path.join correctamente
             rel_path = image_url.lstrip('/') 
             local_path = os.path.join(base_dir, rel_path)
-            
             try:
                 with open(local_path, "rb") as image_file:
                     base64_image = base64.b64encode(image_file.read()).decode('utf-8')
@@ -129,34 +141,36 @@ class AdminAssistantAgent:
                         "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
                     }]
             except FileNotFoundError:
-                print(f"❌ Error: No encuentro el archivo local: {local_path}")
                 return None
 
-        prompt = """
-        ACT AS: Expert Accountant / Data Extractor.
-        INPUT: Handwritten note, budget draft, or text description of a service proposal.
-        OBJECTIVE: Extract structured data for a professional quote/invoice.
+        # 3. Prompt Dinámico (RAG Ligero)
+        prompt = f"""
+        ACTUAR COMO: Experto administrativo en el sector: {sector}.
+        CONOCIMIENTO ESPECÍFICO DEL SECTOR:
+        {sector_knowledge}
         
-        CRITICAL EXTRACTION RULES:
-        1. "masiva" or "+iva" means "Plus VAT" (Tax Excluded from the number).
-        2. "iva incluido" means Tax Included.
-        3. "X masiva" -> Unit Price = X.
-        4. If a line has NO price but the total exists, estimate unit price.
+        TAREA: Extraer datos de este documento (borrador, nota o foto) para crear un presupuesto formal.
+        
+        REGLAS DE EXTRACCIÓN CRÍTICAS:
+        1. Identifica items y cantidades usando el vocabulario del sector (ej: m2, kg, horas).
+        2. Si no hay precio unitario pero sí total, calcúlalo.
+        3. "masiva" o "+iva" = Precio base (impuestos excluidos).
+        4. "iva incluido" = Desglosar hacia atrás.
         
         OUTPUT JSON:
-        {
-            "client_name": "Name inferred or 'Estimado Cliente'",
+        {{
+            "client_name": "Nombre inferido o 'Cliente Contado'",
             "date": "dd/mm/yyyy",
             "items": [
-                {
-                    "desc": "Description",
+                {{
+                    "desc": "Descripción técnica detallada",
                     "qty": 1,
-                    "unit_price": 100.00, # BASE PRICE excluding Tax
-                    "total_line": 100.00 # qty * unit_price
-                }
+                    "unit_price": 100.00,
+                    "total_line": 100.00
+                }}
             ],
-            "notes": "Any payment terms or specific notes"
-        }
+            "notes": "Notas sobre pago o plazos"
+        }}
         """
 
         try:
@@ -171,8 +185,7 @@ class AdminAssistantAgent:
                 response_format={"type": "json_object"},
                 max_tokens=1000
             )
-            data = json.loads(response.choices[0].message.content)
-            return data
+            return json.loads(response.choices[0].message.content)
         except Exception as e:
             print(f"❌ Error Vision: {e}")
             return None
