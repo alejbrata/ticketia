@@ -3,87 +3,141 @@ import json
 import random
 from twilio.rest import Client
 from openai import OpenAI
-from core.db_models import db, BusinessProfile, SynergyMatch
+from core.db_models import db, BusinessProfile, SynergyMatch, Ticket, ActivityLog
+from modules.services.notification import NotificationService
 
 class SynergyAgent:
     def __init__(self):
         self.openai = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-        self.twilio = Client(os.environ.get("TWILIO_ACCOUNT_SID"), os.environ.get("TWILIO_AUTH_TOKEN"))
-        self.whatsapp_from = "whatsapp:+14155238886"
 
     def run_daily_networking(self, user):
         """
-        Busca UN candidato compatible para 'user' y se lo sugiere.
+        Busca aliados estratégicos basándose en perfil y COMPORTAMIENTO DE COMPRA (Tickets).
         """
         print(f"🤝 Networker: Buscando aliados para {user.business_name}...")
         
-        # 1. Obtener candidatos (excluyendo al propio usuario)
+        # 1. Enriquecer Perfil con Historial de Compras (Mining)
+        user_spending_profile = self._get_spending_profile(user)
+        
+        # 2. Obtener candidatos (excluyendo al propio usuario)
         candidates = BusinessProfile.query.filter(BusinessProfile.id != user.id).all()
+        # Priorizar candidatos con sectores complementarios (simple heuristic first)
         random.shuffle(candidates)
         
-        for candidate in candidates[:3]: # Analizar max 3 por ejecución
+        match_found = False
+        
+        for candidate in candidates[:5]: # Analizar max 5 por ejecución
             
-            # Chequear si ya se han presentado (en cualquier dirección)
+            # Evitar repetidos
             existing = SynergyMatch.query.filter(
                 ((SynergyMatch.user_a_phone == user.user_phone) & (SynergyMatch.user_b_phone == candidate.user_phone)) |
                 ((SynergyMatch.user_a_phone == candidate.user_phone) & (SynergyMatch.user_b_phone == user.user_phone))
             ).first()
             
-            if existing:
-                continue 
+            if existing: continue 
                 
-            # 2. Análisis de Sinergia con GPT-4o
-            synergy = self._analyze_synergy(user, candidate)
+            # 3. Análisis de Sinergia Profundo con GPT-4o
+            synergy = self._analyze_synergy_deep(user, user_spending_profile, candidate)
             
-            if synergy and synergy.get('score', 0) >= 75:
-                # 3. ¡Es un Match! Guardar y Notificar
+            if synergy and synergy.get('score', 0) >= 80: # Subimos el listón a 80
+                # 4. ¡Es un Match! Guardar y Notificar
                 self._save_match(user, candidate, synergy)
-                self._notify_user(user, candidate, synergy['reason'])
-                return # Solo 1 sugerencia por día
+                self._notify_intro(user, candidate, synergy['reason'])
+                match_found = True
+                break # Solo 1 sugerencia por día para no saturar
 
-    def _analyze_synergy(self, user_a, user_b):
-        info_a = f"{user_a.business_name} ({user_a.static_knowledge.get('sector', 'Varios')}). Servicios: {user_a.static_knowledge.get('services', '')}"
-        info_b = f"{user_b.business_name} ({user_b.static_knowledge.get('sector', 'Varios')}). Servicios: {user_b.static_knowledge.get('services', '')}"
+        if not match_found:
+            print(f"🤷‍♂️ Networker: No encontré matches hoy para {user.business_name}")
+
+    def _get_spending_profile(self, user):
+        """
+        Analiza los últimos 10 tickets para entender en qué gasta la empresa.
+        """
+        tickets = Ticket.query.filter_by(user_phone=user.user_phone).order_by(Ticket.date.desc()).limit(10).all()
+        if not tickets: return "Sin historial de compras reciente."
+        
+        concepts = [t.concept or "Gasto vario" for t in tickets]
+        providers = [t.provider or "Desconocido" for t in tickets]
+        
+        summary = f"Últimos gastos en: {', '.join(concepts[:5])}. Proveedores frecuentes: {', '.join(providers[:3])}."
+        return summary
+
+    def _analyze_synergy_deep(self, user_a, spending_a, user_b):
+        """
+        Analiza sinergia usando perfil declarado + perfil de gasto.
+        """
+        info_a = f"Empresa A: {user_a.business_name} ({user_a.static_knowledge.get('sector', 'Varios')}).\nPerfil de Gasto A: {spending_a}"
+        info_b = f"Empresa B: {user_b.business_name} ({user_b.static_knowledge.get('sector', 'Varios')}).\nServicios B: {user_b.static_knowledge.get('services', 'General')}"
         
         prompt = f"""
-        Analiza si estas dos empresas tienen sinergia comercial B2B.
-        A: {info_a}
-        B: {info_b}
-        Devuelve JSON: {{ "score": (0-100), "reason": "Motivo corto" }}
+        Actúa como consultor de negocios B2B experto.
+        Analiza si hay una oportunidad de negocio CLARA entre A y B.
+        
+        {info_a}
+        
+        {info_b}
+        
+        Busca:
+        1. Relación Cliente-Proveedor (A gasta en lo que B vende).
+        2. Alianza Estratégica (Ej: Gimnasio + Tienda Suplementos).
+        
+        Devuelve JSON: {{ "score": (0-100), "reason": "Frase corta y persuasiva para A explicando por qué conectar con B." }}
         """
         try:
             resp = self.openai.chat.completions.create(
                 model="gpt-4o",
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"},
-                max_tokens=150
+                max_tokens=150,
+                temperature=0.3
             )
             return json.loads(resp.choices[0].message.content)
         except Exception as e:
             print(f"❌ Error IA Synergy: {e}")
             return None
 
-    def _save_match(self, user, candidate, synergy):
+    def _save_match(self, user_a, user_b, synergy):
         match = SynergyMatch(
-            user_a_phone=user.user_phone,
-            user_b_phone=candidate.user_phone,
+            user_a_phone=user_a.user_phone,
+            user_b_phone=user_b.user_phone,
             score=synergy['score'],
-            reason=synergy['reason']
+            reason=synergy['reason'],
+            status='pending' # Nuevo estado
         )
         db.session.add(match)
         db.session.commit()
+        ActivityLog.log(user_a.user_phone, "Networker Agent", f"Match sugerido: {user_b.business_name}")
 
-    def _notify_user(self, user, candidate, reason):
+    def _notify_intro(self, user, candidate, reason):
+        """
+        Envía la sugerencia al usuario A.
+        """
         try:
             msg = (
-                f"🤝 *Networking Ticketia*\n\n"
-                f"Hola {user.business_name}, posible aliado detectado:\n"
+                f"🤝 *Oportunidad de Negocio Detectada*\n\n"
+                f"Hola {user.business_name}, analizando tu perfil creo que deberías hablar con:\n"
                 f"🏢 *{candidate.business_name}*\n"
                 f"💡 {reason}\n\n"
-                f"¿Te interesa? Su contacto es: {candidate.user_phone}"
+                f"¿Te paso su contacto? (Responde 'SI' para aceptar)"
             )
-            to_num = user.user_phone if user.user_phone.startswith('+') else f"+34{user.user_phone}"
-            self.twilio.messages.create(from_=self.whatsapp_from, to=f"whatsapp:{to_num}", body=msg)
+            
+            # Usar servicio centralizado (asumiendo implementación o usar lógica directa por ahora)
+            # NotificationService.send_whatsapp(user.user_phone, msg)
+            
+            # Lógica directa (temporal hasta migración completa)
+            account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
+            auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
+            client = Client(account_sid, auth_token)
+            
+            from_whatsapp = os.environ.get("TWILIO_WHATSAPP_NUMBER", "whatsapp:+14155238886")
+            to_whatsapp = f"whatsapp:{user.user_phone}" if "whatsapp:" not in user.user_phone else user.user_phone
+            
+            client.messages.create(
+                body=msg,
+                from_=from_whatsapp,
+                to=to_whatsapp
+            )
+            
             print(f"✅ Sinergia enviada a {user.business_name}")
         except Exception as e:
             print(f"❌ Error WhatsApp: {e}")
