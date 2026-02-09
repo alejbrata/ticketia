@@ -170,13 +170,22 @@
                 return;
             }
 
-            container.innerHTML = list.map(n => `
-                <div class="p-4 rounded-xl border transition-all ${n.is_read ? 'bg-white border-slate-100 opacity-60' : 'bg-indigo-50 border-indigo-100 shadow-sm'}">
+            container.innerHTML = list.map(n => {
+                // Estilo condicional para ALERTAS
+                const isAlert = n.type === 'alert';
+                const bgClass = isAlert ? 'bg-red-50 border-red-100' : (n.is_read ? 'bg-white border-slate-100 opacity-60' : 'bg-indigo-50 border-indigo-100 shadow-sm');
+                const typeColor = isAlert ? 'text-red-600' : (n.type === 'grant' ? 'text-emerald-600' : 'text-indigo-600');
+                const titleColor = isAlert ? 'text-red-800' : 'text-slate-800';
+
+                return `
+                <div class="p-4 rounded-xl border transition-all ${bgClass}">
                     <div class="flex justify-between items-start mb-1">
-                        <span class="text-xs font-bold uppercase tracking-wider ${n.type === 'grant' ? 'text-emerald-600' : 'text-indigo-600'}">${n.type || 'INFO'}</span>
+                        <span class="text-xs font-bold uppercase tracking-wider ${typeColor}">
+                            ${isAlert ? '🚨 ' : ''}${n.type || 'INFO'}
+                        </span>
                         <span class="text-[10px] text-slate-400">${n.date}</span>
                     </div>
-                    <h4 class="font-bold text-slate-800 text-sm mb-1">${n.title}</h4>
+                    <h4 class="font-bold ${titleColor} text-sm mb-1">${n.title}</h4>
                     <p class="text-slate-600 text-xs mb-3 leading-relaxed">${n.message}</p>
                     
                     <div class="flex gap-2 justify-end">
@@ -184,7 +193,7 @@
                         ${!n.is_read ? `<button onclick="markOneRead(${n.id})" class="text-xs font-bold text-slate-400 hover:text-slate-600 px-2 py-1.5">Marcar leído</button>` : ''}
                     </div>
                 </div>
-            `).join('');
+            `}).join('');
         }
 
         async function markOneRead(id) {
