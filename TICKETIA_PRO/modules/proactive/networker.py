@@ -110,34 +110,44 @@ class SynergyAgent:
 
     def _notify_intro(self, user, candidate, reason):
         """
-        Envía la sugerencia al usuario A.
+        Envía la sugerencia al usuario A (App + WhatsApp opcional).
         """
         try:
+            # 1. Notificación In-App (Core)
+            NotificationService.send_in_app(
+                user_phone=user.user_phone,
+                title="🤝 Nueva Oportunidad de Negocio",
+                message=f"Creemos que deberías colaborar con {candidate.business_name}.\n\n💡 Motivo: {reason}\n\n¿Te interesa conectar?",
+                type="networking",
+                link="/networking" # Futuro dashboard de networking
+            )
+            
+            # 2. WhatsApp (Canal Secundario / Push)
             msg = (
-                f"🤝 *Oportunidad de Negocio Detectada*\n\n"
-                f"Hola {user.business_name}, analizando tu perfil creo que deberías hablar con:\n"
-                f"🏢 *{candidate.business_name}*\n"
-                f"💡 {reason}\n\n"
-                f"¿Te paso su contacto? (Responde 'SI' para aceptar)"
+                f"🤝 *Networking Ticketia*\n\n"
+                f"Hola {user.business_name}, tienes una nueva oportunidad de negocio esperándote en la app.\n"
+                f"Entra para ver los detalles: https://ticketia.com/dashboard"
             )
             
-            # Usar servicio centralizado (asumiendo implementación o usar lógica directa por ahora)
-            # NotificationService.send_whatsapp(user.user_phone, msg)
+            # Lógica Twilio con fallback
+            try:
+                account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
+                auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
+                client = Client(account_sid, auth_token)
+                
+                from_whatsapp = os.environ.get("TWILIO_WHATSAPP_NUMBER", "whatsapp:+14155238886")
+                to_whatsapp = f"whatsapp:{user.user_phone}" if "whatsapp:" not in user.user_phone else user.user_phone
+                
+                client.messages.create(
+                    body=msg,
+                    from_=from_whatsapp,
+                    to=to_whatsapp
+                )
+                print(f"✅ Aviso WhatsApp enviado a {user.business_name}")
+            except Exception as twilio_e:
+                 print(f"⚠️ Error WhatsApp (pero In-App OK): {twilio_e}")
             
-            # Lógica directa (temporal hasta migración completa)
-            account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
-            auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
-            client = Client(account_sid, auth_token)
+            ActivityLog.log(user.user_phone, "Networker Agent", f"Sinergia sugerida: {candidate.business_name}")
             
-            from_whatsapp = os.environ.get("TWILIO_WHATSAPP_NUMBER", "whatsapp:+14155238886")
-            to_whatsapp = f"whatsapp:{user.user_phone}" if "whatsapp:" not in user.user_phone else user.user_phone
-            
-            client.messages.create(
-                body=msg,
-                from_=from_whatsapp,
-                to=to_whatsapp
-            )
-            
-            print(f"✅ Sinergia enviada a {user.business_name}")
         except Exception as e:
-            print(f"❌ Error WhatsApp: {e}")
+            print(f"❌ Error General Notification: {e}")

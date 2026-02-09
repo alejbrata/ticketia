@@ -108,25 +108,34 @@ class GrantHunterAgent:
             full_msg = f"💰 *¡Oportunidad Detectada!*\n\n{pitch_text}\n\nℹ️ Info: {grant.link}\n⏳ Límite: {grant.deadline}"
             
             # Usar Servicio Centralizado
-            # Asumimos que NotificationService maneja la lógica de Twilio internamente o la implementamos aquí si es dummy
-            # Por ahora, usamos la lógica directa de Twilio si el servicio no está full implementado, 
-            # o mejor, inyectamos la dependencia.
-            
-            # Recuperar credenciales (Quick fix, idealmente en NotificationService)
-            account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
-            auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
-            client = Client(account_sid, auth_token)
-            
-            from_whatsapp = os.environ.get("TWILIO_WHATSAPP_NUMBER", "whatsapp:+14155238886")
-            to_whatsapp = f"whatsapp:{user.user_phone}" if "whatsapp:" not in user.user_phone else user.user_phone
-            
-            client.messages.create(
-                body=full_msg,
-                from_=from_whatsapp,
-                to=to_whatsapp
+            # 1. In-App Notification (Prioridad 1: Core de la App)
+            NotificationService.send_in_app(
+                user_phone=user.user_phone,
+                title="💰 Nueva Ayuda Disponible",
+                message=f"{pitch_text}\n\nCuantía: {grant.amount}. Plazo: {grant.deadline}.",
+                type="grant",
+                link=grant.link
             )
             
-            print(f"✅ Notificación enviada a {user.user_phone} sobre {grant.title}")
+            # 2. WhatsApp (Opcional / Canal Secundario)
+            # Solo si el usuario tiene activas las notificaciones push (futuro setting)
+            try:
+                account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
+                auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
+                client = Client(account_sid, auth_token)
+                
+                from_whatsapp = os.environ.get("TWILIO_WHATSAPP_NUMBER", "whatsapp:+14155238886")
+                to_whatsapp = f"whatsapp:{user.user_phone}" if "whatsapp:" not in user.user_phone else user.user_phone
+                
+                client.messages.create(
+                    body=full_msg,
+                    from_=from_whatsapp,
+                    to=to_whatsapp
+                )
+                print(f"✅ Notificación WhatsApp enviada a {user.user_phone}")
+            except Exception as twilio_err:
+                print(f"⚠️ Error enviando WhatsApp (pero In-App OK): {twilio_err}")
+            
             ActivityLog.log(user.user_phone, "Grant Hunter", f"Avisado de ayuda: {grant.title}")
             
         except Exception as e:
