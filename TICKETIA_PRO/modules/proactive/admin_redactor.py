@@ -104,25 +104,35 @@ class AdminAssistantAgent:
 
     def _analyze_image_with_vision(self, image_url, extra_context={}):
         """
-        Analiza una imagen usando GPT-4o Vision + Contexto Sectorial Dinámico.
+        Analiza una imagen usando GPT-4o Vision + Contexto Sectorial Dinámico (5 Arquetipos).
         """
-        # 1. Cargar "Cerebro Sectorial"
+        # 1. Cargar "Cerebro Sectorial" (Taxonomía Universal)
         sector = str(extra_context.get('sector', 'General')).lower()
-        knowledge_file = "services.json" # Default
+        knowledge_file = "type_services.json" # Default seguro (Consultoría/General)
         
-        if any(x in sector for x in ['reform', 'construc', 'obra', 'albañil']):
-            knowledge_file = "construction.json"
-        elif any(x in sector for x in ['tienda', 'venta', 'retail', 'frut', 'aliment']):
-            knowledge_file = "retail.json"
+        # Mapeo de Palabras Clave a Arquetipos
+        keywords = {
+            "type_construction.json": ['obra', 'refor', 'const', 'albañ', 'carpin', 'fontan', 'electr', 'pint', 'insta', 'mader', 'metal'],
+            "type_retail.json": ['tienda', 'vent', 'comer', 'shop', 'moda', 'ropa', 'alim', 'frut', 'super', 'panad', 'carn', 'pesc', 'flor'],
+            "type_hospitality.json": ['restaur', 'bar', 'cafet', 'hotel', 'hostal', 'cater', 'event', 'boda', 'turis', 'viaj'],
+            "type_repair.json": ['taller', 'mecan', 'repar', 'sat', 'tecni', 'auto', 'coche', 'moto', 'bici', 'infor', 'movil'],
+            "type_services.json": ['serv', 'consul', 'abog', 'asesor', 'gestor', 'market', 'diseñ', 'salud', 'dent', 'fisio', 'medic', 'vet']
+        }
+        
+        # Algoritmo de clasificación simple
+        for file, keys in keywords.items():
+            if any(k in sector for k in keys):
+                knowledge_file = file
+                break
             
         try:
             base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
             k_path = os.path.join(base_dir, "modules", "knowledge", knowledge_file)
             with open(k_path, 'r', encoding='utf-8') as f:
-                sector_knowledge = f.read() # Read as string
+                sector_knowledge = f.read()
         except Exception as e:
-            print(f"⚠️ Warning: No knowledge file for {sector} ({e})")
-            sector_knowledge = "Actúa como experto general."
+            print(f"⚠️ Warning: Knowledge file error {e}, using generic.")
+            sector_knowledge = "Actúa como experto administrativo general."
 
         # 2. Preparar Imagen
         image_content = []
