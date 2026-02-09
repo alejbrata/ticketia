@@ -1,182 +1,136 @@
 import os
-import matplotlib
-matplotlib.use('Agg') # Backend sin interfaz gráfica
-import matplotlib.pyplot as plt
+import json
 from datetime import datetime, timedelta
-from dateutil.relativedelta import relativedelta
 from sqlalchemy import func
 from openai import OpenAI
-from core.db_models import db, Ticket
-from core.notifier import NotifierService
-
-from core.config import Config
+from core.db_models import db, Ticket, ActivityLog
+from modules.services.notification import NotificationService
 
 class BusinessCoachAgent:
     def __init__(self):
-        self.openai = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-        self.notifier = NotifierService()
-        # Eliminar self.twilio y self.whatsapp_from (ahora gestionado por NotifierService)
+        self.client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
     def run_daily_analysis(self, user):
         """
-        Analiza la salud financiera y envía feedback MULTIMODAL (Texto + Gráfico + Audio).
+        Analiza la salud financiera y genera un informe diario (In-App + Push).
         """
         print(f"🩺 Coach: Analizando finanzas de {user.business_name}...")
         
-        # 1. Obtener Datos
+        # 1. Obtener Datos Financieros
         stats = self._get_financial_stats(user.user_phone)
         
-        # Check simple para no hablar si no hay datos (ajustar según necesidad demo)
-        if stats['current_month'] == 0 and stats['last_month_mtd'] == 0:
-            print("   -> Sin datos suficientes.")
+        # Si no hay datos, no decimos nada (salvo que sea demo)
+        if stats['current_month'] == 0 and stats['last_month_total'] == 0:
             return
 
-        # 2. Generar Contenido
-        message_text = self._generate_coach_message(user.business_name, stats)
+        # 2. Generar Insight con IA
+        insight = self._generate_insight(user, stats)
         
-        # Generar Gráfico (Visual)
-        chart_url = self._generate_chart(user, stats)
+        # 3. Notificación In-App (Rica)
+        # Creamos un mensaje que invite a ver el detalle
+        trend_emoji = "📈" if stats['diff_percent'] > 0 else "📉"
+        if stats['diff_percent'] == 0: trend_emoji = "➡️"
         
-        # Generar Audio (Voz) - NUEVO
-        audio_url = self._generate_audio(message_text)
+        title = f"Resumen Diario: {trend_emoji} {stats['diff_percent']}% vs mes pasado"
         
-        # 3. Enviar Multimodal (Texto + Array de Media)
-        if message_text:
-            media_list = []
-            if chart_url: media_list.append(chart_url)
-            if audio_url: media_list.append(audio_url)
+        # Guardamos notificación
+        NotificationService.send_in_app(
+            user_phone=user.user_phone,
+            title=title,
+            message=f"{insight}\n\nGasto hoy: {stats['current_month']}€ (Proyección: {stats['projection']}€)",
+            type="alert" if stats['is_alert'] else "info",
+            link="/dashboard" # Lleva al dashboard para ver gráficos interactivos
+        )
+        
+        # 4. Push Notification (WhatsApp - Solo Texto Corto)
+        # Solo enviamos push si es relevante (alertas o lunes/viernes)
+        # Aquí simplificamos enviando siempre un resumen corto
+        try:
+            push_msg = f"📊 *Coach Financiero*\n\n{insight}\n\nEntra en la app para ver el desglose completo."
             
-            self._send_whatsapp_multimodal(user.user_phone, message_text, media_list)
+            # Usar lógica de Twilio directa (o servicio centralizado si estuviera completo)
+            from twilio.rest import Client
+            account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
+            auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
+            client = Client(account_sid, auth_token)
+            
+            from_whatsapp = os.environ.get("TWILIO_WHATSAPP_NUMBER", "whatsapp:+14155238886")
+            to_whatsapp = f"whatsapp:{user.user_phone}" if "whatsapp:" not in user.user_phone else user.user_phone
+            
+            client.messages.create(body=push_msg, from_=from_whatsapp, to=to_whatsapp)
+            
+        except Exception as e:
+            print(f"⚠️ Error Push WhatsApp: {e}")
+
+        ActivityLog.log(user.user_phone, "Business Coach", "Informe diario generado")
 
     def _get_financial_stats(self, phone):
         today = datetime.now()
         start_current = today.replace(day=1, hour=0, minute=0, second=0)
         
-        # Mes pasado completo (para referencia) o MTD (Month to Date)?
-        # Mejor MTD: Comparar los primeros X días de este mes vs primeros X días del mes pasado.
-        start_last = (start_current - relativedelta(months=1))
-        # Para evitar problemas con días que no existen (ej: 31 feb), usar min() o lógica segura
-        try:
-             end_last_comparable = start_last + timedelta(days=today.day) # Mismo día del mes pasado
-        except:
-             end_last_comparable = start_last + relativedelta(day=31) # Fin de mes
-
-        # Gastos Mes Actual
+        # Mes anterior completo
+        first_day_last_month = (start_current - timedelta(days=1)).replace(day=1)
+        
+        # Gasto Mes Actual (MTD)
         current_total = db.session.query(func.sum(Ticket.total)).filter(
             Ticket.user_phone == phone,
             Ticket.date >= start_current
         ).scalar() or 0.0
 
-        # Gastos Mes Pasado (mismo periodo)
-        last_total = db.session.query(func.sum(Ticket.total)).filter(
+        # Gasto Mes Pasado Total
+        last_month_total = db.session.query(func.sum(Ticket.total)).filter(
             Ticket.user_phone == phone,
-            Ticket.date >= start_last,
-            Ticket.date < end_last_comparable
+            Ticket.date >= first_day_last_month,
+            Ticket.date < start_current
         ).scalar() or 0.0
         
-        # Calcular tendencia
+        # Proyección (Regla de tres simple basada en días transcurridos)
+        days_passed = today.day
+        days_in_month = (start_current.replace(month=start_current.month % 12 + 1) - timedelta(days=1)).day
+        
+        projection = 0
+        if days_passed > 0:
+            projection = (current_total / days_passed) * days_in_month
+            
+        # Comparativa vs Mes Pasado Total
         diff_percent = 0
-        if last_total > 0:
-            diff_percent = ((current_total - last_total) / last_total) * 100
+        if last_month_total > 0:
+            # Comparamos proyección vs real mes pasado para ser justos
+            diff_percent = ((projection - last_month_total) / last_month_total) * 100
             
         return {
             "current_month": round(current_total, 2),
-            "last_month_mtd": round(last_total, 2),
-            "diff_percent": round(diff_percent, 1)
+            "last_month_total": round(last_month_total, 2),
+            "projection": round(projection, 2),
+            "diff_percent": round(diff_percent, 1),
+            "is_alert": diff_percent > 20 # Alerta si gastamos un 20% más de lo previsto
         }
 
-    def _generate_coach_message(self, name, stats):
+    def _generate_insight(self, user, stats):
+        """
+        Genera un consejo de texto corto.
+        """
         prompt = f"""
-        Eres un Coach Financiero personal para un autónomo llamado {name}.
-        Datos financieros a fecha de hoy (comparado con el mes pasado a estas alturas):
-        - Gasto Actual: {stats['current_month']}€
-        - Gasto Mes Pasado: {stats['last_month_mtd']}€
-        - Variación: {stats['diff_percent']}%
-
-        Escribe un mensaje de WhatsApp CORTO y MOTIVADOR (máx 2 frases).
-        - Si ha gastado MENOS: Celebra.
-        - Si ha gastado MÁS: Alerta Constructiva.
+        Eres el Director Financiero de {user.business_name}.
+        Datos:
+        - Gasto acumulado: {stats['current_month']}€
+        - Proyección fin de mes: {stats['projection']}€
+        - Mes pasado total: {stats['last_month_total']}€
+        - Variación Proyectada: {stats['diff_percent']}%
         
-        Tono: Cercano, enérgico.
+        Dame 1 frase (max 20 palabras) analizando la situación.
+        Si la variación es > 20%, sé alarmista. Si es < 0%, felicita por el ahorro.
+        Usa emojis.
         """
         try:
-            response = self.openai.chat.completions.create(
+            resp = self.client.chat.completions.create(
                 model="gpt-4o",
-                messages=[{"role": "system", "content": prompt}],
-                max_tokens=80
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=50,
+                temperature=0.7
             )
-            return response.choices[0].message.content.strip()
-        except Exception as e:
-            print(f"❌ Error GPT Coach: {e}")
-            return None
-
-    def _generate_chart(self, user, stats):
-        try:
-            # Datos
-            labels = ['Mes Pasado', 'Este Mes']
-            values = [stats['last_month_mtd'], stats['current_month']]
-            colors = ['#94a3b8', '#4f46e5'] # Slate-400 y Indigo-600
-            
-            # Plot
-            plt.figure(figsize=(6, 4))
-            bars = plt.bar(labels, values, color=colors, width=0.6)
-            plt.title(f"Gastos: {user.business_name}", fontsize=12, fontweight='bold')
-            plt.ylabel('Euros (€)')
-            plt.grid(axis='y', linestyle='--', alpha=0.5)
-            
-            # Guardar
-            filename = f"chart_{user.user_phone}_{datetime.now().strftime('%Y%m%d%H%M')}.png"
-            # Ruta absoluta para guardar
-            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            
-            save_path = os.path.join(base_dir, "static", "generated_docs", filename)
-            os.makedirs(os.path.dirname(save_path), exist_ok=True)
-            
-            plt.savefig(save_path, bbox_inches='tight', dpi=100)
-            plt.close()
-            
-            # Devolver ruta relativa web
-            return f"{Config.PUBLIC_URL}/static/generated_docs/{filename}"
-        except Exception as e:
-            print(f"❌ Error Chart: {e}")
-            return None
-
-    def _generate_audio(self, text):
-        """Genera un archivo de audio MP3 usando OpenAI TTS."""
-        try:
-            print("   🎙️ Generando voz del coach...")
-            response = self.openai.audio.speech.create(
-                model="tts-1",
-                voice="onyx", # Voces disponibles: alloy, echo, fable, onyx, nova, shimmer
-                input=text
-            )
-            
-            filename = f"voice_{int(datetime.now().timestamp())}.mp3"
-            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            save_path = os.path.join(base_dir, "static", "generated_docs", filename)
-            os.makedirs(os.path.dirname(save_path), exist_ok=True)
-            
-            # Guardar archivo
-            response.stream_to_file(save_path)
-            
-            # Devolver URL Absoluta
-            return f"{Config.PUBLIC_URL}/static/generated_docs/{filename}"
-            
-        except Exception as e:
-            print(f"❌ Error TTS: {e}")
-            return None
-
-    def _send_whatsapp_multimodal(self, phone, body, media_urls=[]):
-        """Envía mensaje con lista de adjuntos usando el NotifierService."""
-        # Enviar Texto primero
-        self.notifier.send(phone, body, channel='whatsapp') # Por defecto Coach usa whatsapp
-        
-        # Enviar Medios
-        # Nota: El NotifierService simple envía 1 adjunto por mensaje.
-        # Si queremos enviar todos juntos, tendríamos que mejorar el NotifierService o iterar.
-        # Iteramos por simplicidad y compatibilidad con el código anterior.
-        for media in media_urls:
-            if media:
-                self.notifier.send(phone, "Adjunto:", media_url=media, channel='whatsapp')
+            return resp.choices[0].message.content.strip()
+        except:
+            return "📊 Tus gastos siguen su curso normal. ¡Sigue así!"
 
 
