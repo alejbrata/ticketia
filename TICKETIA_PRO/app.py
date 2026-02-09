@@ -15,7 +15,7 @@ from twilio.twiml.messaging_response import MessagingResponse
 
 from core.config import Config
 from core.config import Config
-from core.db_models import db, BusinessProfile, Ticket, ChatMessage, Grant, Appointment, SynergyMatch, ActivityLog, GeneratedDocument
+from core.db_models import db, BusinessProfile, Ticket, ChatMessage, Grant, Appointment, SynergyMatch, ActivityLog, GeneratedDocument, Notification
 from flask_admin import Admin
 from flask_admin.contrib.sqla import ModelView
 from modules.tickets.logic import process_ticket, process_ticket_image
@@ -23,6 +23,7 @@ from modules.chatbot.logic import generate_response
 from modules.agents.manager import run_agent
 from modules.utils.transcriber import AudioTranscriber
 from sqlalchemy.sql import func
+from modules.services.notification import NotificationService
 
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -32,6 +33,54 @@ app.config.from_object(Config)
 # Inicializar Base de Datos
 db.init_app(app)
 mail = Mail(app)
+
+# --- GLOBAL CONTEXT PROCESSOR (NOTIFICACIONES) ---
+@app.context_processor
+def inject_notifications():
+    if 'user_phone' in session:
+        count = Notification.query.filter_by(
+            user_phone=session['user_phone'], 
+            is_read=False
+        ).count()
+        return dict(unread_notifications_count=count)
+    return dict(unread_notifications_count=0)
+
+# --- API NOTIFICACIONES ---
+@app.route('/api/notifications')
+def get_notifications():
+    if 'user_phone' not in session: return jsonify([]), 401
+    
+    notifs = Notification.query.filter_by(user_phone=session['user_phone'])\
+        .order_by(Notification.created_at.desc()).limit(20).all()
+        
+    return jsonify([{
+        "id": n.id,
+        "title": n.title,
+        "message": n.message,
+        "type": n.type,
+        "link": n.link,
+        "is_read": n.is_read,
+        "date": n.created_at.strftime('%d/%m %H:%M')
+    } for n in notifs])
+
+@app.route('/api/notifications/mark_read/<int:notif_id>', methods=['POST'])
+def mark_notification_read(notif_id):
+    if 'user_phone' not in session: return jsonify({"error": "Unauthorized"}), 401
+    
+    n = Notification.query.get(notif_id)
+    if n and n.user_phone == session['user_phone']:
+        n.is_read = True
+        db.session.commit()
+        return jsonify({"success": True})
+    return jsonify({"error": "Not found"}), 404
+
+@app.route('/api/notifications/mark_all_read', methods=['POST'])
+def mark_all_notifications_read():
+    if 'user_phone' not in session: return jsonify({"error": "Unauthorized"}), 401
+    
+    Notification.query.filter_by(user_phone=session['user_phone'], is_read=False).update({Notification.is_read: True})
+    db.session.commit()
+    return jsonify({"success": True})
 
 # --- ADMIN PANEL CONFIGURATION ---
 class SecureModelView(ModelView):

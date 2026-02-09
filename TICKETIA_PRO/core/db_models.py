@@ -127,3 +127,13 @@ class GeneratedDocument(db.Model):
     doc_type = db.Column(db.String(50)) # 'proposal', 'invoice', 'marketing_image', 'other'
     client_name = db.Column(db.String(100), nullable=True) # Optional client context
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class Notification(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_phone = db.Column(db.String(20), nullable=False, index=True)
+    title = db.Column(db.String(100), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    type = db.Column(db.String(20), default='info') # grant, networking, system, alert
+    link = db.Column(db.String(300), nullable=True) # Acción (ej: /marketplace)
+    is_read = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
