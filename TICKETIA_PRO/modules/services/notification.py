@@ -1,8 +1,30 @@
 import os
-from flask import render_template
 from flask_mail import Message
+from core.db_models import db, Notification, ActivityLog
 
 class NotificationService:
+    @staticmethod
+    def send_in_app(user_phone, title, message, type='info', link=None):
+        """
+        Guarda una notificación en la base de datos para mostrar en la PWA.
+        """
+        try:
+            notif = Notification(
+                user_phone=user_phone,
+                title=title,
+                message=message,
+                type=type,
+                link=link
+            )
+            db.session.add(notif)
+            db.session.commit()
+            print(f"🔔 Notificación In-App guardada para {user_phone}: {title}")
+            return True
+        except Exception as e:
+            print(f"❌ Error guardando notificación in-app: {e}")
+            db.session.rollback()
+            return False
+
     @staticmethod
     def send_email(subject, recipients, body=None, html=None, attachments=None):
         from app import mail
