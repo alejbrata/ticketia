@@ -191,7 +191,9 @@ def generate_video_from_image():
 
 @app.route('/')
 def index():
-    return redirect(url_for('dashboard'))
+    if 'user_phone' in session:
+        return redirect(url_for('dashboard'))
+    return render_template('landing.html')
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
