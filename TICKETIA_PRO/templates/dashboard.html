@@ -318,7 +318,7 @@
             formData.append('ticket', input.files[0]);
 
             // Feedback visual
-            alert("Subiendo ticket... ⏳");
+            window.showToast("Subiendo ticket... ⏳", "info");
 
             try {
                 const response = await fetch('/upload_web_ticket', {
@@ -327,13 +327,13 @@
                 });
                 const data = await response.json();
                 if (data.success) {
-                    alert("✅ Ticket procesado: " + data.message);
-                    location.reload(); // Recargar para ver el gasto
+                    window.showToast("✅ " + data.message, "success");
+                    setTimeout(() => location.reload(), 1500); // Delay reload to read toast
                 } else {
-                    alert("❌ Error: " + data.error);
+                    window.showToast("❌ Error: " + data.error, "error");
                 }
             } catch (e) {
-                alert("Error de conexión");
+                window.showToast("Error de conexión", "error");
             }
         }
     }
@@ -358,7 +358,7 @@
             document.getElementById('recordingIndicator').classList.remove('hidden');
             document.getElementById('recordBtn').classList.add('scale-110', 'ring-4', 'ring-rose-300');
         } catch (err) {
-            alert("Necesitamos permiso de micrófono 🎤");
+            window.showToast("Necesitamos permiso de micrófono 🎤", "error");
         }
     }
 
@@ -377,7 +377,8 @@
 
         // Feedback
         const originalText = document.getElementById('recordBtn').innerHTML;
-        document.getElementById('recordBtn').innerHTML = "⏳ Procesando...";
+        document.getElementById('recordBtn').innerHTML = "⏳ ...";
+        window.showToast("Procesando audio...", "info");
 
         try {
             const response = await fetch('/upload_web_audio', {
@@ -385,10 +386,16 @@
                 body: formData
             });
             const data = await response.json();
-            alert(data.response); // Respuesta del agente
-            location.reload();
+            
+            if (data.success) {
+                window.showToast(data.response, "success");
+                setTimeout(() => location.reload(), 2000);
+            } else {
+                window.showToast("Error: " + data.error, "error");
+            }
         } catch (e) {
             console.error(e);
+            window.showToast("Error de conexión", "error");
         } finally {
             document.getElementById('recordBtn').innerHTML = originalText;
         }
