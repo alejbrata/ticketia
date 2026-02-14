@@ -9,8 +9,10 @@ from core.db_models import Ticket, ActivityLog, GeneratedDocument, db
 from modules.agents.tools import CalendarTools, TOOLS_SCHEMA
 from modules.agents.history import HistoryService
 
+from core.clients import get_openai_client, get_twilio_client
+
 # Inicializar cliente OpenAI
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+client = get_openai_client()
 
 def run_agent(user_message, phone_number, business_profile, media_url=None, mail_service=None, channel='whatsapp'):
     """
@@ -234,9 +236,7 @@ def run_agent(user_message, phone_number, business_profile, media_url=None, mail
 
                                     # Notificar WhatsApp solo si el canal original era WhatsApp
                                     if p_channel == 'whatsapp':
-                                        account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
-                                        auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
-                                        client = Client(account_sid, auth_token)
+                                        client = get_twilio_client()
                                         
                                         to_number = f"whatsapp:{user_phone}" if "whatsapp:" not in user_phone else user_phone
                                         full_url = f"{host_url.rstrip('/')}{file_path}" if not file_path.startswith('http') else file_path

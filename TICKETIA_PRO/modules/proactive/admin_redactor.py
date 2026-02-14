@@ -7,7 +7,8 @@ from datetime import datetime
 
 class AdminAssistantAgent:
     def __init__(self):
-        self.openai = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        from core.clients import get_openai_client
+        self.openai = get_openai_client()
 
     def classify_image_intent(self, image_url, user_text=""):
         """
@@ -207,6 +208,18 @@ class AdminAssistantAgent:
             
             # --- VAT Logic ---
             sector = user_context.get('sector', 'Servicios').lower()
+
+            # Helper to sanitize text for FPDF (Latin-1)
+            def clean_text(text):
+                if not text: return ""
+                # Replace common symbols not in Latin-1
+                text = str(text).replace("€", "EUR").replace("–", "-").replace("—", "-")
+                # Encode to Latin-1, replacing errors with ?
+                try:
+                    return text.encode('latin-1', 'replace').decode('latin-1')
+                except:
+                    return str(text)
+
             # Default logic
             vat_rate = 0.21
             if 'restauración' in sector or 'restauracion' in sector:
@@ -219,8 +232,9 @@ class AdminAssistantAgent:
             
             # --- Header ---
             # Company Name (Left)
+            # Match Header Company Name with clean_text
             pdf.set_font("Arial", 'B', 20)
-            pdf.cell(100, 10, user_context.get('business_name', 'Mi Empresa').upper(), ln=0)
+            pdf.cell(100, 10, clean_text(user_context.get('business_name', 'Mi Empresa').upper()), ln=0)
             
             # Document Title (Right)
             pdf.set_font("Arial", 'B', 24)
@@ -248,7 +262,7 @@ class AdminAssistantAgent:
             pdf.set_font("Arial", '', 10)
             for line in issuer_info:
                 if line.split(": ")[1]: # Only print if value exists
-                    pdf.cell(90, 5, line, ln=1)
+                    pdf.cell(90, 5, clean_text(line), ln=1)
             
             # Right Column (Client & Date)
             pdf.set_xy(110, top_y)
@@ -256,10 +270,10 @@ class AdminAssistantAgent:
             pdf.cell(0, 5, "PARA:", ln=1)
             pdf.set_xy(110, pdf.get_y())
             pdf.set_font("Arial", '', 10)
-            pdf.cell(0, 5, f"Cliente: {data.get('client_name', 'Cliente Contado')}", ln=1)
+            pdf.cell(0, 5, f"Cliente: {clean_text(data.get('client_name', 'Cliente Contado'))}", ln=1)
             
             pdf.set_xy(110, pdf.get_y() + 2)
-            pdf.cell(0, 5, f"Fecha: {data.get('date') or datetime.now().strftime('%d/%m/%Y')}", ln=1)
+            pdf.cell(0, 5, f"Fecha: {clean_text(data.get('date') or datetime.now().strftime('%d/%m/%Y'))}", ln=1)
             pdf.cell(0, 5, f"Ref: B-{int(datetime.now().timestamp())}", ln=1)
             
             pdf.ln(20)
@@ -280,14 +294,6 @@ class AdminAssistantAgent:
             # Helper to sanitize text for FPDF (Latin-1)
             def clean_text(text):
                 if not text: return ""
-                # Replace common symbols not in Latin-1
-                text = str(text).replace("€", "EUR").replace("–", "-").replace("—", "-")
-                # Encode to Latin-1, replacing errors with ?
-                try:
-                    return text.encode('latin-1', 'replace').decode('latin-1')
-                except:
-                    return str(text)
-
             for item in data.get('items', []):
                 desc = str(item.get('desc', 'Item'))
                 qty = float(item.get('qty', 1))
@@ -333,7 +339,7 @@ class AdminAssistantAgent:
             pdf.set_font("Arial", 'I', 9)
             pdf.set_text_color(100, 100, 100)
             notes = data.get('notes', 'Gracias por su confianza. Presupuesto válido por 15 días.')
-            pdf.multi_cell(0, 5, f"Notas: {notes}\nEl precio final incluye los impuestos aplicables.")
+            pdf.multi_cell(0, 5, f"Notas: {clean_text(notes)}\nEl precio final incluye los impuestos aplicables.")
             
             # Save
             filename = f"budget_{int(datetime.now().timestamp())}.pdf"
