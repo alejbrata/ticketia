@@ -20,8 +20,9 @@ class MarketingAgent:
     }
 
     def __init__(self):
-        self.openai = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-        self.runway_client = RunwayML(api_key=Config.RUNWAYML_API_SECRET)
+        from core.clients import get_openai_client, get_runway_client
+        self.openai = get_openai_client()
+        self.runway_client = get_runway_client()
         # Configurar rutas de salida
         self.base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         self.output_folder = os.path.join(self.base_dir, 'static', 'generated_docs')

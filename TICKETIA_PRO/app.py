@@ -1127,8 +1127,8 @@ def upload_web_audio():
     file.save(filepath)
     
     # 2. Transcribir (Whisper) Inline
-    from openai import OpenAI
-    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    from core.clients import get_openai_client
+    client = get_openai_client()
     
     try:
         with open(filepath, "rb") as audio_file:
@@ -1150,6 +1150,11 @@ def upload_web_audio():
 # --- ZONA DE EMERGENCIA PARA TFM (Borrar en producción real) ---
 @app.route('/setup_magic_db_force')
 def setup_magic_db():
+    # PROTECTED ROUTE (Dev Only)
+    secret_key = request.args.get('key')
+    if secret_key != os.environ.get('DEV_SECRET_KEY', 'super_secret_dev_key'): # Default fallback strict
+        return "<h1>⛔ Acceso Denegado</h1>", 403
+
     try:
         # Importamos aquí para evitar ciclos
         from reset_db_full import reset_and_seed
