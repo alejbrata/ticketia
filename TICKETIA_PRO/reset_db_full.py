@@ -4,7 +4,7 @@ from werkzeug.security import generate_password_hash
 
 # Configuración del Dueño
 MI_TELEFONO = "+34630339601"
-NOMBRE_NEGOCIO = "Mi Empresa S.L."
+NOMBRE_NEGOCIO = "Zeptai S.L."
 
 def reset_and_seed():
     with app.app_context():
