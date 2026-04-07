@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="flex flex-col items-center justify-center min-h-full px-6 py-12 bg-slate-50">
+    <div class="w-full max-w-sm bg-white rounded-3xl shadow-xl p-8 border border-slate-100">
+
+        <div class="text-center mb-8">
+            <h1 class="text-2xl font-bold text-slate-800">Crear Cuenta</h1>
+            <p class="text-slate-400 mt-2 text-sm">Empieza a digitalizar tus tickets</p>
+        </div>
+
+        <form action="{{ url_for('web.register') }}" method="POST" class="space-y-5">
+
+            <div>
+                <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Nombre
+                    Negocio</label>
+                <input type="text" name="business_name" placeholder="Ej: Cafetería Central" required
+                    class="w-full px-4 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-slate-800 font-medium">
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Email</label>
+                <input type="email" name="email" placeholder="tu@email.com" required
+                    class="w-full px-4 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-slate-800 font-medium">
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Teléfono
+                    (WhatsApp)</label>
+                <input type="text" name="phone" placeholder="+34 600 000 000" required
+                    class="w-full px-4 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-slate-800 font-medium">
+            </div>
+
+            <div>
+                <label
+                    class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Contraseña</label>
+                <input type="password" name="password" placeholder="••••••••" required
+                    class="w-full px-4 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-slate-800 font-medium">
+            </div>
+
+            <button type="submit"
+                class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-indigo-200 transition-all transform active:scale-95 text-sm uppercase tracking-wide mt-4">
+                Crear Cuenta
+            </button>
+
+        </form>
+
+        <div class="mt-8 text-center">
+            <p class="text-xs text-slate-400 font-medium">
+                ¿Ya tienes cuenta?
+                <a href="{{ url_for('web.login') }}"
+                    class="text-indigo-600 hover:text-indigo-700 font-bold ml-1 transition-colors">Inicia sesión</a>
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}

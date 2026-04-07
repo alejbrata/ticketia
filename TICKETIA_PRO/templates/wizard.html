@@ -3,7 +3,7 @@
 {% block content %}
 <div class="px-6 py-8 max-w-lg mx-auto w-full">
 
-    <a href="{{ url_for('dashboard') }}"
+    <a href="{{ url_for('web.dashboard') }}"
         class="inline-flex items-center text-sm font-medium text-slate-400 hover:text-indigo-600 transition-colors mb-6">
         ← Volver al inicio
     </a>
@@ -15,7 +15,7 @@
         <p class="text-slate-500 text-sm mt-1">Define cómo debe comportarse tu IA.</p>
     </header>
 
-    <form action="{{ url_for('save_config') }}" method="POST" enctype="multipart/form-data" class="space-y-6">
+    <form action="{{ url_for('web.save_config') }}" method="POST" enctype="multipart/form-data" class="space-y-6">
 
         <!-- Nombre -->
         <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">

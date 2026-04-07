@@ -3,7 +3,7 @@
 {% block content %}
 <div class="px-6 py-8 pb-24 max-w-lg mx-auto w-full">
 
-    <a href="{{ url_for('marketplace') }}"
+    <a href="{{ url_for('web.marketplace') }}"
         class="inline-flex items-center text-sm font-medium text-slate-400 hover:text-indigo-600 transition-colors mb-6">
         ← Volver a la Tienda
     </a>
@@ -13,7 +13,7 @@
         <p class="text-slate-500 text-sm mt-1">Ajusta el comportamiento de tu agente.</p>
     </header>
 
-    <form action="{{ url_for('save_agent_config', agent_id=agent_id) }}" method="POST"
+    <form action="{{ url_for('web.save_agent_config', agent_id=agent_id) }}" method="POST"
         class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-6">
 
         {% if agent_id == 'post_sales_service' %}

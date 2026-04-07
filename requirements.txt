@@ -19,3 +19,7 @@ runwayml
 gunicorn
 pytest
 deepeval
+mcp[cli]
+duckduckgo-search
+flask-limiter
+APScheduler

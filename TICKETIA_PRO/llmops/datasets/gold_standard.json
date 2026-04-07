@@ -1,0 +1,22 @@
+[
+    {
+        "input": "Hola, necesito renovar mi horno y busco ayudas económicas.",
+        "expected_intent": "GRANT_HUNTER",
+        "criteria": "The agent must mention checking the database for grants related to 'hornos' or 'equipamiento'. It should not just say 'hello'."
+    },
+    {
+        "input": "Tengo mucho excedente de harina este mes, ¿puedo vendérselo a alguien?",
+        "expected_intent": "NETWORKING",
+        "criteria": "The agent should suggest finding a partner or using the synergy/networking module."
+    },
+    {
+        "input": "Hazme un presupuesto para el Cliente Juan por 500 euros concepto Consultoría.",
+        "expected_intent": "ADMIN_REDACTOR",
+        "criteria": "The agent should confirm the creation of a 'Presupuesto' or 'Budget' document."
+    },
+    {
+        "input": "Genera un vídeo para Instagram de estos zapatos nuevos.",
+        "expected_intent": "MARKETING",
+        "criteria": "The agent should acknowledge the video request and trigger the video generation process."
+    }
+]

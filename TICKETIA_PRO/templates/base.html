@@ -37,7 +37,7 @@
     <!-- Navbar simple -->
     <nav class="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center sticky top-0 z-50">
         <div class="flex items-center gap-4">
-            <a href="{{ url_for('dashboard') }}" class="flex items-center gap-2 hover:opacity-80 transition-opacity">
+            <a href="{{ url_for('web.dashboard') }}" class="flex items-center gap-2 hover:opacity-80 transition-opacity">
                 <img src="{{ url_for('static', filename='logo_zeptai.png') }}" class="w-8 h-8 rounded-lg shadow-sm"
                     alt="Zeptai Logo">
                 <span class="font-bold text-xl tracking-tight text-slate-800">Zeptai</span>
@@ -57,15 +57,15 @@
         <div class="flex gap-4 items-center">
             <!-- Desktop Links -->
             <div class="hidden md:flex gap-4 items-center">
-                <a href="{{ url_for('dashboard') }}"
+                <a href="{{ url_for('web.dashboard') }}"
                     class="text-sm font-medium text-slate-500 hover:text-indigo-600 transition-colors">Inicio</a>
-                <a href="{{ url_for('wizard') }}"
+                <a href="{{ url_for('web.wizard') }}"
                     class="text-sm font-medium text-slate-500 hover:text-indigo-600 transition-colors">✨ Entrenar</a>
-                <a href="{{ url_for('marketplace') }}"
+                <a href="{{ url_for('web.marketplace') }}"
                     class="text-sm font-medium text-slate-500 hover:text-indigo-600 transition-colors">🛍️ Tienda</a>
-                <a href="{{ url_for('documents_page') }}"
+                <a href="{{ url_for('web.documents_page') }}"
                     class="text-sm font-medium text-slate-500 hover:text-indigo-600 transition-colors">📂 Docs</a>
-                <a href="{{ url_for('agents_page') }}"
+                <a href="{{ url_for('web.agents_page') }}"
                     class="text-sm font-medium text-slate-500 hover:text-indigo-600 transition-colors">🤖 Agentes</a>
             </div>
 
@@ -75,7 +75,7 @@
                 Admin</a>
             {% endif %}
 
-            <a href="{{ url_for('logout') }}"
+            <a href="{{ url_for('web.logout') }}"
                 class="text-sm font-medium text-red-500 hover:text-red-600 transition-colors">Salir</a>
         </div>
         {% endif %}
@@ -243,26 +243,26 @@
     {% if session.get('user_phone') %}
     <div
         class="md:hidden bg-white/95 backdrop-blur-md border-t border-slate-200 py-3 px-6 flex justify-around items-center fixed bottom-0 w-full z-[60] safe-area-bottom shadow-lg-up">
-        <a href="{{ url_for('dashboard') }}"
+        <a href="{{ url_for('web.dashboard') }}"
             class="flex flex-col items-center gap-1 text-slate-400 active:text-indigo-600 transition-colors">
             <span class="text-2xl">📊</span>
             <span class="text-[10px] font-bold">Inicio</span>
         </a>
-        <a href="{{ url_for('documents_page') }}"
+        <a href="{{ url_for('web.documents_page') }}"
             class="flex flex-col items-center gap-1 text-slate-400 active:text-indigo-600 transition-colors">
             <span class="text-2xl">📂</span>
             <span class="text-[10px] font-bold">Docs</span>
         </a>
-        <a href="{{ url_for('wizard') }}"
+        <a href="{{ url_for('web.wizard') }}"
             class="flex flex-col items-center gap-1 text-slate-400 active:text-indigo-600 transition-colors bg-indigo-50 p-2 rounded-xl -mt-6 border border-indigo-100 shadow-sm">
             <span class="text-2xl">✨</span>
         </a>
-        <a href="{{ url_for('agents_page') }}"
+        <a href="{{ url_for('web.agents_page') }}"
             class="flex flex-col items-center gap-1 text-slate-400 active:text-indigo-600 transition-colors">
             <span class="text-2xl">🤖</span>
             <span class="text-[10px] font-bold">Agentes</span>
         </a>
-        <a href="{{ url_for('marketplace') }}"
+        <a href="{{ url_for('web.marketplace') }}"
             class="flex flex-col items-center gap-1 text-slate-400 active:text-indigo-600 transition-colors">
             <span class="text-2xl">🛍️</span>
             <span class="text-[10px] font-bold">Tienda</span>

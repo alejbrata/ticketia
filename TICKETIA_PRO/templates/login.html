@@ -10,7 +10,7 @@
             <p class="text-slate-400 mt-2 text-sm">Gestiona tus gastos con IA</p>
         </div>
 
-        <form action="{{ url_for('login') }}" method="POST" class="space-y-6">
+        <form action="{{ url_for('web.login') }}" method="POST" class="space-y-6">
 
             <div>
                 <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Email</label>
@@ -30,7 +30,7 @@
                         class="w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-slate-800 font-medium">
                 </div>
                 <div class="text-right mt-2">
-                    <a href="{{ url_for('forgot_password') }}"
+                    <a href="{{ url_for('web.forgot_password') }}"
                         class="text-xs text-indigo-500 hover:text-indigo-700 font-medium">¿Olvidaste tu contraseña?</a>
                 </div>
             </div>
@@ -45,7 +45,7 @@
         <div class="mt-8 text-center">
             <p class="text-xs text-slate-400 font-medium">
                 ¿Aún no tienes cuenta?
-                <a href="{{ url_for('register') }}"
+                <a href="{{ url_for('web.register') }}"
                     class="text-indigo-600 hover:text-indigo-700 font-bold ml-1 transition-colors">Regístrate gratis</a>
             </p>
         </div>
