@@ -1,0 +1,130 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# REQUISITO: crea un fichero .env en la raiz del repo con tus claves antes de
+# ejecutar docker-compose up. Ejemplo:
+#
+#   OPENAI_API_KEY=sk-...
+#   TWILIO_ACCOUNT_SID=AC...
+#   TWILIO_AUTH_TOKEN=...
+#   TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886
+#   SECRET_KEY=cambia_esto_por_algo_aleatorio_largo
+#   MAIL_SERVER=smtp.gmail.com
+#   MAIL_PORT=587
+#   MAIL_USE_TLS=True
+#   MAIL_USERNAME=tu@gmail.com
+#   MAIL_PASSWORD=tu_app_password
+#   MAIL_DEFAULT_SENDER=tu@gmail.com
+#
+# Las variables DATABASE_URL, MCP_SSE_URL y PORT se inyectan directamente
+# en cada servicio y sobreescriben cualquier valor del .env.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Base de datos PostgreSQL ──────────────────────────────────────────────
+  db:
+    image: postgres:15-alpine
+    container_name: ticketia_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: ticketia_db
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    # Healthcheck: los servicios que dependen de 'db' esperan hasta que
+    # Postgres acepte conexiones (evita el race condition tipico de arranque).
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ticketia_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # ── Servidor MCP SSE ──────────────────────────────────────────────────────
+  # Proceso persistente que expone las herramientas del LLM via SSE.
+  # Arranca ANTES que la app web para que el cliente MCP pueda conectarse.
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ticketia_mcp
+    # Sobreescribe el CMD del Dockerfile para lanzar el servidor SSE
+    command: python mcp_server_sse.py
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://postgres:password@db:5432/ticketia_db
+      - MCP_SSE_PORT=8001
+    volumes:
+      # Hot-reload del codigo en desarrollo: cambios en TICKETIA_PRO se
+      # reflejan sin rebuild de la imagen.
+      - ./TICKETIA_PRO:/app/TICKETIA_PRO
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ── Aplicacion Flask principal ────────────────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ticketia_app
+    ports:
+      - "5000:5000"
+    # env_file inyecta OPENAI_API_KEY, TWILIO_*, MAIL_*, SECRET_KEY, etc.
+    # como variables de entorno en el contenedor. Esto es equivalente a
+    # pasar cada variable con -e, pero de forma centralizada.
+    # IMPORTANTE: load_dotenv() en el codigo es un no-op cuando las vars
+    # ya estan en el entorno (docker no las sobreescribe).
+    env_file:
+      - .env
+    environment:
+      - PORT=5000
+      - DATABASE_URL=postgresql://postgres:password@db:5432/ticketia_db
+      # Apunta al servidor MCP SSE para eliminar el overhead del subprocess stdio
+      - MCP_SSE_URL=http://mcp:8001/sse
+    volumes:
+      - ./TICKETIA_PRO:/app/TICKETIA_PRO
+      # Persistir uploads y documentos generados fuera del contenedor
+      - uploads_data:/app/TICKETIA_PRO/static/uploads
+      - generated_docs:/app/TICKETIA_PRO/static/generated_docs
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      mcp:
+        condition: service_started
+
+  # ── Scheduler proactivo ───────────────────────────────────────────────────
+  # Proceso independiente que ejecuta los agentes proactivos diariamente.
+  # Se beneficia de APScheduler con jobstore SQL para persistir entre reinicios.
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ticketia_scheduler
+    # run_scheduler.py esta en /app/ (raiz), no en /app/TICKETIA_PRO.
+    # Se usa ruta absoluta para evitar errores de CWD.
+    command: python /app/run_scheduler.py
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://postgres:password@db:5432/ticketia_db
+    volumes:
+      - ./TICKETIA_PRO:/app/TICKETIA_PRO
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      web:
+        condition: service_started
+
+volumes:
+  pgdata:
+  uploads_data:
+  generated_docs:

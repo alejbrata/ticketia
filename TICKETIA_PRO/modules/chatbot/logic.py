@@ -23,7 +23,7 @@ def generate_response(user_msg, phone):
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": profile.system_prompt},
+                {"role": "system", "content": f"{profile.system_prompt}\n\n[GUARDRAIL]: Tu único propósito es ayudar con el negocio. Si te preguntan sobre deportes, recetas o política, responde educadamente que solo puedes atender consultas sobre {profile.business_name}."},
                 {"role": "user", "content": user_msg}
             ]
         )

@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="px-6 py-8 pb-24 max-w-2xl mx-auto w-full min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="mb-6 flex justify-between items-center">
+        <div>
+            <h1 class="text-3xl font-bold text-slate-800 tracking-tight">El Consejo Pyme</h1>
+            <p class="text-slate-500 text-sm">Tu equipo de estrategas personal</p>
+        </div>
+        <a href="{{ url_for('web.dashboard') }}" class="text-slate-400 hover:text-slate-600">✕</a>
+    </header>
+
+    <!-- Council Members (Avatars) -->
+    <div class="flex justify-center gap-6 mb-8 px-4">
+        <!-- Socio -->
+        <div class="flex flex-col items-center opacity-50 transition-opacity duration-300" id="avatar-socio">
+            <div
+                class="w-16 h-16 rounded-full bg-rose-100 flex items-center justify-center text-3xl shadow-sm border-2 border-rose-200">
+                🐯
+            </div>
+            <span class="text-xs font-bold text-rose-800 mt-2">El Socio</span>
+            <span class="text-[10px] text-rose-600">Ventas</span>
+        </div>
+        <!-- Gestor -->
+        <div class="flex flex-col items-center opacity-50 transition-opacity duration-300" id="avatar-gestor">
+            <div
+                class="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center text-3xl shadow-sm border-2 border-slate-200">
+                🦉
+            </div>
+            <span class="text-xs font-bold text-slate-800 mt-2">El Gestor</span>
+            <span class="text-[10px] text-slate-600">Fiscal</span>
+        </div>
+        <!-- Coach -->
+        <div class="flex flex-col items-center opacity-50 transition-opacity duration-300" id="avatar-coach">
+            <div
+                class="w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center text-3xl shadow-sm border-2 border-indigo-200">
+                🚀
+            </div>
+            <span class="text-xs font-bold text-indigo-800 mt-2">El Coach</span>
+            <span class="text-[10px] text-indigo-600">Productividad</span>
+        </div>
+    </div>
+
+    <!-- Chat Area -->
+    <div id="chat-container" class="flex-1 overflow-y-auto space-y-4 mb-20 p-2 scroll-smooth">
+        <!-- Welcome Message -->
+        <div class="bg-indigo-50 p-4 rounded-xl rounded-tl-none border border-indigo-100 max-w-[85%]">
+            <p class="text-sm text-indigo-900 leading-relaxed">
+                👋 <strong>Bienvenido a la Sala de Juntas.</strong><br>
+                Soy tu Coordinador. Hoy te acompañan El Socio 🐯, El Gestor 🦉 y El Coach 🚀.
+                <br><br>
+                Cuéntanos, <strong>¿qué dilema tienes hoy?</strong>
+                <br>
+                <em class="text-xs text-indigo-400">Ej: "¿Debería contratar a un empleado?", "Quiero vender más en
+                    Instagram".</em>
+            </p>
+        </div>
+    </div>
+
+    <!-- Input Area -->
+    <div class="fixed bottom-0 left-0 w-full bg-white/90 backdrop-blur-md border-t border-slate-200 p-4">
+        <div class="max-w-2xl mx-auto flex gap-2">
+            <input type="text" id="userInput"
+                class="flex-1 bg-slate-100 border-0 rounded-full px-5 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800 placeholder-slate-400"
+                placeholder="Escribe tu problema...">
+            <button onclick="startSession()"
+                class="bg-indigo-600 text-white w-12 h-12 rounded-full flex items-center justify-center hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-transform active:scale-95">
+                ➤
+            </button>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    async function startSession() {
+        const input = document.getElementById('userInput');
+        const topic = input.value.trim();
+        if (!topic) return;
+
+        // 1. Add User Message
+        addMessage('user', topic);
+        input.value = '';
+        input.disabled = true; // Disable input during debate
+
+        // 2. Start Stream
+        try {
+            const response = await fetch('/api/council/stream', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ topic: topic })
+            });
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const chunk = decoder.decode(value);
+                const lines = chunk.split('\n');
+
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        try {
+                            const data = JSON.parse(line.substring(6));
+                            handleEvent(data);
+                        } catch (e) { console.error("Error parsing SSE", e); }
+                    }
+                }
+            }
+
+            // Enable input again? Maybe new session button.
+            addMessage('system', "La sesión ha finalizado. ¿Otro tema?");
+            input.disabled = false;
+            input.focus();
+
+        } catch (e) {
+            console.error(e);
+            addMessage('system', "❌ Hubo un error conectando con el Consejo.");
+            input.disabled = false;
+        }
+    }
+
+    function handleEvent(data) {
+        if (data.type === 'message') {
+            // Highlight Speaker
+            highlightAvatar(data.agent);
+            addMessage(data.agent, data.text, data.name, data.emoji);
+        } else if (data.type === 'plan') {
+            highlightAvatar(null); // Reset
+            addPlan(data.text);
+        }
+    }
+
+    function highlightAvatar(agentKey) {
+        ['socio', 'gestor', 'coach'].forEach(k => {
+            const el = document.getElementById(`avatar-${k}`);
+            if (k === agentKey) {
+                el.classList.remove('opacity-50', 'scale-100');
+                el.classList.add('opacity-100', 'scale-110');
+            } else {
+                el.classList.add('opacity-50', 'scale-100');
+                el.classList.remove('opacity-100', 'scale-110');
+            }
+        });
+    }
+
+    function addMessage(agent, text, name, emoji) {
+        const container = document.getElementById('chat-container');
+        const div = document.createElement('div');
+
+        if (agent === 'user') {
+            div.className = "flex justify-end";
+            div.innerHTML = `
+                <div class="bg-indigo-600 text-white px-5 py-3 rounded-2xl rounded-tr-none max-w-[80%] shadow-md">
+                    <p class="text-sm">${text}</p>
+                </div>
+            `;
+        } else if (agent === 'system') {
+            div.className = "flex justify-center";
+            div.innerHTML = `
+                <span class="text-xs font-bold text-slate-400 bg-slate-100 px-3 py-1 rounded-full">${text}</span>
+            `;
+        } else {
+            // Agent Message
+            const colorClass = agent === 'socio' ? 'bg-rose-50 text-rose-900 border-rose-100' :
+                agent === 'gestor' ? 'bg-slate-50 text-slate-900 border-slate-100' :
+                    'bg-indigo-50 text-indigo-900 border-indigo-100'; // coach
+
+            div.className = "flex justify-start animate-fade-in-up";
+            div.innerHTML = `
+                <div class="${colorClass} p-4 rounded-xl rounded-tl-none border max-w-[85%] shadow-sm">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="text-lg">${emoji}</span>
+                        <span class="text-xs font-bold opacity-70">${name}</span>
+                    </div>
+                    <p class="text-sm leading-relaxed">${text}</p>
+                </div>
+            `;
+        }
+
+        container.appendChild(div);
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function addPlan(markdownText) {
+        const container = document.getElementById('chat-container');
+        const div = document.createElement('div');
+        div.className = "bg-white p-6 rounded-2xl border-2 border-indigo-100 shadow-xl my-6 animate-fade-in-up";
+
+        // Simple Markdown parser for bold and lists
+        let html = markdownText
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\n- /g, '<br>• ');
+
+        div.innerHTML = `
+            <div class="flex items-center gap-2 mb-4">
+                <span class="text-2xl">📝</span>
+                <h3 class="text-lg font-bold text-slate-800">Plan de Acción Consensuado</h3>
+            </div>
+            <div class="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">${html}</div>
+            <div class="mt-6 flex justify-end">
+                <button onclick="window.print()" class="text-xs font-bold text-indigo-600 hover:underline">🖨️ Imprimir Plan</button>
+            </div>
+        `;
+
+        container.appendChild(div);
+        container.scrollTop = container.scrollHeight;
+    }
+</script>
+
+<style>
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .animate-fade-in-up {
+        animation: fadeInUp 0.4s ease-out forwards;
+    }
+</style>
+{% endblock %}

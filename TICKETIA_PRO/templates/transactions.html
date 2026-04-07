@@ -3,13 +3,13 @@
 {% block content %}
 <div class="px-6 py-8 max-w-lg mx-auto w-full pb-24">
     <div class="mb-6">
-        <a href="{{ url_for('dashboard') }}"
+        <a href="{{ url_for('web.dashboard') }}"
             class="inline-flex items-center text-sm font-medium text-slate-400 hover:text-indigo-600 transition-colors mb-4">
             ← Volver al inicio
         </a>
         <div class="flex justify-between items-center">
             <h1 class="text-2xl font-bold text-slate-800">Movimientos</h1>
-            <a href="{{ url_for('export_excel') }}"
+            <a href="{{ url_for('web.export_excel') }}"
                 class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-lg font-medium transition-colors">
                 📥 Excel
             </a>

@@ -9,7 +9,7 @@
             <p class="text-slate-400 mt-2 text-sm">Empieza a digitalizar tus tickets</p>
         </div>
 
-        <form action="{{ url_for('register') }}" method="POST" class="space-y-5">
+        <form action="{{ url_for('web.register') }}" method="POST" class="space-y-5">
 
             <div>
                 <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">Nombre
@@ -48,7 +48,7 @@
         <div class="mt-8 text-center">
             <p class="text-xs text-slate-400 font-medium">
                 ¿Ya tienes cuenta?
-                <a href="{{ url_for('login') }}"
+                <a href="{{ url_for('web.login') }}"
                     class="text-indigo-600 hover:text-indigo-700 font-bold ml-1 transition-colors">Inicia sesión</a>
             </p>
         </div>

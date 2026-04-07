@@ -1,16 +1,24 @@
 import os
+from datetime import timedelta
 
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev_key_super_secret_123'
-    
+
     # Database Config
     uri = os.environ.get('DATABASE_URL')
     if uri and uri.startswith("postgres://"):
         uri = uri.replace("postgres://", "postgresql://", 1)
-    
+
     basedir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
     SQLALCHEMY_DATABASE_URI = uri or 'sqlite:///' + os.path.join(basedir, 'instance', 'zeptai.db')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    # Session security
+    SESSION_PERMANENT = True
+    PERMANENT_SESSION_LIFETIME = timedelta(hours=8)
+    SESSION_COOKIE_HTTPONLY = True   # JS no puede leer la cookie de sesion
+    SESSION_COOKIE_SAMESITE = 'Lax' # Proteccion CSRF basica
+    # En produccion con HTTPS, activar: SESSION_COOKIE_SECURE = True
     
     # NUEVO: URL Pública para webhooks y medios (ngrok o dominio real)
     # Elimina la barra final si el usuario la pone

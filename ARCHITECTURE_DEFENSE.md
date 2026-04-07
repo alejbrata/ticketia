@@ -14,11 +14,12 @@ Hemos elegido una arquitectura **Monolito Modular** basada en **Python**.
 
 ### Diagrama Mental de Flujo
 1.  **Usuario** interactúa (Web o WhatsApp).
-2.  **Flask (`app.py`)** recibe la petición HTTP.
-3.  **Manager (`manager.py`)** toma el control si es una tarea de IA.
-4.  **LLM (GPT-4o)** "piensa" y decide qué herramienta usar.
-5.  **Tools (`tools.py` / `logic.py`)** ejecutan la acción (Guardar en DB, consultar API externa).
-6.  **Respuesta** se genera y se envía al usuario.
+2.  **Flask (`routes/webhooks.py` o `routes/web.py`)** recibe la petición HTTP de forma modularizada gracias a **Blueprints**.
+3.  **Dispatcher (`whatsapp_dispatcher.py`)** enruta la lógica según el tipo de mensaje (audio, imagen, texto) y el perfil del negocio (multi-tenant).
+4.  **Manager (`manager.py`)** toma el control delegando en su **`AgentExecutor`** (Máquina de Estados) si es una tarea de IA.
+5.  **LLM (GPT-4o)** "piensa" y decide qué herramienta usar usando `TOOLS_SCHEMA`.
+6.  **Tools (`tools.py` / `logic.py`)** ejecutan la acción (Guardar en DB, consultar API externa).
+7.  **Respuesta** se genera y se envía al usuario.
 
 ---
 
@@ -26,15 +27,15 @@ Hemos elegido una arquitectura **Monolito Modular** basada en **Python**.
 
 Esta es la joya de la corona. No es un chatbot simple de "pregunta-respuesta", es un **Agente Orquestador**.
 
-### El Orquestador (`manager.py`)
-Este archivo implementa el bucle de razonamiento (Reasoning Loop).
-*   **Concepto Clave**: *ReAct (Reason + Act)*.
+### El Orquestador (`manager.py` con `AgentExecutor`)
+Este archivo implementa el bucle de razonamiento (Reasoning Loop) mediante un patrón de clases orientado a objetos.
+*   **Concepto Clave**: *ReAct (Reason + Act)* implementado mediante una Máquina de Estados.
 *   **Cómo funciona el código**:
-    1.  Recibe el mensaje del usuario.
+    1.  El `AgentExecutor` recibe el mensaje del usuario y lo encapsula.
     2.  Inyecta el **System Prompt** (personalidad y reglas de negocio del `BusinessProfile`).
     3.  Envía el mensaje + la lista de herramientas (`TOOLS_SCHEMA`) a la API de OpenAI.
     4.  **Paso Crítico**: OpenAI no ejecuta la herramienta. OpenAI devuelve un JSON diciendo: *"Por favor, ejecuta la función `check_availability` con fecha '2023-10-20'"*.
-    5.  El `run_agent` detecta esta petición (`tool_calls`), busca la función Python real en `tools.py`, la ejecuta, y le devuelve el resultado a la IA.
+    5.  El método `_process_tool_calls` detecta esta petición (`tool_calls`), busca la función Python real en `tools.py`, la ejecuta, y le devuelve el resultado a la IA. Algunas tareas pesadas (como generar videos) se envían a hilos asíncronos (`background_tasks.py`).
     6.  La IA genera la respuesta final en lenguaje natural con ese dato.
 
 ### Las Herramientas (`tools.py`)
@@ -89,7 +90,7 @@ Aquí es donde el sistema deja de ser reactivo y pasa a trabajar solo.
 
 ---
 
-## 🛡️ Capítulo 5: MLOps y Calidad (`mlops/`)
+## 🛡️ Capítulo 5: LLMOps y Calidad (`llmops/`)
 
 ¿Cómo sabemos que el sistema funciona?
 
@@ -116,3 +117,20 @@ Implementamos un marco de evaluación automática.
 
 ### P: "¿Qué pasa si GPT 'alucina' un precio?"
 **R**: "Por eso implementamos el campo `raw_data` y mantenemos la imagen original. Además, en la interfaz de usuario, siempre mostramos los datos extraídos para que el humano valide antes de contabilizar. La IA es un copiloto, no el piloto automático definitivo en temas fiscales."
+
+---
+
+## 🔌 Capítulo 6: Model Context Protocol (MCP)
+
+La integración más reciente y avanzada del proyecto es la adopción del **Model Context Protocol (MCP)**, un estándar abierto para conectar modelos de inteligencia artificial (como GPT-4o o Claude) con fuentes de datos y herramientas externas.
+
+### Ticketia como Servidor MCP (SSE)
+*   **El Problema:** Ticketia guarda facturas y gastos, pero herramientas externas de IA (como un Claude corporativo) no pueden acceder a estos datos privados.
+*   **La Solución:** Implementamos `mcp_server_sse.py`, un servidor basado en Starlette que expone nuestros datos mediante *Server-Sent Events*. Ahora expone la herramienta `get_financial_summary`.
+*   **El Valor TFM:** Convertimos a Ticketia no solo en un SaaS de IA, sino en un **Proveedor de Contexto**. Nuestro programa es compatible con el naciente ecosistema de Open Source de agentes.
+
+### Ticketia como Cliente MCP (Agentes Inteligentes Autocontenidos)
+*   **El Problema:** "El Consejo" (modulo `orchestrator.py`) era estático. Basaba sus respuestas solo en el contexto simulado.
+*   **La Solución:** En lugar de lanzar servidores Node.js separados, creamos herramientas locales en Python (`search_web` usando DuckDuckGo, `schedule_appointment` conectando a DB) registradas en `mcp_server.py`.
+*   **El Cerebro MCP:** Refactorizamos `CouncilManager` a concurrencia asíncrona (`asyncio`). A través del `TicketiaMCPClient`, cuando a un agente se le pide buscar en el BOE, la petición pausa, llama a la herramienta desde protocolo STDIO, hace la búsqueda web y realimenta a OpenAI para la respuesta final.
+*   **El Valor TFM:** Demostramos arquitecturas *Agentic* complejas (Plan -> Call Tool -> Parse -> Respond), elevando el sistema de "Chatbot con RAG" a "Agentes Autónomos Locales" capaces de percibir el mundo en tiempo real (BOE) sin depender de plugins de terceros de OpenAI.
