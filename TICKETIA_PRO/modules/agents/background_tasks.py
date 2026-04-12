@@ -1,24 +1,25 @@
+import logging
 import threading
-import os
 from flask import current_app
 from core.db_models import GeneratedDocument, ActivityLog, db
-from core.clients import get_twilio_client
 
-def perform_async_marketing_generation(user_phone, prompt, format_type, host_url, p_business_name, p_logo_path, context_app, p_channel):
+logger = logging.getLogger(__name__)
+
+def perform_async_marketing_generation(user_phone, prompt, format_type, host_url, p_business_name, p_logo_path, context_app):
     """
     Ejecuta la generación de contenido de marketing en segundo plano para no bloquear
-    la respuesta a la petición HTTP.
+    la respuesta a la petición HTTP. El resultado queda guardado en Documentos (PWA).
     """
     with context_app.app_context():
         try:
-            print(f"🧵 Thread: Iniciando generación background para {user_phone} via {p_channel}...")
+            logger.info("Thread: iniciando generación background para %s", user_phone)
             from modules.proactive.marketing_agent import MarketingAgent
+            from modules.services.notification import NotificationService
             agent = MarketingAgent()
-            
-            file_path = agent.generate_marketing_content(prompt, format_type, business_name=p_business_name, logo_path=p_logo_path)
-            
+
+            file_path = agent.generate_marketing_content(prompt, format_type, business_name=p_business_name, logo_path=p_logo_path, user_phone=user_phone)
+
             if file_path:
-                # Save to DB
                 try:
                     doc_type = 'video_prompt' if format_type == 'video' else ('image' if format_type == 'image' else 'presentation')
                     new_doc = GeneratedDocument(
@@ -29,38 +30,37 @@ def perform_async_marketing_generation(user_phone, prompt, format_type, host_url
                     db.session.add(new_doc)
                     db.session.commit()
                 except Exception as e:
-                    print(f"Error saving GeneratedDocument (Thread): {e}")
+                    logger.error("Thread: error guardando GeneratedDocument: %s", e)
 
-                # Notificar WhatsApp solo si el canal original era WhatsApp
-                if p_channel == 'whatsapp':
-                    client = get_twilio_client()
-                    
-                    to_number = f"whatsapp:{user_phone}" if "whatsapp:" not in user_phone else user_phone
-                    full_url = f"{host_url.rstrip('/')}{file_path}" if not file_path.startswith('http') else file_path
+                ActivityLog.log(user_phone, "Marketing Agent", f"Diseño listo en Documentos: {format_type}")
 
-                    msg_body = "🎨 ¡Aquí tienes tu diseño!" if format_type == 'image' else "📊 ¡Presentación lista!"
-                    if format_type == 'video': msg_body = "🎬 ¡Estrategia de Vídeo Lista!"
-                    
-                    client.messages.create(
-                        from_="whatsapp:+14155238886",
-                        to=to_number,
-                        body=f"{msg_body}\n{full_url}",
-                        media_url=[full_url]
-                    )
-                    print(f"🧵 Thread: ✅ Enviado a {user_phone} (WhatsApp)")
-                else:
-                    print(f"🧵 Thread: ✅ Guardado para Web. No se envía WhatsApp.")
-                    ActivityLog.log(user_phone, "Marketing Agent", f"Diseño listo en Documentos: {format_type}")
+                # Notificar al usuario en la app
+                type_labels = {'video': ('🎬 Reel listo', 'Tu vídeo ya está disponible en Documentos → Video Prompts.'),
+                               'image': ('🖼️ Imagen lista', 'Tu imagen ya está disponible en Documentos → Imágenes.'),
+                               'presentation': ('📊 Presentación lista', 'Tu presentación ya está disponible en Documentos.')}
+                title, message = type_labels.get(format_type, ('✅ Contenido listo', 'Tu contenido de marketing ya está disponible en Documentos.'))
+                NotificationService.send_in_app(user_phone, title, message, type='info', link='/documents')
+
+                logger.info("Thread: contenido guardado y notificación enviada para %s", user_phone)
             else:
-                print("🧵 Thread: ❌ Falló la generación (path vacío).")
+                logger.warning("Thread: generación fallida (Runway no disponible) para %s", user_phone)
+                NotificationService.send_in_app(
+                    user_phone,
+                    '⚠️ Error generando vídeo',
+                    'No se pudo generar el vídeo. Comprueba que RUNWAYML_API_SECRET está configurado.',
+                    type='alert',
+                    link='/marketing'
+                )
         except Exception as e:
-            print(f"🧵 Thread: ❌ Error Crítico: {e}")
+            logger.error("Thread: error crítico para %s: %s", user_phone, e)
 
-def run_marketing_thread(user_phone, prompt, format_type, host_url, p_business_name, p_logo_path, p_channel):
+
+def run_marketing_thread(user_phone, prompt, format_type, host_url, p_business_name, p_logo_path):
     """Lanzador del hilo de marketing"""
     app_obj = current_app._get_current_object()
     thread = threading.Thread(
-        target=perform_async_marketing_generation, 
-        args=(user_phone, prompt, format_type, host_url, p_business_name, p_logo_path, app_obj, p_channel)
+        target=perform_async_marketing_generation,
+        args=(user_phone, prompt, format_type, host_url, p_business_name, p_logo_path, app_obj),
+        daemon=True,
     )
     thread.start()

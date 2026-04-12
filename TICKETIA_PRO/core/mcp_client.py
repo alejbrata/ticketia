@@ -1,8 +1,8 @@
 """
 Cliente MCP con soporte de dos transportes:
 
-1. SSE (Server-Sent Events) — PREFERIDO en produccion
-   - Requiere que mcp_server_sse.py este corriendo como proceso separado.
+1. SSE (Server-Sent Events) — PREFERIDO en producción
+   - Requiere que mcp_server_sse.py esté corriendo como proceso separado.
    - Se activa definiendo MCP_SSE_URL en .env, p.ej:
        MCP_SSE_URL=http://localhost:8001/sse
    - Ventaja: sin fork de proceso por llamada, latencia ~5 ms.
@@ -10,21 +10,25 @@ Cliente MCP con soporte de dos transportes:
 2. stdio — FALLBACK para desarrollo/testing
    - Lanza mcp_server.py como subprocess en cada llamada.
    - Sin dependencias de proceso externo, pero ~500 ms de overhead por fork.
-   - Se usa automaticamente si MCP_SSE_URL no esta definida.
+   - Se usa automáticamente si MCP_SSE_URL no está definida.
 """
 
 import asyncio
 import os
 import json
+import logging
+import time as _time
 from openai import AsyncOpenAI
 from mcp import ClientSession
 from mcp.client.stdio import stdio_client, StdioServerParameters
+
+logger = logging.getLogger(__name__)
 
 
 class TicketiaMCPClient:
     """
     Ejecuta un loop de agente OpenAI usando herramientas expuestas via MCP.
-    Selecciona automaticamente el transporte SSE o stdio segun la configuracion.
+    Selecciona automáticamente el transporte SSE o stdio según la configuración.
     """
 
     def __init__(self):
@@ -48,7 +52,7 @@ class TicketiaMCPClient:
     # ── SSE transport ─────────────────────────────────────────────────────────
 
     async def _run_with_sse(self, system_prompt: str, user_message: str) -> str:
-        """Conecta al servidor MCP SSE ya en ejecucion (sin fork de proceso)."""
+        """Conecta al servidor MCP SSE ya en ejecución (sin fork de proceso)."""
         try:
             from mcp.client.sse import sse_client
 
@@ -58,8 +62,7 @@ class TicketiaMCPClient:
                     return await self._agent_loop(session, system_prompt, user_message)
 
         except Exception as e:
-            print(f"[MCP-SSE] Error conectando a {self._sse_url}: {e}")
-            print("[MCP-SSE] Cayendo a transporte stdio como fallback...")
+            logger.warning("MCP-SSE error conectando a %s: %s — cayendo a stdio", self._sse_url, e)
             return await self._run_with_stdio(system_prompt, user_message)
 
     # ── stdio transport ───────────────────────────────────────────────────────
@@ -79,10 +82,10 @@ class TicketiaMCPClient:
                     return await self._agent_loop(session, system_prompt, user_message)
 
         except Exception as e:
-            print(f"[MCP-stdio] Error: {e}")
+            logger.error("MCP-stdio error: %s", e)
             return f"Error del sistema al acceder a las herramientas: {e}"
 
-    # ── Loop comun ────────────────────────────────────────────────────────────
+    # ── Loop común ────────────────────────────────────────────────────────────
 
     async def _agent_loop(
         self,
@@ -91,10 +94,10 @@ class TicketiaMCPClient:
         user_message: str
     ) -> str:
         """
-        Logica compartida entre SSE y stdio:
+        Lógica compartida entre SSE y stdio:
         1. Obtener lista de tools del servidor MCP.
         2. Primera llamada al LLM con las tools disponibles.
-        3. Si hay tool_calls: ejecutarlas y hacer segunda llamada para sintesis.
+        3. Si hay tool_calls: ejecutarlas y hacer segunda llamada para síntesis.
         4. Devolver texto final.
         """
         messages = [
@@ -117,24 +120,29 @@ class TicketiaMCPClient:
         ]
 
         # Primera llamada al LLM
+        _t0 = _time.time()
         response = await self._openai.chat.completions.create(
             model="gpt-4o",
             messages=messages,
             tools=openai_tools,
         )
+        _latency = int((_time.time() - _t0) * 1000)
+        self._track_call("gpt-4o", "council_mcp_main", response, _latency)
+
         response_msg = response.choices[0].message
         messages.append(response_msg)
 
         # Ejecutar tool calls si los hay
         if response_msg.tool_calls:
             for tool_call in response_msg.tool_calls:
-                print(f"[MCP] Tool solicitada: {tool_call.function.name}")
+                logger.info("MCP tool solicitada: %s", tool_call.function.name)
                 args = json.loads(tool_call.function.arguments)
 
                 try:
                     result = await session.call_tool(tool_call.function.name, arguments=args)
-                    tool_result = result.content[0].text if result.content else "Exito sin salida."
+                    tool_result = result.content[0].text if result.content else "Éxito sin salida."
                 except Exception as e:
+                    logger.error("MCP tool %s error: %s", tool_call.function.name, e)
                     tool_result = f"Error ejecutando {tool_call.function.name}: {e}"
 
                 messages.append({
@@ -145,13 +153,26 @@ class TicketiaMCPClient:
                 })
 
             # Segunda llamada para sintetizar los resultados de las tools
+            _t0 = _time.time()
             final_response = await self._openai.chat.completions.create(
                 model="gpt-4o",
                 messages=messages,
             )
-            return final_response.choices[0].message.content
+            _latency = int((_time.time() - _t0) * 1000)
+            self._track_call("gpt-4o", "council_mcp_followup", final_response, _latency)
+            return final_response.choices[0].message.content or ""
 
-        return response_msg.content
+        return response_msg.content or ""
+
+    # ── Helpers ───────────────────────────────────────────────────────────────
+
+    def _track_call(self, model: str, stage: str, response, latency_ms: int) -> None:
+        """Registra la llamada LLM en la BD de métricas (best-effort, sin romper el flujo)."""
+        try:
+            from core.llm_tracker import track
+            track(None, model, stage, response, latency_ms)
+        except Exception as e:
+            logger.debug("MCP tracking error (non-critical): %s", e)
 
 
 # ── Singleton ─────────────────────────────────────────────────────────────────

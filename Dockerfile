@@ -29,7 +29,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # run_scheduler.py esta en la raiz del repo (no dentro de TICKETIA_PRO),
 # por eso necesita su propia instruccion COPY.
 COPY run_scheduler.py /app/run_scheduler.py
+COPY entrypoint.sh /app/entrypoint.sh
 COPY ./TICKETIA_PRO /app/TICKETIA_PRO
+RUN chmod +x /app/entrypoint.sh
 
 # ─── Directorio de trabajo de la aplicacion Flask ─────────────────────────────
 # Todos los imports internos (from core.xxx, from modules.xxx) asumen que
@@ -44,4 +46,4 @@ EXPOSE 5000
 # - timeout 120s: algunas llamadas a GPT-4o pueden tardar >30s con tool calls
 # - bind 0.0.0.0 para que Docker pueda redirigir el puerto
 # Para sobreescribir en docker-compose usar la clave 'command:'
-CMD ["gunicorn", "-w", "2", "-b", "0.0.0.0:5000", "--timeout", "120", "app:app"]
+CMD ["/app/entrypoint.sh"]

@@ -263,13 +263,12 @@
 
     <!-- Voice Button (Right side, adjusted to not overlap chat) -->
     <div class="pointer-events-auto mr-14 md:mr-24 flex flex-col gap-2">
-        <button id="recordBtn" type="button" onmousedown="startRecording()" onmouseup="stopRecording()"
-            ontouchstart="startRecording()" ontouchend="stopRecording()"
+        <button id="recordBtn" type="button" onclick="toggleRecording()"
             class="flex items-center gap-2 bg-rose-500 text-white px-5 py-4 rounded-full shadow-xl shadow-rose-200 hover:bg-rose-600 transition-transform hover:scale-105 active:scale-95 animate-bounce-in relative overflow-hidden group select-none">
             <div class="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform">
             </div>
-            <span class="text-2xl">🎙️</span>
-            <span class="font-bold text-sm hidden sm:inline">Hablar</span>
+            <span class="text-2xl" id="recordBtnIcon">🎙️</span>
+            <span class="font-bold text-sm hidden sm:inline" id="recordBtnText">Hablar</span>
         </button>
     </div>
 </div>
@@ -370,45 +369,87 @@
     }
 
     // --- LÓGICA DE AUDIO (MediaRecorder) ---
-    let mediaRecorder;
+    let mediaRecorder = null;
     let audioChunks = [];
+    let isRecording = false;
+    let recordingStartTime = null;
+    const MIN_RECORDING_MS = 800; // Whisper requiere mínimo ~0.1s; usamos 0.8s para seguridad
 
-    async function startRecording() {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(stream);
-            audioChunks = [];
-
-            mediaRecorder.ondataavailable = event => {
-                audioChunks.push(event.data);
-            };
-
-            mediaRecorder.onstop = uploadAudio;
-            mediaRecorder.start();
-
-            document.getElementById('recordingIndicator').classList.remove('hidden');
-            document.getElementById('recordBtn').classList.add('scale-110', 'ring-4', 'ring-rose-300');
-        } catch (err) {
-            window.showToast("Necesitamos permiso de micrófono 🎤", "error");
-        }
+    // Elegir el formato soportado por este navegador
+    function getSupportedMimeType() {
+        const candidates = [
+            'audio/webm;codecs=opus',
+            'audio/webm',
+            'audio/ogg;codecs=opus',
+            'audio/mp4',
+        ];
+        return candidates.find(t => MediaRecorder.isTypeSupported(t)) || '';
     }
 
-    function stopRecording() {
-        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-            mediaRecorder.stop();
+    function mimeToExtension(mimeType) {
+        if (mimeType.includes('mp4'))  return '.mp4';
+        if (mimeType.includes('ogg'))  return '.ogg';
+        return '.webm';
+    }
+
+    async function toggleRecording() {
+        if (isRecording) {
+            // --- PARAR ---
+            const elapsed = Date.now() - recordingStartTime;
+            if (elapsed < MIN_RECORDING_MS) {
+                await new Promise(r => setTimeout(r, MIN_RECORDING_MS - elapsed));
+            }
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+                mediaRecorder.stream.getTracks().forEach(t => t.stop());
+            }
+            isRecording = false;
             document.getElementById('recordingIndicator').classList.add('hidden');
-            document.getElementById('recordBtn').classList.remove('scale-110', 'ring-4', 'ring-rose-300');
+            document.getElementById('recordBtn').classList.remove('scale-110', 'ring-4', 'ring-rose-300', 'bg-red-600');
+            document.getElementById('recordBtn').classList.add('bg-rose-500');
+            document.getElementById('recordBtnIcon').textContent = '🎙️';
+            document.getElementById('recordBtnText').textContent = 'Hablar';
+        } else {
+            // --- EMPEZAR ---
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const mimeType = getSupportedMimeType();
+                mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+                audioChunks = [];
+                recordingStartTime = Date.now();
+
+                mediaRecorder.ondataavailable = e => {
+                    if (e.data && e.data.size > 0) audioChunks.push(e.data);
+                };
+                // onstop se define aquí para capturar mimeType real del recorder
+                mediaRecorder.onstop = () => uploadAudio(mediaRecorder.mimeType || mimeType);
+                mediaRecorder.start(100);
+
+                isRecording = true;
+                document.getElementById('recordingIndicator').classList.remove('hidden');
+                document.getElementById('recordBtn').classList.add('scale-110', 'ring-4', 'ring-rose-300');
+                document.getElementById('recordBtn').classList.remove('bg-rose-500');
+                document.getElementById('recordBtn').classList.add('bg-red-600');
+                document.getElementById('recordBtnIcon').textContent = '⏹️';
+                document.getElementById('recordBtnText').textContent = 'Parar';
+            } catch (err) {
+                window.showToast("Necesitamos permiso de micrófono 🎤", "error");
+            }
         }
     }
 
-    async function uploadAudio() {
-        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+    async function uploadAudio(mimeType) {
+        if (audioChunks.length === 0) {
+            window.showToast("No se capturó audio. Inténtalo de nuevo.", "error");
+            return;
+        }
+        const ext = mimeToExtension(mimeType);
+        const audioBlob = new Blob(audioChunks, { type: mimeType });
         const formData = new FormData();
-        formData.append('audio', audioBlob, 'recording.webm');
+        formData.append('audio', audioBlob, 'recording' + ext);
 
-        // Feedback
-        const originalText = document.getElementById('recordBtn').innerHTML;
-        document.getElementById('recordBtn').innerHTML = "⏳ ...";
+        document.getElementById('recordBtnIcon').textContent = '⏳';
+        document.getElementById('recordBtnText').textContent = '...';
         window.showToast("Procesando audio...", "info");
 
         try {
@@ -428,7 +469,8 @@
             console.error(e);
             window.showToast("Error de conexión", "error");
         } finally {
-            document.getElementById('recordBtn').innerHTML = originalText;
+            document.getElementById('recordBtnIcon').textContent = '🎙️';
+            document.getElementById('recordBtnText').textContent = 'Hablar';
         }
     }
 </script>

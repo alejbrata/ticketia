@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="px-6 py-8 pb-24 max-w-2xl mx-auto w-full">
+
+    <header class="mb-8">
+        <h1 class="text-3xl font-bold text-slate-800 tracking-tight">Reels & Vídeos</h1>
+        <p class="text-slate-500 mt-1 font-medium">De foto de producto a vídeo listo para publicar</p>
+    </header>
+
+    <!-- Hero card -->
+    <div class="bg-gradient-to-br from-purple-600 to-pink-600 rounded-[2rem] p-8 mb-8 text-white relative overflow-hidden">
+        <div class="relative z-10">
+            <p class="text-purple-200 text-xs font-bold uppercase tracking-widest mb-2">Powered by Runway ML Gen-3</p>
+            <h2 class="text-2xl font-bold mb-2">Sube una foto → obtén un reel</h2>
+            <p class="text-purple-100 text-sm leading-relaxed mb-6">
+                La IA anima tu foto y genera un vídeo corto (~5 s) listo para Instagram, TikTok o WhatsApp.
+                Sin edición. Sin apps extra.
+            </p>
+            <ul class="space-y-1.5 text-sm text-purple-100 mb-6">
+                <li class="flex items-center gap-2"><span class="text-white font-bold">✓</span> Formato vertical 9:16</li>
+                <li class="flex items-center gap-2"><span class="text-white font-bold">✓</span> Se guarda en Documentos</li>
+                <li class="flex items-center gap-2"><span class="text-white font-bold">✓</span> Genera en ~1-2 minutos</li>
+            </ul>
+        </div>
+        <div class="absolute -bottom-8 -right-8 w-36 h-36 bg-pink-500 rounded-full blur-3xl opacity-40"></div>
+    </div>
+
+    <!-- Upload zone -->
+    <div class="bg-white rounded-[2rem] border border-slate-100 shadow-sm p-6 mb-6">
+        <h3 class="font-bold text-slate-800 mb-4">1. Sube tu foto de producto</h3>
+
+        <div id="dropZone"
+            onclick="document.getElementById('photoInput').click()"
+            class="border-2 border-dashed border-slate-200 rounded-2xl p-10 text-center cursor-pointer hover:border-purple-400 hover:bg-purple-50/40 transition-all group">
+            <div class="text-5xl mb-3 group-hover:scale-110 transition-transform select-none">📸</div>
+            <p class="font-bold text-slate-600 mb-1">Toca para elegir una foto</p>
+            <p class="text-xs text-slate-400">JPG o PNG · máx. 10 MB</p>
+            <input type="file" id="photoInput" class="hidden" accept="image/jpeg,image/png"
+                onchange="handlePhotoSelected(this)">
+        </div>
+
+        <!-- Preview de la imagen seleccionada -->
+        <div id="previewSection" class="hidden mt-5">
+            <div class="flex items-center gap-4 bg-slate-50 rounded-2xl p-4">
+                <img id="previewImg" src="" alt="Preview"
+                    class="w-20 h-20 object-cover rounded-xl border border-slate-200 shadow-sm">
+                <div class="flex-1 min-w-0">
+                    <p id="previewName" class="font-bold text-slate-700 text-sm truncate"></p>
+                    <p id="previewSize" class="text-xs text-slate-400 mt-0.5"></p>
+                </div>
+                <button onclick="resetUpload()" class="text-slate-300 hover:text-red-400 transition-colors text-xl p-1">✕</button>
+            </div>
+
+            <button id="generateBtn" onclick="generateVideo()"
+                class="mt-4 w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-bold py-4 rounded-2xl transition-all shadow-lg shadow-purple-200 active:scale-95 text-base">
+                🎬 Generar Reel
+            </button>
+        </div>
+    </div>
+
+    <!-- Estado generando -->
+    <div id="generatingCard" class="hidden bg-white rounded-[2rem] border border-purple-100 shadow-sm p-8 text-center mb-6">
+        <div class="text-5xl mb-4">⚙️</div>
+        <h3 class="font-bold text-slate-800 mb-2">Generando tu vídeo...</h3>
+        <p class="text-slate-500 text-sm mb-5 leading-relaxed">
+            La IA está animando tu foto. Esto tarda entre 1 y 2 minutos.<br>
+            Puedes cerrar esta página, recibirás una notificación cuando esté listo.
+        </p>
+        <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+            <div class="bg-gradient-to-r from-purple-500 to-pink-500 h-2 rounded-full animate-pulse" style="width: 60%"></div>
+        </div>
+        <a href="{{ url_for('web.documents_page') }}"
+            class="mt-5 inline-block text-sm font-bold text-purple-600 hover:text-purple-800">
+            Ver en Documentos → Vídeos ↗
+        </a>
+    </div>
+
+    <!-- Info extra -->
+    <div class="bg-amber-50 border border-amber-100 rounded-2xl p-5 text-sm text-amber-800">
+        <p class="font-bold mb-1">💡 Consejo</p>
+        <p class="leading-relaxed">Funciona mejor con fotos de producto bien iluminadas, con fondo limpio o de color sólido. Evita imágenes borrosas o con texto.</p>
+    </div>
+
+</div>
+
+<script>
+    let selectedFile = null;
+
+    function handlePhotoSelected(input) {
+        if (!input.files || !input.files[0]) return;
+        selectedFile = input.files[0];
+
+        // Validar tamaño
+        if (selectedFile.size > 10 * 1024 * 1024) {
+            window.showToast("La imagen es demasiado grande (máx. 10 MB)", "error");
+            selectedFile = null;
+            return;
+        }
+
+        // Mostrar preview
+        const reader = new FileReader();
+        reader.onload = e => {
+            document.getElementById('previewImg').src = e.target.result;
+        };
+        reader.readAsDataURL(selectedFile);
+
+        document.getElementById('previewName').textContent = selectedFile.name;
+        document.getElementById('previewSize').textContent = (selectedFile.size / 1024).toFixed(0) + ' KB';
+
+        document.getElementById('dropZone').classList.add('hidden');
+        document.getElementById('previewSection').classList.remove('hidden');
+    }
+
+    function resetUpload() {
+        selectedFile = null;
+        document.getElementById('photoInput').value = '';
+        document.getElementById('dropZone').classList.remove('hidden');
+        document.getElementById('previewSection').classList.add('hidden');
+        document.getElementById('generatingCard').classList.add('hidden');
+    }
+
+    async function generateVideo() {
+        if (!selectedFile) return;
+
+        const btn = document.getElementById('generateBtn');
+        btn.disabled = true;
+        btn.textContent = '⏳ Enviando...';
+
+        const formData = new FormData();
+        formData.append('image', selectedFile);
+
+        try {
+            const response = await fetch('/generate_video_from_image', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                document.getElementById('previewSection').classList.add('hidden');
+                document.getElementById('dropZone').classList.add('hidden');
+                document.getElementById('generatingCard').classList.remove('hidden');
+                window.showToast("✅ Vídeo en proceso. Te avisamos cuando esté listo.", "success");
+            } else {
+                window.showToast("❌ Error: " + data.error, "error");
+                btn.disabled = false;
+                btn.textContent = '🎬 Generar Reel';
+            }
+        } catch (e) {
+            window.showToast("Error de conexión", "error");
+            btn.disabled = false;
+            btn.textContent = '🎬 Generar Reel';
+        }
+    }
+</script>
+{% endblock %}

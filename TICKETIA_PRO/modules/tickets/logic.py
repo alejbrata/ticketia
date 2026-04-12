@@ -1,135 +1,72 @@
 import os
 import json
+import logging
 import base64
-import requests
 from datetime import datetime
 from openai import OpenAI
 from core.db_models import db, Ticket
 
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+logger = logging.getLogger(__name__)
 
-def process_ticket(media_url, user_phone):
-    """
-    1. Descarga imagen (desde Twilio con Auth).
-    2. Convierte a Base64.
-    3. Consulta OpenAI.
-    4. Guarda en DB.
-    """
-    try:
-        # 1. Descargar imagen de Twilio
-        account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
-        auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
-        
-        response = requests.get(media_url, auth=(account_sid, auth_token))
-        
-        if response.status_code != 200:
-            print(f"Error descargando imagen: {response.status_code}")
-            return "⚠️ No pude descargar la imagen de Twilio."
-            
-        # 2. Guardar imagen localmente (para que sea "nuestra")
-        from core.storage import StorageService
-        # Detectar extensión si es posible, por defecto es jpg
-        db_image_path = StorageService.save_file(response.content, extension=".jpg")
+_TICKET_PROMPT = """
+Actúa como experto contable español. Extrae datos de este ticket.
+HOY ES: {today}.
 
-        # 3. Convertir a Base64 para OpenAI
-        image_data = base64.b64encode(response.content).decode('utf-8')
-        media_type = response.headers.get('Content-Type', 'image/jpeg')
-        data_url = f"data:{media_type};base64,{image_data}"
+Devuelve JSON ESTRICTO:
+{{
+    "fecha": "DD/MM/YYYY",
+    "nif": "string",
+    "proveedor": "string",
+    "numero_ticket": "string",
+    "base": float,
+    "iva_percent": float,
+    "cuota_iva": float,
+    "total": float,
+    "concepto": "resumen corto"
+}}
+Si falta algo, estima o pon null/0.
+"""
 
-        # 4. Prompt para GPT-4o
-        prompt = f"""
-        Actúa como experto contable español. Extrae datos de este ticket.
-        HOY ES: {datetime.now().strftime('%d/%m/%Y')}.
-        
-        Devuelve JSON ESTRICTO:
-        {{
-            "fecha": "DD/MM/YYYY",
-            "nif": "string",
-            "proveedor": "string", 
-            "numero_ticket": "string",
-            "base": float,
-            "iva_percent": float, 
-            "cuota_iva": float,
-            "total": float,
-            "concepto": "resumen corto"
-        }}
-        Si falta algo, estima o pon null/0.
-        """
-        
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "user", "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": data_url}}
-                ]}
-            ],
-            max_tokens=300
-        )
-        
-        content = response.choices[0].message.content.replace("```json", "").replace("```", "").strip()
-        data = json.loads(content)
-        
-        # 5. Guardar en DB
-        new_ticket = Ticket(
-            user_phone=user_phone,
-            image_path=db_image_path, # Guardamos la ruta LOCAL y PÚBLICA
-            status='processed',
-            concept=data.get('concepto', 'Gasto Varios'),
-            total=data.get('total', 0.0),
-            date=datetime.strptime(data.get('fecha', datetime.now().strftime('%d/%m/%Y')), '%d/%m/%Y'),
-            nif=data.get('nif'),
-            provider=data.get('proveedor'),
-            ticket_number=data.get('numero_ticket'),
-            base=data.get('base', 0.0),
-            tax_percent=data.get('iva_percent', 0.0),
-            fee=data.get('cuota_iva', 0.0),
-            raw_data=json.dumps(data)
-        )
-        
-        db.session.add(new_ticket)
-        db.session.commit()
-        
-        return f"✅ Ticket de {data.get('proveedor')} guardado.\n💰 Total: {data.get('total')}€"
-        
-    except Exception as e:
-        print(f"Error procesando ticket: {e}")
-        return "⚠️ Error leyendo el ticket. Inténtalo de nuevo."
+def _parse_ticket_date(fecha_str):
+    """Parsea fecha DD/MM/YYYY con fallback seguro a hoy."""
+    for fmt in ('%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y'):
+        try:
+            return datetime.strptime(fecha_str, fmt)
+        except (ValueError, TypeError):
+            continue
+    return datetime.now()
+
+
+def _build_openai_client():
+    return OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+
 
 def process_ticket_image(file_path, user_phone):
     """
-    Procesa un ticket subido directamente desde la web (App).
+    Procesa un ticket subido desde la web (PWA).
     file_path: Ruta absoluta local del archivo ya guardado.
     """
+    client = _build_openai_client()
+
     try:
-        # 1. Leer archivo local
         with open(file_path, "rb") as image_file:
             content = image_file.read()
 
-        # 2. Convertir a Base64
-        image_data = base64.b64encode(content).decode('utf-8')
-        data_url = f"data:image/jpeg;base64,{image_data}"
+        # Detectar tipo MIME real por cabecera de bytes
+        if content[:3] == b'\xff\xd8\xff':
+            media_type = 'image/jpeg'
+        elif content[:8] == b'\x89PNG\r\n\x1a\n':
+            media_type = 'image/png'
+        elif content[:4] == b'%PDF':
+            media_type = 'application/pdf'
+        else:
+            media_type = 'image/jpeg'  # fallback
 
-        # 3. Prompt (Reutilizado)
-        prompt = f"""
-        Actúa como experto contable español. Extrae datos de este ticket.
-        HOY ES: {datetime.now().strftime('%d/%m/%Y')}.
-        
-        Devuelve JSON ESTRICTO:
-        {{
-            "fecha": "DD/MM/YYYY",
-            "nif": "string",
-            "proveedor": "string", 
-            "numero_ticket": "string",
-            "base": float,
-            "iva_percent": float, 
-            "cuota_iva": float,
-            "total": float,
-            "concepto": "resumen corto"
-        }}
-        Si falta algo, estima o pon null/0.
-        """
-        
+        image_data = base64.b64encode(content).decode('utf-8')
+        data_url = f"data:{media_type};base64,{image_data}"
+
+        prompt = _TICKET_PROMPT.format(today=datetime.now().strftime('%d/%m/%Y'))
+
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
@@ -140,32 +77,27 @@ def process_ticket_image(file_path, user_phone):
             ],
             max_tokens=300
         )
-        
-        content = response.choices[0].message.content.replace("```json", "").replace("```", "").strip()
+
+        raw = response.choices[0].message.content.replace("```json", "").replace("```", "").strip()
         try:
-            data = json.loads(content)
-        except:
-            # Fallback simple si falla JSON
+            data = json.loads(raw)
+        except json.JSONDecodeError:
             data = {"proveedor": "Unknown", "total": 0.0}
 
-        # 4. Calcular ruta relativa para DB
-        # Asumimos que file_path está en .../static/uploads/...
-        # Buscamos 'static' en el path
+        # Calcular ruta relativa para la DB
         if 'static' in file_path:
-            # Normalizar path 
             rel_path = file_path.split('static')[-1].replace('\\', '/')
             db_image_path = f"/static{rel_path}"
         else:
             db_image_path = f"/static/uploads/{os.path.basename(file_path)}"
 
-        # 5. Guardar en DB
         new_ticket = Ticket(
             user_phone=user_phone,
             image_path=db_image_path,
             status='processed',
             concept=data.get('concepto', 'Gasto Web'),
             total=data.get('total', 0.0),
-            date=datetime.strptime(data.get('fecha', datetime.now().strftime('%d/%m/%Y')), '%d/%m/%Y'),
+            date=_parse_ticket_date(data.get('fecha', '')),
             nif=data.get('nif'),
             provider=data.get('proveedor'),
             ticket_number=data.get('numero_ticket'),
@@ -174,12 +106,12 @@ def process_ticket_image(file_path, user_phone):
             fee=data.get('cuota_iva', 0.0),
             raw_data=json.dumps(data)
         )
-        
+
         db.session.add(new_ticket)
         db.session.commit()
-        
-        return f"Ticket de {data.get('proveedor')} ({data.get('total')}€) guardado."
+
+        return f"Ticket de {data.get('proveedor', 'Desconocido')} ({data.get('total', 0)}€) guardado."
 
     except Exception as e:
-        print(f"Error process_ticket_image: {e}")
+        logger.error("Error process_ticket_image: %s", e)
         return f"Error procesando imagen: {e}"

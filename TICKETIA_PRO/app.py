@@ -11,21 +11,20 @@ from flask import Flask, request, render_template, redirect, url_for, flash, sen
 from flask_mail import Mail, Message
 import secrets
 from datetime import timedelta
-from twilio.twiml.messaging_response import MessagingResponse
-
 from core.config import Config
 from core.limiter import limiter
-from core.db_models import db, BusinessProfile, Ticket, ChatMessage, Grant, Appointment, SynergyMatch, ActivityLog, GeneratedDocument, Notification
+from core.db_models import db, BusinessProfile, Ticket, ChatMessage, Grant, Appointment, SynergyMatch, ActivityLog, GeneratedDocument, Notification, LLMCall
 from flask_admin import Admin
 from flask_admin.contrib.sqla import ModelView
-from modules.tickets.logic import process_ticket, process_ticket_image
-from modules.chatbot.logic import generate_response
+from modules.tickets.logic import process_ticket_image
 from modules.agents.manager import run_agent
-from modules.utils.transcriber import AudioTranscriber
 from sqlalchemy.sql import func
 from modules.services.notification import NotificationService
 
 from werkzeug.security import generate_password_hash, check_password_hash
+from core.logging_config import setup_logging
+
+setup_logging()
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -70,7 +69,7 @@ def get_notifications():
 def mark_notification_read(notif_id):
     if 'user_phone' not in session: return jsonify({"error": "Unauthorized"}), 401
     
-    n = Notification.query.get(notif_id)
+    n = db.session.get(Notification, notif_id)
     if n and n.user_phone == session['user_phone']:
         n.is_read = True
         db.session.commit()
@@ -96,7 +95,7 @@ class SecureModelView(ModelView):
     def inaccessible_callback(self, name, **kwargs):
         # Si no es admin, redirige al login
         flash('⚠️ Acceso restringido a administradores.', 'error')
-        return redirect(url_for('login'))
+        return redirect(url_for('web.login'))
 
 # Inicializar el Panel
 # Nota: template_mode='bootstrap4' puede requerir temas compatibles, si falla lo quitamos o usamos default
@@ -122,6 +121,7 @@ admin.add_view(SecureModelView(Ticket, db.session, name='🧾 Tickets'))
 # 4. Logs del Chat y Citas
 admin.add_view(SecureModelView(ChatMessage, db.session, name='💬 Chats'))
 admin.add_view(SecureModelView(SynergyMatch, db.session, name='🤝 Matches'))
+admin.add_view(SecureModelView(LLMCall, db.session, name='🧠 Métricas LLM'))
 # admin.add_view(SecureModelView(Appointment, db.session, name='📅 Citas'))
 
 with app.app_context():
@@ -131,11 +131,9 @@ with app.app_context():
 # --- BLUEPRINTS REGISTRATION ---
 from routes.web import web_bp
 from routes.api import api_bp
-from routes.webhooks import webhooks_bp
 
 app.register_blueprint(web_bp)
 app.register_blueprint(api_bp)
-app.register_blueprint(webhooks_bp)
 
 if __name__ == '__main__':
 

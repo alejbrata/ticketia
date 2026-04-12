@@ -1,70 +1,60 @@
+import logging
 from core.db_models import BusinessProfile
-
-# Importamos los agentes (Skeletons)
 from modules.proactive.grant_hunter import GrantHunterAgent
 from modules.proactive.networker import SynergyAgent
 from modules.proactive.business_health import BusinessCoachAgent
-from modules.proactive.admin_redactor import AdminAssistantAgent
 from modules.proactive.post_sales import PostSalesAgent
+
+logger = logging.getLogger(__name__)
+
 
 def run_daily_tasks():
     """
-    Punto de entrada para el 'Cron Job' diario.
-    Esta función debería ser invocada por un scheduler externo (ej: Celery, APScheduler)
-    o un trigger temporal simple en la app principal.
+    Punto de entrada para el cron job diario.
+    Invocado por run_scheduler.py (APScheduler) o manualmente.
     """
-    print("⏰ Ejecutando Tareas Proactivas Diarias...")
-    
-    # 1. Recuperar usuarios activos
-    # Ahora sí consultamos la DB real
+    logger.info("Ejecutando tareas proactivas diarias...")
+
     users = BusinessProfile.query.all()
-    
+
     for user in users:
         try:
-            # Lista de agentes contratados por este usuario (JSON field)
-            # Aseguramos que sea una lista (default [])
             active_list = user.active_agents or []
-            
-            print(f"🔄 Procesando usuario {user.business_name} (Activos: {active_list})")
-            
-            # A) Chequeo de Subvenciones
+            logger.info("Procesando usuario %s (agentes activos: %s)",
+                        user.business_name, active_list)
+
             if "grant_hunter" in active_list:
-                print(f"   -> Ejecutando Grant Hunter para {user.business_name}...")
+                logger.info("  -> Grant Hunter para %s", user.business_name)
                 try:
                     GrantHunterAgent().check_new_grants(user)
                 except Exception as e:
-                    print(f"Error Hunter: {e}")
-            
-            # B) Análisis de Salud Financiera
+                    logger.error("  Error Grant Hunter: %s", e)
+
             if "business_health" in active_list:
-                print(f"   -> Ejecutando Business Coach para {user.business_name}...")
+                logger.info("  -> Business Coach para %s", user.business_name)
                 try:
                     BusinessCoachAgent().run_daily_analysis(user)
                 except Exception as e:
-                    print(f"Error Coach: {e}")
-            
-            # C) Networking
+                    logger.error("  Error Business Coach: %s", e)
+
             if "networker" in active_list:
-                print(f"   -> Ejecutando Networker para {user.business_name}...")
+                logger.info("  -> Networker para %s", user.business_name)
                 try:
                     SynergyAgent().run_daily_networking(user)
                 except Exception as e:
-                    print(f"Error Networker: {e}")
-                 
-            # D) Admin Assistant
+                    logger.error("  Error Networker: %s", e)
+
             if "admin_redactor" in active_list:
-                # ...
-                print("   -> Ejecutando Admin Assistant...")
-            
-            # E) Post-Sales Service (Antes Invoice Reclaimer)
+                logger.info("  -> Admin Redactor para %s (sin tarea diaria activa)", user.business_name)
+
             if "post_sales_service" in active_list:
-                print(f"   -> Ejecutando Post-Sales Service para {user.business_name}...")
+                logger.info("  -> Post-Sales para %s", user.business_name)
                 try:
                     PostSalesAgent().run_daily_checks(user)
                 except Exception as e:
-                    print(f"Error Post-Sales: {e}")
-            
+                    logger.error("  Error Post-Sales: %s", e)
+
         except Exception as e:
-            print(f"Error procesando tareas para usuario {user.id}: {e}")
-            
-    print("✅ Tareas Proactivas Finalizadas.")
+            logger.error("Error procesando tareas para usuario %s: %s", user.id, e)
+
+    logger.info("Tareas proactivas diarias finalizadas.")
