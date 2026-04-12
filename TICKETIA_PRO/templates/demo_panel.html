@@ -1,42 +1,173 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="px-6 py-8 max-w-lg mx-auto w-full pb-24">
-    <div class="mb-6">
+<div class="px-6 py-8 max-w-lg mx-auto w-full pb-32">
+
+    <div class="mb-8">
         <a href="{{ url_for('web.dashboard') }}" class="text-sm text-slate-400 hover:text-indigo-600">← Volver</a>
-        <h1 class="text-3xl font-bold text-slate-800 mt-2">🎛️ Demo Control</h1>
-        <p class="text-slate-500">Panel de Emergencia para Presentaciones.</p>
+        <h1 class="text-3xl font-bold text-slate-800 mt-2">🎛️ Panel de Demo</h1>
+        <p class="text-slate-500 text-sm mt-1">Sigue los pasos en orden antes de la presentación.</p>
     </div>
 
-    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
-        <h3 class="font-bold text-lg mb-2">1. Inyectar Historia</h3>
-        <p class="text-sm text-slate-500 mb-4">Crea 20 tickets falsos el mes pasado para que las gráficas funcionen.</p>
-        <form action="{{ url_for('web.demo_seed') }}" method="POST">
-            <button
-                class="w-full bg-slate-800 text-white py-3 rounded-xl font-bold hover:bg-slate-900 transition-colors">🧪
-                Generar Datos</button>
-        </form>
-    </div>
-
-    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-        <h3 class="font-bold text-lg mb-2">2. Forzar Agentes</h3>
-        <p class="text-sm text-slate-500 mb-4">Ejecuta la lógica proactiva AHORA (ignora horarios).</p>
-        <div class="space-y-3">
-            <form action="{{ url_for('web.demo_trigger', agent_name='coach') }}" method="POST">
-                <button
-                    class="w-full bg-indigo-50 text-indigo-700 py-3 rounded-xl font-bold hover:bg-indigo-100 border border-indigo-100">📊
-                    Disparar Coach (Gráfico)</button>
-            </form>
-            <form action="{{ url_for('web.demo_trigger', agent_name='hunter') }}" method="POST">
-                <button
-                    class="w-full bg-emerald-50 text-emerald-700 py-3 rounded-xl font-bold hover:bg-emerald-100 border border-emerald-100">💰
-                    Disparar Hunter</button>
-            </form>
-            <form action="{{ url_for('web.demo_trigger', agent_name='networker') }}" method="POST">
-                <button
-                    class="w-full bg-purple-50 text-purple-700 py-3 rounded-xl font-bold hover:bg-purple-100 border border-purple-100">🤝
-                    Disparar Networker</button>
-            </form>
+    <!-- PASO 1 -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-4">
+        <div class="flex items-center gap-3 mb-1">
+            <span class="w-7 h-7 rounded-full bg-slate-800 text-white text-sm font-bold flex items-center justify-center flex-shrink-0">1</span>
+            <h3 class="font-bold text-lg text-slate-800">Preparar datos</h3>
         </div>
+        <p class="text-sm text-slate-500 ml-10 mb-4">Inyecta tickets de gastos del mes pasado y las subvenciones del BOE para que los agentes tengan datos reales con los que trabajar.</p>
+        <button id="btn-seed" onclick="runSeed()"
+            class="w-full bg-slate-800 text-white py-3 rounded-xl font-bold hover:bg-slate-900 transition-all flex items-center justify-center gap-2">
+            <span id="seed-icon">🧪</span>
+            <span id="seed-label">Generar Datos de Demo</span>
+        </button>
+        <div id="seed-result" class="hidden mt-3 text-sm font-medium text-emerald-700 bg-emerald-50 px-4 py-2 rounded-xl"></div>
     </div>
+
+    <!-- PASO 2 -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-4">
+        <div class="flex items-center gap-3 mb-1">
+            <span class="w-7 h-7 rounded-full bg-indigo-600 text-white text-sm font-bold flex items-center justify-center flex-shrink-0">2</span>
+            <h3 class="font-bold text-lg text-slate-800">Agente de Salud Financiera</h3>
+        </div>
+        <p class="text-sm text-slate-500 ml-10 mb-3">Analiza los gastos acumulados, proyecta el fin de mes y genera una alerta si detecta desviación. <strong class="text-slate-700">Normalmente se ejecuta automáticamente a las 09:00 cada mañana.</strong></p>
+        <div class="ml-10 mb-4 bg-indigo-50 rounded-xl px-4 py-3 text-xs text-indigo-700 leading-relaxed space-y-0.5">
+            <div>📊 Compara gasto actual vs. mes pasado</div>
+            <div>📈 Proyecta el gasto hasta fin de mes</div>
+            <div>🚨 Alerta si la desviación supera el 20%</div>
+            <div>🔔 Envía notificación in-app con insight de GPT-4o</div>
+        </div>
+        <button id="btn-coach" onclick="triggerAgent('coach', 'btn-coach', 'coach-result', 'coach-label')"
+            class="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-all flex items-center justify-center gap-2">
+            <span id="coach-icon">📊</span>
+            <span id="coach-label">Lanzar Agente Coach Ahora</span>
+        </button>
+        <div id="coach-result" class="hidden mt-3"></div>
+    </div>
+
+    <!-- PASO 3 -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
+        <div class="flex items-center gap-3 mb-1">
+            <span class="w-7 h-7 rounded-full bg-emerald-600 text-white text-sm font-bold flex items-center justify-center flex-shrink-0">3</span>
+            <h3 class="font-bold text-lg text-slate-800">Agente Cazador de Subvenciones</h3>
+        </div>
+        <p class="text-sm text-slate-500 ml-10 mb-3">Revisa el catálogo de ayudas disponibles, cruza con el sector del negocio usando IA y notifica las más relevantes. <strong class="text-slate-700">Normalmente se ejecuta automáticamente a las 09:00 cada mañana.</strong></p>
+        <div class="ml-10 mb-4 bg-emerald-50 rounded-xl px-4 py-3 text-xs text-emerald-700 leading-relaxed space-y-0.5">
+            <div>🔍 Escanea nuevas ayudas y subvenciones activas</div>
+            <div>🤖 Filtra por sector con GPT-4o (match inteligente)</div>
+            <div>💰 Selecciona las 2 oportunidades más relevantes</div>
+            <div>🔔 Genera mensaje personalizado y notifica</div>
+        </div>
+        <button id="btn-hunter" onclick="triggerAgent('hunter', 'btn-hunter', 'hunter-result', 'hunter-label')"
+            class="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold hover:bg-emerald-700 transition-all flex items-center justify-center gap-2">
+            <span id="hunter-icon">💰</span>
+            <span id="hunter-label">Lanzar Agente Hunter Ahora</span>
+        </button>
+        <div id="hunter-result" class="hidden mt-3"></div>
+    </div>
+
+    <!-- CTA VER RESULTADO -->
+    <div id="goto-dashboard" class="hidden bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl p-6 text-white text-center shadow-xl">
+        <p class="text-xl font-bold mb-1">🎉 ¡Agentes ejecutados!</p>
+        <p class="text-sm opacity-90 mb-5">Las notificaciones han sido generadas. Ábrelas en el Dashboard para mostrarlas.</p>
+        <a href="{{ url_for('web.dashboard') }}"
+            class="inline-block bg-white text-indigo-700 font-bold px-8 py-3 rounded-xl hover:bg-indigo-50 transition-colors text-base">
+            Ver notificaciones en el Dashboard →
+        </a>
+    </div>
+
 </div>
+
+<script>
+    let agentsRun = 0;
+
+    async function runSeed() {
+        const btn = document.getElementById('btn-seed');
+        const icon = document.getElementById('seed-icon');
+        const label = document.getElementById('seed-label');
+        const result = document.getElementById('seed-result');
+
+        btn.disabled = true;
+        icon.textContent = '⏳';
+        label.textContent = 'Generando...';
+
+        try {
+            // 1. Seed de tickets históricos (form POST normal, no devuelve JSON)
+            await fetch('/demo/seed_data', { method: 'POST', redirect: 'manual' });
+
+            // 2. Seed de subvenciones
+            const r2 = await fetch('/demo/seed_grants', {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            const d2 = await r2.json();
+
+            icon.textContent = '✅';
+            label.textContent = 'Datos listos';
+            result.classList.remove('hidden');
+            result.textContent = `✅ Historial de gastos inyectado y ${d2.total || 3} subvenciones cargadas en la base de datos.`;
+        } catch(e) {
+            icon.textContent = '❌';
+            label.textContent = 'Error — intenta de nuevo';
+            btn.disabled = false;
+        }
+    }
+
+    async function triggerAgent(name, btnId, resultId, labelId) {
+        const btn = document.getElementById(btnId);
+        const icon = document.getElementById(btnId.replace('btn-', '') + '-icon');
+        const label = document.getElementById(labelId);
+        const resultDiv = document.getElementById(resultId);
+
+        btn.disabled = true;
+        const originalText = label.textContent;
+        icon.textContent = '⏳';
+        label.textContent = 'El agente está analizando...';
+
+        resultDiv.classList.remove('hidden');
+        resultDiv.innerHTML = `
+            <div class="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-500 flex items-center gap-2">
+                <span class="inline-block animate-spin">⚙️</span>
+                <span>Consultando GPT-4o y generando notificación personalizada...</span>
+            </div>`;
+
+        try {
+            const resp = await fetch('/demo/trigger/' + name, {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            const data = await resp.json();
+
+            if (!resp.ok || data.error) throw new Error(data.error || 'Error del servidor');
+
+            icon.textContent = '✅';
+            label.textContent = '¡Ejecutado con éxito!';
+
+            const isCoach = name === 'coach';
+            const color = isCoach ? 'indigo' : 'emerald';
+            const msg = isCoach
+                ? '📊 El agente analizó tus gastos del mes, proyectó el fin de mes y generó un informe con insight de GPT-4o. La notificación ya está disponible en el Dashboard.'
+                : '💰 El agente escaneó las subvenciones activas, usó GPT-4o para filtrar las más relevantes para tu sector y generó un mensaje personalizado. Revisa las notificaciones.';
+
+            resultDiv.innerHTML = `
+                <div class="bg-${color}-50 border border-${color}-200 text-${color}-800 rounded-xl px-4 py-3 text-sm font-medium leading-relaxed">
+                    ${msg}
+                </div>`;
+
+            agentsRun++;
+            if (agentsRun >= 2) {
+                const cta = document.getElementById('goto-dashboard');
+                cta.classList.remove('hidden');
+                setTimeout(() => cta.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300);
+            }
+        } catch(e) {
+            icon.textContent = '❌';
+            label.textContent = originalText;
+            btn.disabled = false;
+            resultDiv.innerHTML = `
+                <div class="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">
+                    ❌ ${e.message}
+                </div>`;
+        }
+    }
+</script>
 {% endblock %}

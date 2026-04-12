@@ -737,23 +737,78 @@ def demo_seed():
     flash('✅ Datos históricos inyectados.', 'success')
     return redirect(url_for('web.demo_panel'))
 
+@web_bp.route('/demo/seed_grants', methods=['POST'])
+def demo_seed_grants():
+    if 'user_phone' not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+    from core.db_models import Grant
+    grants_data = [
+        {
+            "title": "Kit Digital — Digitalización de Pymes (Seg. II)",
+            "description": "Ayudas para digitalizar procesos mediante IA, automatización y presencia online. Especialmente indicado para empresas de tecnología y servicios.",
+            "sector_focus": "Tecnología",
+            "amount": "hasta 12.000€",
+            "deadline": "30/09/2026",
+            "link": "https://www.acelerapyme.gob.es/kit-digital",
+        },
+        {
+            "title": "CDTI — Proyectos de I+D+i en IA Generativa",
+            "description": "Financiación no reembolsable para proyectos de investigación y desarrollo en inteligencia artificial, machine learning y automatización de procesos.",
+            "sector_focus": "General",
+            "amount": "hasta 250.000€",
+            "deadline": "15/11/2026",
+            "link": "https://www.cdti.es/",
+        },
+        {
+            "title": "Comunidad de Madrid — Emprendimiento Tecnológico",
+            "description": "Subvención para startups tecnológicas con sede en Madrid que desarrollen soluciones SaaS o plataformas digitales con impacto social.",
+            "sector_focus": "General",
+            "amount": "hasta 50.000€",
+            "deadline": "01/10/2026",
+            "link": "https://www.comunidad.madrid/servicios/empresa",
+        },
+    ]
+    created = 0
+    for g in grants_data:
+        existing = Grant.query.filter_by(title=g["title"]).first()
+        if not existing:
+            grant = Grant(**g, notified_phones=[])
+            db.session.add(grant)
+            created += 1
+    db.session.commit()
+    return jsonify({"ok": True, "created": created, "total": len(grants_data)})
+
+
 @web_bp.route('/demo/trigger/<agent_name>', methods=['POST'])
 def demo_trigger(agent_name):
     if 'user_phone' not in session:
-        return redirect(url_for('web.login'))
+        return jsonify({"error": "Unauthorized"}), 401
     user = BusinessProfile.query.filter_by(user_phone=session['user_phone']).first()
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
     try:
         if agent_name == 'coach':
             from modules.proactive.business_health import BusinessCoachAgent
             BusinessCoachAgent().run_daily_analysis(user)
         elif agent_name == 'hunter':
+            # Resetear notificaciones previas para poder volver a lanzar en demo
+            from core.db_models import Grant
+            for grant in Grant.query.all():
+                phones = list(grant.notified_phones or [])
+                if user.user_phone in phones:
+                    phones.remove(user.user_phone)
+                    grant.notified_phones = phones
+            db.session.commit()
             from modules.proactive.grant_hunter import GrantHunterAgent
             GrantHunterAgent().check_new_grants(user)
         elif agent_name == 'networker':
             from modules.proactive.networker import SynergyAgent
             SynergyAgent().run_daily_networking(user)
+        if is_ajax:
+            return jsonify({"ok": True})
         flash(f'🚀 Agente {agent_name} ejecutado con éxito.', 'success')
     except Exception as e:
+        if is_ajax:
+            return jsonify({"error": str(e)}), 500
         flash(f'Error: {e}', 'error')
     return redirect(url_for('web.demo_panel'))
 
