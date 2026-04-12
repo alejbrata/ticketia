@@ -117,10 +117,25 @@
             </ul>
             <a href="{{ url_for('web.documents_page') }}"
                 class="block w-full py-3 text-center bg-purple-50 text-purple-700 font-bold rounded-xl hover:bg-purple-100 transition-colors">
-                Ver sus creaciones
+                Ver mis creaciones →
             </a>
         </div>
 
+    </div>
+
+    <!-- Acceso rápido a Reels -->
+    <div class="mt-10 bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-100 rounded-2xl p-6 flex items-center justify-between gap-4">
+        <div class="flex items-center gap-4">
+            <div class="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center text-2xl shadow-lg">🎬</div>
+            <div>
+                <h3 class="font-bold text-slate-800">Crear Reels & Vídeos</h3>
+                <p class="text-slate-500 text-sm">Convierte una foto de producto en un vídeo listo para publicar</p>
+            </div>
+        </div>
+        <a href="{{ url_for('web.marketing_page') }}"
+            class="flex-shrink-0 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold px-5 py-3 rounded-xl shadow-md hover:opacity-90 transition-opacity text-sm">
+            Ir a Reels →
+        </a>
     </div>
 
 </div>

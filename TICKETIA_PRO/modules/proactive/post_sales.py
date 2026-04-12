@@ -1,17 +1,21 @@
 import os
 import json
+import logging
 from datetime import datetime
 from fpdf import FPDF
-from openai import OpenAI
 from core.db_models import db, Incident, ActivityLog
 from core.config import Config
-from modules.services.notification import NotificationService # <-- USAR NUEVO SERVICIO
+from modules.services.notification import NotificationService
+
+logger = logging.getLogger(__name__)
+
 
 class PostSalesAgent:
     def __init__(self):
-        self.client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        from core.clients import get_openai_client
+        self.client = get_openai_client()
 
-    def handle_inquiry(self, user_phone, user_message, owner_profile, channel='whatsapp'):
+    def handle_inquiry(self, user_phone, user_message, owner_profile, channel=None):
         """
         Analiza el mensaje y ejecuta acciones respetando la POLITICA DE EMPRESA.
         """
@@ -57,7 +61,8 @@ class PostSalesAgent:
             product = data.get("product", "") or ""
             sentiment = data.get("sentiment", "neutral")
             
-        except:
+        except Exception as e:
+            logger.warning("PostSales: error clasificando intención: %s", e)
             intent = "GENERAL"
             product = ""
             sentiment = "neutral"
@@ -97,16 +102,9 @@ class PostSalesAgent:
                 fake_order_id = f"PED-{int(datetime.now().timestamp())}"
                 relative_path = self._generate_return_label(user_phone, fake_order_id)
                 
-                # Construir URL absoluta para WhatsApp
-                from flask import current_app
-                if current_app:
-                    # Usamos request context si existe, si no, hardcode o config
-                    try:
-                        from flask import request
-                        host = request.host_url.rstrip('/')
-                        media_url = f"{host}{relative_path}"
-                    except:
-                        media_url = f"https://ticketia.com{relative_path}" # Fallback
+                # Construir URL absoluta usando PUBLIC_URL (env var centralizada)
+                host = os.environ.get('PUBLIC_URL', 'http://localhost:5000').rstrip('/')
+                media_url = f"{host}{relative_path}"
                 
                 response_text = f"✅ He tramitado tu devolución para el pedido {fake_order_id}.\n\nAquí tienes tu etiqueta de envío. 📦"
                 
@@ -146,7 +144,8 @@ class PostSalesAgent:
                     ]
                 )
                 response_text = response.choices[0].message.content
-            except:
+            except Exception as e:
+                logger.warning("PostSales: error generando respuesta para queja: %s", e)
                 response_text = "Entiendo tu malestar. He elevado tu incidencia con prioridad ALTA a dirección."
 
             ActivityLog.log(user_phone, "Post-Venta", "🔴 Queja: IA Calma al cliente + Alerta Dueño")

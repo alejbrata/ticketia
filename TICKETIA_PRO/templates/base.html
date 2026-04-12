@@ -56,17 +56,27 @@
         {% if session.get('user_phone') %}
         <div class="flex gap-4 items-center">
             <!-- Desktop Links -->
+            {% set nav_active = 'text-indigo-600 font-semibold' %}
+            {% set nav_idle = 'text-slate-500 hover:text-indigo-600' %}
             <div class="hidden md:flex gap-4 items-center">
                 <a href="{{ url_for('web.dashboard') }}"
-                    class="text-sm font-medium text-slate-500 hover:text-indigo-600 transition-colors">Inicio</a>
+                    class="text-sm font-medium transition-colors {{ nav_active if current_page == 'dashboard' else nav_idle }}">Inicio</a>
                 <a href="{{ url_for('web.wizard') }}"
-                    class="text-sm font-medium text-slate-500 hover:text-indigo-600 transition-colors">✨ Entrenar</a>
+                    class="text-sm font-medium transition-colors {{ nav_active if current_page == 'wizard' else nav_idle }}">✨ Entrenar</a>
                 <a href="{{ url_for('web.marketplace') }}"
-                    class="text-sm font-medium text-slate-500 hover:text-indigo-600 transition-colors">🛍️ Tienda</a>
+                    class="text-sm font-medium transition-colors {{ nav_active if current_page == 'marketplace' else nav_idle }}">🛍️ Tienda</a>
                 <a href="{{ url_for('web.documents_page') }}"
-                    class="text-sm font-medium text-slate-500 hover:text-indigo-600 transition-colors">📂 Docs</a>
+                    class="text-sm font-medium transition-colors {{ nav_active if current_page == 'documents' else nav_idle }}">📂 Docs</a>
                 <a href="{{ url_for('web.agents_page') }}"
-                    class="text-sm font-medium text-slate-500 hover:text-indigo-600 transition-colors">🤖 Agentes</a>
+                    class="text-sm font-medium transition-colors {{ nav_active if current_page == 'agents' else nav_idle }}">🤖 Agentes</a>
+                <a href="{{ url_for('web.marketing_page') }}"
+                    class="text-sm font-medium transition-colors {{ nav_active if current_page == 'marketing' else nav_idle }}">🎬 Reels</a>
+                <a href="{{ url_for('web.council_page') }}"
+                    class="text-sm font-medium transition-colors {{ nav_active if current_page == 'council' else nav_idle }}">🏛️ Consejo</a>
+                <a href="{{ url_for('web.metrics_page') }}"
+                    class="text-sm font-medium transition-colors {{ nav_active if current_page == 'metrics' else nav_idle }}">📈 Métricas</a>
+                <a href="{{ url_for('web.profile') }}"
+                    class="text-sm font-medium transition-colors {{ nav_active if current_page == 'profile' else nav_idle }}">👤 Perfil</a>
             </div>
 
             {% if session.get('user_email') == 'admin@ticketia.com' %}
@@ -262,10 +272,15 @@
             <span class="text-2xl">🤖</span>
             <span class="text-[10px] font-bold">Agentes</span>
         </a>
-        <a href="{{ url_for('web.marketplace') }}"
+        <a href="{{ url_for('web.marketing_page') }}"
             class="flex flex-col items-center gap-1 text-slate-400 active:text-indigo-600 transition-colors">
-            <span class="text-2xl">🛍️</span>
-            <span class="text-[10px] font-bold">Tienda</span>
+            <span class="text-2xl">🎬</span>
+            <span class="text-[10px] font-bold">Reels</span>
+        </a>
+        <a href="{{ url_for('web.metrics_page') }}"
+            class="flex flex-col items-center gap-1 text-slate-400 active:text-indigo-600 transition-colors">
+            <span class="text-2xl">📈</span>
+            <span class="text-[10px] font-bold">Métricas</span>
         </a>
     </div>
     {% endif %}
@@ -426,14 +441,70 @@
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register("{{ url_for('static', filename='sw.js') }}")
-                    .then(registration => {
+                    .then(async registration => {
                         console.log('SW Registered: ', registration);
+                        {% if session.get('user_phone') %}
+                        // Auto-subscribe to Web Push if permission already granted
+                        if (Notification.permission === 'granted') {
+                            await subscribeToPush(registration);
+                        }
+                        {% endif %}
                     })
                     .catch(registrationError => {
                         console.log('SW Registration Failed: ', registrationError);
                     });
             });
         }
+
+        {% if session.get('user_phone') %}
+        // URL-safe base64 decode for VAPID public key
+        function urlBase64ToUint8Array(base64String) {
+            const padding = '='.repeat((4 - base64String.length % 4) % 4);
+            const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+            const rawData = atob(base64);
+            return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
+        }
+
+        async function subscribeToPush(registration) {
+            try {
+                const existing = await registration.pushManager.getSubscription();
+                if (existing) return; // Ya suscrito
+
+                const keyRes = await fetch('/api/push/vapid-public-key');
+                const { publicKey } = await keyRes.json();
+                if (!publicKey) return;
+
+                const subscription = await registration.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: urlBase64ToUint8Array(publicKey)
+                });
+
+                await fetch('/api/push/subscribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(subscription)
+                });
+                console.log('📲 Push subscription saved.');
+            } catch (e) {
+                console.warn('Push subscription failed:', e);
+            }
+        }
+
+        window.requestPushPermission = async function() {
+            if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+                window.showToast('Tu navegador no soporta notificaciones push.', 'error');
+                return;
+            }
+            const permission = await Notification.requestPermission();
+            if (permission === 'granted') {
+                const reg = await navigator.serviceWorker.ready;
+                await subscribeToPush(reg);
+                window.showToast('¡Notificaciones push activadas! 🔔', 'success');
+            } else {
+                window.showToast('Permiso de notificaciones denegado.', 'error');
+            }
+        };
+        {% endif %}
 
         // --- GLOBAL HAPTICS & TOUCH FEEDBACK ---
         document.addEventListener('click', (e) => {

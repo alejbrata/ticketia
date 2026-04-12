@@ -1,14 +1,18 @@
 import os
+import logging
+import time
 import requests
 import json
 from datetime import datetime
-from openai import OpenAI
 from pptx import Presentation
-from pptx.util import Inches, Pt
+from pptx.util import Pt
 from pptx.dml.color import RGBColor
-from runwayml import RunwayML
 
 from core.config import Config
+from core.llm_tracker import track as _track
+
+logger = logging.getLogger(__name__)
+
 
 class MarketingAgent:
     THEMES = {
@@ -23,18 +27,19 @@ class MarketingAgent:
         from core.clients import get_openai_client, get_runway_client
         self.openai = get_openai_client()
         self.runway_client = get_runway_client()
-        # Configurar rutas de salida
+        self.user_phone: str | None = None
         self.base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         self.output_folder = os.path.join(self.base_dir, 'static', 'generated_docs')
         os.makedirs(self.output_folder, exist_ok=True)
 
-    def generate_marketing_content(self, prompt_text, content_type="image", business_name="Mi Empresa", logo_path=None):
+    def generate_marketing_content(self, prompt_text, content_type="image", business_name="Mi Empresa", logo_path=None, user_phone=None):
         """
         Genera contenido creativo.
         content_type: 'image' (DALL-E 3) o 'slide' (PowerPoint).
         """
-        print(f"🎨 MarketingAgent: Creando {content_type} sobre: '{prompt_text}' para {business_name}")
-        
+        self.user_phone = user_phone
+        logger.info("MarketingAgent: creando %s para %s", content_type, business_name)
+
         if content_type == "image":
             return self._generate_dalle_image(prompt_text, business_name, logo_path)
         elif content_type == "slide":
@@ -42,8 +47,8 @@ class MarketingAgent:
         elif content_type == "video":
             # 1. Visual Intelligence: Analizar Imagen para crear Prompt
             target_image = logo_path if logo_path else "dummy_product.jpg"
-            video_prompt = self._analyze_product_context(target_image)
-            
+            video_prompt = self._analyze_product_context(target_image, business_name=business_name)
+
             # 2. Generar Video con Runway (Image + Text)
             # Pasamos la imagen original y el prompt mejorado
             video_url = self._generate_runway_video(video_prompt, input_image_path=target_image)
@@ -55,7 +60,7 @@ class MarketingAgent:
         try:
             # 1. Optimizar prompt para DALL-E usando GPT-4o
             optimized_prompt = self._refine_prompt_for_dalle(user_prompt, business_name)
-            print(f"   -> Prompt DALL-E: {optimized_prompt[:50]}...")
+            logger.info("Prompt DALL-E: %s...", optimized_prompt[:50])
             
             # 2. Generar Imagen
             response = self.openai.images.generate(
@@ -109,121 +114,132 @@ class MarketingAgent:
                         
                         # Guardar (sobreescribir)
                         base_img.save(local_path, format="PNG")
-                        print("✅ Logo superpuesto correctamente.")
+                        logger.info("Logo superpuesto correctamente")
                     else:
-                        print(f"⚠️ Logo no encontrado en fs: {abs_logo_path}")
+                        logger.warning("Logo no encontrado: %s", abs_logo_path)
                 except Exception as e_pil:
-                    print(f"⚠️ Error procesando logo PIL: {e_pil}")
+                    logger.warning("Error procesando logo PIL: %s", e_pil)
                 
             return f"{Config.PUBLIC_URL}/static/generated_docs/{filename}"
             
         except Exception as e:
-            print(f"❌ Error DALL-E: {e}")
+            logger.error("Error DALL-E: %s", e)
             return None
 
-    def _analyze_product_context(self, image_path):
+    def _analyze_product_context(self, image_path, business_name=""):
         """
-        Usa GPT-4o Vision para actuar como Director Creativo Universal.
-        Ya no usamos if/else. La IA decide la estrategia visual según el objeto.
+        Two-stage Visual Intelligence pipeline:
+        Stage 1 – GPT-4o Vision: understand WHAT is in the image (product type, colors, natural context).
+        Stage 2 – GPT-4o Text: convert that analysis into a rich cinematic Runway Gen-3 prompt.
         """
-        # Simulamos que le pasamos la imagen.
-        # En producción real: encoded_image = encode_image(image_path)
-        
-        system_prompt = """
-        You are an expert Prompt Engineer for Runway Gen-3. 
-        The User is frustrated because the video outputs look like static images ("slideshow").
-        
-        YOUR GOAL: FORCE THE AI TO ANIMATE/TRANSFORM THE IMAGE.
-        
-        <AGGRESSIVE_STRATEGY>
-        If the input is a static object (e.g. flat shirt), you must TRICK the video AI.
-        Do NOT describe the image as it is. Describe what it MUST BECOME.
-        State the "After" scene as a present fact.
-        </AGGRESSIVE_STRATEGY>
+        import base64
+        import mimetypes
 
-        RULES FOR SPECIFIC OBJECTS:
-        1. CLOTHING (Shirt/Dress): 
-           - PROMPT: "Professional video of a fashion model WEARING this exact shirt walking on a beach. The fabric moves naturally with the body. Wind blowing."
-           - KEYWORD: "WEARING" (Force the concept of a human).
-        
-        2. FOOD/DRINK:
-           - PROMPT: "Slow motion commercial of this cake being SLICED by a silver knife. Crumbs falling. Steam rising."
-           - KEYWORD: "SLICED" / "POURED" / "EATEN".
-        
-        3. TOOLS/MACHINES:
-           - PROMPT: "Close up action shot of this drill SPINNING and boring into a wooden wall. Dust flying debris. Heavy vibration."
-           - KEYWORD: "WORKING" / "SPINNING".
+        if not os.path.exists(image_path):
+            print("❌ Imagen no encontrada para análisis.")
+            return "Cinematic tracking shot of a person using the product outdoors, natural lighting, movement, photorealistic, 4K"
 
-        4. STATIC OBJECTS (Perfume/Decor):
-           - PROMPT: " The object floating in zero gravity, slowly rotating, water splashing around it, magical lighting."
-        
-        OUTPUT FORMAT (Direct & Punchy):
-        "[SUBJECT IN ACTION] in [CONTEXT]. [MOVEMENT DETAILS]. Cinematic, photorealistic, 4k."
+        mime_type, _ = mimetypes.guess_type(image_path)
+        if not mime_type:
+            mime_type = "image/png"
 
-        Examples:
-        - "A fashion model wearing this floral shirt walking confidently on a sunny boardwalk, wind blowing the fabric."
-        - "A silver knife slicing through this cheesecake, revealing the creamy texture, crumbs falling."
-        - "This electric drill spinning rapidly and drilling a hole in a wall, sawdust flying everywhere."
-
-        Be BOLD. Demand MOVEMENT.
-        Responde SOLO con el prompt final en inglés.
-        """
+        with open(image_path, "rb") as image_file:
+            encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+            base64_image = f"data:{mime_type};base64,{encoded_string}"
 
         try:
-            # 1. Preparar imagen (Base64)
-            import base64
-            import mimetypes
-            
-            if not os.path.exists(image_path):
-                print("❌ Imagen no encontrada para análisis.")
-                return "Cinematic shot of the product, 4k"
+            # ── Stage 1: Image Understanding ──────────────────────────────────
+            logger.info("Stage 1 – Analizando imagen: %s", os.path.basename(image_path))
 
-            mime_type, _ = mimetypes.guess_type(image_path)
-            if not mime_type: mime_type = "image/png"
-            
-            with open(image_path, "rb") as image_file:
-                encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
-                base64_image = f"data:{mime_type};base64,{encoded_string}"
-            
-            # 2. Llamada REAL a GPT-4o
-            print(f"👁️ Visual Intelligence: Analizando {os.path.basename(image_path)} con GPT-4o...")
-            
-            response = self.openai.chat.completions.create(
+            _t0 = time.time()
+            stage1_response = self.openai.chat.completions.create(
                 model="gpt-4o",
                 messages=[
                     {
-                        "role": "system", 
-                        "content": system_prompt
+                        "role": "system",
+                        "content": (
+                            "You are a product analyst. Describe the image in structured detail:\n"
+                            "1. PRODUCT_TYPE: What is the main subject/product?\n"
+                            "2. CATEGORY: clothing / food / electronics / tool / beauty / decor / other\n"
+                            "3. COLORS: Main colors and materials\n"
+                            "4. STYLE: Style, mood, target audience\n"
+                            "5. NATURAL_CONTEXT: Where would this product realistically be used, worn, or shown?\n"
+                            "Be concise. Max 150 words."
+                        )
                     },
                     {
                         "role": "user",
                         "content": [
-                            {"type": "text", "text": "This is the product image. Generate the perfect video prompt."},
+                            {"type": "text", "text": "Analyze this product image."},
                             {
                                 "type": "image_url",
-                                "image_url": {
-                                    "url": base64_image,
-                                    "detail": "high"
-                                }
+                                "image_url": {"url": base64_image, "detail": "high"}
                             }
                         ]
                     }
                 ],
-                max_tokens=150
+                max_tokens=200
             )
+            _track(self.user_phone, "gpt-4o", "video_analyze_image",
+                   stage1_response, int((time.time() - _t0) * 1000))
 
-            prompt_generated = response.choices[0].message.content.strip()
-            print(f"🧠 Prompt Generado: {prompt_generated}")
-            return prompt_generated
-                
+            product_analysis = stage1_response.choices[0].message.content.strip()
+            logger.info("Análisis del producto:\n%s", product_analysis)
+
+            # ── Stage 2: Cinematic Prompt Generation ──────────────────────────
+            logger.info("Stage 2 – Generando prompt cinematográfico")
+
+            stage2_system = """You are a world-class Runway Gen-3 Alpha prompt engineer specializing in commercial video ads.
+
+Your job: Given a product analysis, write a single cinematic Runway prompt that forces the AI to generate REAL MOVEMENT — never a static slideshow.
+
+RUNWAY PROMPT FORMULA:
+[CAMERA MOVEMENT] of [HUMAN/SUBJECT IN ACTION] [WEARING/USING/INTERACTING WITH the product] in [VIVID ENVIRONMENT]. [SPECIFIC MOTION DETAILS]. [LIGHTING]. [MOOD]. Cinematic, photorealistic, 4K.
+
+CAMERA MOVEMENTS (pick the most fitting):
+"Slow dolly-in" / "Tracking shot" / "Low-angle push-in" / "Aerial drone" / "Close-up slow-motion" / "Handheld follow"
+
+MOTION RULES (CRITICAL):
+- ALWAYS include a human or living subject actively interacting with the product
+- ALWAYS describe movement: walking, pouring, cutting, spinning, flowing, jumping
+- ALWAYS include environmental motion: wind, water, steam, particles, bokeh, reflections
+- NEVER describe the product as static, isolated, or floating
+
+EXAMPLES:
+- Clothing: "Tracking shot of a fashion model wearing a white linen beach shirt, walking barefoot on wet sand at golden hour, fabric flowing in the ocean breeze, warm sunlight casting long shadows, shallow depth of field. Cinematic, photorealistic, 4K."
+- Food: "Slow-motion close-up of a silver knife slicing through a layered chocolate cake, creamy filling revealed, crumbs scattering in the air, warm ambient kitchen lighting, steam rising. Cinematic, 4K."
+- Electronics: "Low-angle push-in shot of a designer's hands using a sleek laptop on a rooftop terrace at dusk, screen glow on face, city lights bokeh in background, cool blue tones. Cinematic, 4K."
+- Tool: "Handheld follow shot of a craftsman using a power drill to bore into a wooden wall, sawdust flying, focused expression, workshop environment with dramatic side lighting. Cinematic, 4K."
+
+OUTPUT: Only the final prompt. No explanations. In English. Max 80 words."""
+
+            brand_context = f" The brand is '{business_name}'." if business_name else ""
+
+            _t0 = time.time()
+            stage2_response = self.openai.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": stage2_system},
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Product analysis:{brand_context}\n\n{product_analysis}\n\n"
+                            "Generate the perfect Runway video prompt."
+                        )
+                    }
+                ],
+                max_tokens=350
+            )
+            _track(self.user_phone, "gpt-4o", "video_generate_prompt",
+                   stage2_response, int((time.time() - _t0) * 1000))
+
+            final_prompt = stage2_response.choices[0].message.content.strip()
+            logger.info("Prompt final para Runway: %s", final_prompt)
+            return final_prompt
+
         except Exception as e:
-            print(f"❌ Error Visual Intelligence: {e}")
-            # Fallback seguro
-            return "Cinematic rotating studio shot of the product on a podium, dramatic rim lighting, minimalist background, 4k"
-                
-        except Exception as e:
-            print(f"❌ Error en análisis visual: {e}")
-            return "Cinematic product shot, 4k, professional lighting"
+            logger.error("Error Visual Intelligence: %s", e)
+            return "Cinematic tracking shot of a person using the product outdoors, natural lighting, wind, movement, photorealistic, 4K"
     def _generate_pptx_slide(self, topic, business_name):
         try:
             # 1. Estructurar contenido COMPLETO + TEMA
@@ -295,14 +311,12 @@ class MarketingAgent:
             return f"{Config.PUBLIC_URL}/static/generated_docs/{filename}"
             
         except Exception as e:
-            print(f"❌ Error PPTX: {e}")
+            logger.error("Error PPTX: %s", e)
             return None
 
     def _generate_runway_video(self, prompt, input_image_path=None):
         try:
-            print(f"🎬 MarketingAgent: Llamando a Runway Gen-3 Alpha...")
-            print(f"   -> Prompt: {prompt[:50]}...")
-            print(f"   -> Input Image: {input_image_path}")
+            logger.info("Llamando a Runway Gen-3 Alpha. Prompt: %s...", prompt[:50])
 
             # Preparar Imagen (Base64 Data URI)
             prompt_image_uri = None
@@ -310,7 +324,8 @@ class MarketingAgent:
                  import base64
                  import mimetypes
                  mime_type, _ = mimetypes.guess_type(input_image_path)
-                 if not mime_type: mime_type = "image/png"
+                 if not mime_type:
+                     mime_type = "image/png"
                  
                  with open(input_image_path, "rb") as image_file:
                     encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
@@ -328,28 +343,39 @@ class MarketingAgent:
             task = self.runway_client.image_to_video.create(**task_args)
             
             task_id = task.id
-            print(f"   -> Tarea Runway iniciada: {task_id}")
+            logger.info("Tarea Runway iniciada: %s", task_id)
             
-            # 2. Polling de estado (Esperar hasta 3 min)
-            import time
-            status = "PENDING"
+            # 2. Polling con exponential backoff (max ~5 min acumulado)
             video_url = None
-            
-            # Polling loop con timeout de veiligheid
-            for _ in range(60): # Max 5 mins (60 * 5s)
-                time.sleep(5) 
+            wait = 3  # segundos iniciales
+            elapsed = 0
+            max_wait = 300  # timeout total
+            _runway_start = time.time()
+
+            while elapsed < max_wait:
+                time.sleep(wait)
+                elapsed += wait
                 task_status = self.runway_client.tasks.retrieve(task_id)
                 status = task_status.status
-                print(f"   -> Status Runway: {status}")
-                
+                logger.debug("Status Runway [%s]: %s (t+%ds)", task_id, status, elapsed)
+
                 if status == "SUCCEEDED":
-                    video_url = task_status.output[0] 
+                    video_url = task_status.output[0]
+                    _track(self.user_phone, "gen3a_turbo", "runway_video_generation",
+                           latency_ms=int((time.time() - _runway_start) * 1000),
+                           extra={"duration_s": 5})
                     break
                 elif status == "FAILED":
-                    print(f"❌ Runway Task Failed: {task_status.failure_reason}")
+                    _track(self.user_phone, "gen3a_turbo", "runway_video_generation",
+                           latency_ms=int((time.time() - _runway_start) * 1000),
+                           success=False, error=task_status.failure_reason)
+                    logger.error("Runway task fallida [%s]: %s", task_id, task_status.failure_reason)
                     return None
-            
-            if not video_url: return None
+
+                wait = min(wait * 2, 30)  # duplicar hasta un máximo de 30s
+
+            if not video_url:
+                return None
 
             # 3. Descargar Video
             filename = f"runway_{int(datetime.now().timestamp())}.mp4"
@@ -359,20 +385,17 @@ class MarketingAgent:
             with open(local_path, 'wb') as f:
                 f.write(r.content)
                 
-            print("✅ Video Runway descargado correctamente.")
+            logger.info("Video Runway descargado: %s", filename)
             return f"{Config.PUBLIC_URL}/static/generated_docs/{filename}"
-                
+
         except Exception as e:
-            print(f"❌ Error Runway API: {e}")
+            logger.error("Error Runway API: %s", e)
             # Fallback a simulación si falla
             return self._generate_simulated_video(prompt)
 
     def _generate_simulated_video(self, prompt):
-        # This is a dummy function for demonstration purposes.
-        # In a real scenario, this would generate a placeholder video or return a static URL.
-        print(f"   -> Generando video simulado para: {prompt[:50]}...")
-        # Simulate a video URL
-        return f"{Config.PUBLIC_URL}/static/generated_docs/simulated_video.mp4"
+        logger.warning("Runway no disponible — RUNWAYML_API_SECRET no configurado o fallo de API.")
+        return None
 
     def _apply_theme(self, slide, theme):
         # Fondo
@@ -382,12 +405,15 @@ class MarketingAgent:
         fill.fore_color.rgb = RGBColor(*theme['bg'])
 
     def _style_text(self, shape, rgb, bold=False, size=None):
-        if not shape.text_frame: return
+        if not shape.text_frame:
+            return
         for paragraph in shape.text_frame.paragraphs:
             for run in paragraph.runs:
                 run.font.color.rgb = RGBColor(*rgb)
-                if bold: run.font.bold = True
-                if size: run.font.size = size
+                if bold:
+                    run.font.bold = True
+                if size:
+                    run.font.size = size
 
     def _refine_prompt_for_dalle(self, text, business_name):
         sys = """
@@ -454,7 +480,7 @@ class MarketingAgent:
             )
             return json.loads(resp.choices[0].message.content)
         except Exception as e:
-            print(f"Error GPT JSON: {e}")
+            logger.error("Error GPT JSON estructura presentación: %s", e)
             return {
                 "theme": "CORPORATE",
                 "title": "Error",

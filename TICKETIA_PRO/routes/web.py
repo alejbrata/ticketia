@@ -1,9 +1,12 @@
 import os
 import io
 import json
+import logging
 import secrets
 import pandas as pd
 from datetime import datetime, timedelta
+
+logger = logging.getLogger(__name__)
 from flask import Blueprint, request, session, jsonify, render_template, redirect, url_for, flash, send_file, current_app
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_mail import Message
@@ -94,7 +97,8 @@ def forgot_password():
         if user:
             token = secrets.token_urlsafe(32)
             user.reset_token = token
-            user.reset_token_expiry = datetime.utcnow() + timedelta(hours=1)
+            from datetime import timezone
+            user.reset_token_expiry = datetime.now(timezone.utc) + timedelta(hours=1)
             db.session.commit()
             
             reset_url = url_for('web.reset_password', token=token, _external=True)
@@ -109,7 +113,7 @@ def forgot_password():
                 mail.send(msg)
                 flash('Te hemos enviado un correo con instrucciones.', 'info')
             except Exception as e:
-                print(f"Error enviando mail: {e}")
+                logger.error("Error enviando mail reset password: %s", e)
                 flash('Error al enviar el correo. Contacta soporte.', 'error')
         else:
             # Por seguridad, no decimos si el email existe o no, o sí? 
@@ -124,7 +128,8 @@ def forgot_password():
 def reset_password(token):
     user = BusinessProfile.query.filter_by(reset_token=token).first()
     
-    if not user or user.reset_token_expiry < datetime.utcnow():
+    from datetime import timezone
+    if not user or user.reset_token_expiry < datetime.now(timezone.utc):
         flash('El enlace es inválido o ha expirado.', 'error')
         return redirect(url_for('web.login'))
         
@@ -154,7 +159,7 @@ def marketplace():
     if user.active_agents is None:
         user.active_agents = []
         
-    return render_template('marketplace.html', current_user=user)
+    return render_template('marketplace.html', current_user=user, current_page='marketplace')
 
 @web_bp.route('/toggle_agent/<agent_id>', methods=['POST'])
 def toggle_agent(agent_id):
@@ -255,7 +260,7 @@ def profile():
             db.session.commit()
             flash('Contraseña actualizada correctamente.', 'success')
             
-    return render_template('profile.html', user=user)
+    return render_template('profile.html', user=user, current_page='profile')
 
 @web_bp.route('/dashboard')
 def dashboard():
@@ -333,17 +338,18 @@ def dashboard():
     yesterday_str = yesterday.strftime('%Y-%m-%d')
 
     return render_template(
-        'dashboard.html', 
-        current_user=UserContext(), 
+        'dashboard.html',
+        current_user=UserContext(),
         tickets=tickets,
         total_gastos=total_gastos_fmt,
         tickets_pendientes=tickets_pendientes,
-        tickets_procesados=tickets_procesados, # Fix syntax error from previous view? No, comma is fine
+        tickets_procesados=tickets_procesados,
         chats_atendidos=chats_atendidos,
         current_month_name=month_name,
         logs=recent_activity,
         now_str=now_str,
-        yesterday_str=yesterday_str
+        yesterday_str=yesterday_str,
+        current_page='dashboard'
     )
 
 @web_bp.route('/transactions')
@@ -356,7 +362,7 @@ def transactions():
     # Traer TODOS los tickets
     tickets = Ticket.query.filter_by(user_phone=user_phone).order_by(Ticket.date.desc()).all()
     
-    return render_template('transactions.html', tickets=tickets)
+    return render_template('transactions.html', tickets=tickets, current_page='transactions')
 
 @web_bp.route('/documents')
 def documents_page():
@@ -406,25 +412,21 @@ def documents_page():
     now_str = now.strftime('%Y-%m-%d')
     yesterday_str = yesterday.strftime('%Y-%m-%d')
     
-    return render_template('documents.html', 
-                           tree_proposals=tree_proposals, 
-                           tree_images=tree_images, 
-                           tree_presentations=tree_presentations,
-                           tree_videos=tree_videos,
-                           # Pasamos contadores para los badges
-                           count_proposals=len(docs_proposals),
-                           count_images=len(docs_images),
-                           count_presentations=len(docs_presentations),
-                           count_videos=len(docs_video_prompts),
+    return render_template('documents.html',
+                           proposals=docs_proposals,
+                           images=docs_images,
+                           presentations=docs_presentations,
+                           videos=docs_video_prompts,
                            now_str=now_str,
-                           yesterday_str=yesterday_str)
+                           yesterday_str=yesterday_str,
+                           current_page='documents')
 
 @web_bp.route('/delete_document/<int:doc_id>', methods=['POST'])
 def delete_document(doc_id):
     if 'user_phone' not in session:
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     
-    doc = GeneratedDocument.query.get(doc_id)
+    doc = db.session.get(GeneratedDocument, doc_id)
     if not doc:
         return jsonify({"success": False, "error": "Document not found"}), 404
         
@@ -441,7 +443,7 @@ def delete_document(doc_id):
             if os.path.exists(absolute_path):
                 os.remove(absolute_path)
         except Exception as e:
-            print(f"Error borrando archivo físico {doc.file_path}: {e}")
+            logger.warning("Error borrando archivo físico %s: %s", doc.file_path, e)
             # Continuamos para borrar de DB aunque falle disco
             
         # 2. Borrar de DB
@@ -469,7 +471,7 @@ def wizard():
             logo_path = None
         profile = MockProfile()
         
-    return render_template('wizard.html', current_user=profile)
+    return render_template('wizard.html', current_user=profile, current_page='wizard')
 
 @web_bp.route('/save_config', methods=['POST'])
 def save_config():
@@ -558,7 +560,13 @@ def save_config():
 def agents_page():
     if 'user_phone' not in session:
         return redirect(url_for('web.login'))
-    return render_template('agents.html')
+    return render_template('agents.html', current_page='agents')
+
+@web_bp.route('/marketing')
+def marketing_page():
+    if 'user_phone' not in session:
+        return redirect(url_for('web.login'))
+    return render_template('marketing.html', current_page='marketing')
 
 @web_bp.route('/export_excel')
 def export_excel():
@@ -711,11 +719,9 @@ def export_excel():
     date_str = datetime.now().strftime('%Y-%m-%d_%H%M%S')
     filename = f"Gastos_{safe_name}_{date_str}.xlsx"
     
-    print(f"Generando Excel: {filename}") # Debug Log
+    logger.info("Generando Excel: %s", filename)
     
     return send_file(output, as_attachment=True, download_name=filename, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
-# --- WEBHOOK WHATSAPP (Backend Logic) ---
 
 @web_bp.route('/demo')
 def demo_panel():
@@ -724,6 +730,8 @@ def demo_panel():
 
 @web_bp.route('/demo/seed_data', methods=['POST'])
 def demo_seed():
+    if 'user_phone' not in session:
+        return redirect(url_for('web.login'))
     from seed_demo import generate_fake_history
     generate_fake_history(session['user_phone'])
     flash('✅ Datos históricos inyectados.', 'success')
@@ -731,6 +739,8 @@ def demo_seed():
 
 @web_bp.route('/demo/trigger/<agent_name>', methods=['POST'])
 def demo_trigger(agent_name):
+    if 'user_phone' not in session:
+        return redirect(url_for('web.login'))
     user = BusinessProfile.query.filter_by(user_phone=session['user_phone']).first()
     try:
         if agent_name == 'coach':
@@ -783,5 +793,13 @@ def council_page():
     if not session.get('user_phone'):
         return redirect(url_for('web.login'))
     return render_template('council.html', current_page='council')
+
+
+@web_bp.route('/metrics')
+def metrics_page():
+    if not session.get('user_phone'):
+        return redirect(url_for('web.login'))
+    is_admin = session.get('user_email') == 'admin@ticketia.com'
+    return render_template('metrics.html', current_page='metrics', is_admin=is_admin)
 
 

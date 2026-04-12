@@ -1,9 +1,13 @@
 import os
 import json
+import logging
+import time
 import base64
 from fpdf import FPDF
-from openai import OpenAI
 from datetime import datetime
+from core.llm_tracker import track as _track
+
+logger = logging.getLogger(__name__)
 
 class AdminAssistantAgent:
     def __init__(self):
@@ -16,7 +20,7 @@ class AdminAssistantAgent:
         o un BORRADOR (Nota/Servilleta para crear un documento).
         """
         try:
-            print(f"🧠 Clasificando imagen: {image_url[:15]}...")
+            logger.info("Clasificando imagen: %s...", image_url[:15])
             
             # --- PREPARAR IMAGEN (Local vs URL) ---
             image_content = []
@@ -36,7 +40,7 @@ class AdminAssistantAgent:
                             "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
                         }]
                 except Exception as e:
-                    print(f"⚠️ Error cargando imagen local para clasificación: {e}")
+                    logger.warning("Error cargando imagen local para clasificación: %s", e)
                     # Fallback tentativo, aunque probablemente falle si es local path
                     image_content = [{"type": "image_url", "image_url": {"url": image_url}}]
 
@@ -61,6 +65,7 @@ class AdminAssistantAgent:
             Responde JSON estricto: {{"type": "receipt" | "draft"}}
             """
 
+            _t0 = time.time()
             response = self.openai.chat.completions.create(
                 model="gpt-4o",
                 messages=[
@@ -72,19 +77,21 @@ class AdminAssistantAgent:
                 response_format={"type": "json_object"},
                 max_tokens=50
             )
+            _track(None, "gpt-4o", "image_classify_intent",
+                   response, int((time.time() - _t0) * 1000))
             data = json.loads(response.choices[0].message.content)
             result = data.get('type', 'receipt')
-            print(f"   -> Clasificación (v3 Aggressive): {result.upper()} | Context: {user_text}")
+            logger.info("Clasificación imagen: %s | Context: %s", result.upper(), user_text)
             return result
         except Exception as e:
-            print(f"❌ Error Clasificación: {e}")
-            return "receipt" # Default seguro
+            logger.error("Error clasificando imagen: %s", e)
+            return "receipt"
 
     def process_image_request(self, image_url, user_context):
         """
         Orquesta el flujo: Imagen -> Datos Estructurados -> PDF -> Path
         """
-        print(f"📄 AdminRedactor: Procesando imagen... {image_url[:20]}...")
+        logger.info("AdminRedactor: procesando imagen %s...", image_url[:20])
         
         # 1. Vision API: Extraer datos (Pasamos contexto sectorial)
         extracted_data = self._analyze_image_with_vision(image_url, extra_context=user_context)
@@ -100,7 +107,7 @@ class AdminAssistantAgent:
         Genera PDF directamente desde datos estructurados (sin imagen).
         Útil para comandos de voz/texto.
         """
-        print(f"📄 AdminRedactor: Generando PDF desde datos texto...")
+        logger.info("AdminRedactor: generando PDF desde datos texto")
         return self._generate_professional_pdf(data, user_context)
 
     def _analyze_image_with_vision(self, image_url, extra_context={}):
@@ -132,7 +139,7 @@ class AdminAssistantAgent:
             with open(k_path, 'r', encoding='utf-8') as f:
                 sector_knowledge = f.read()
         except Exception as e:
-            print(f"⚠️ Warning: Knowledge file error {e}, using generic.")
+            logger.warning("Knowledge file error (%s), usando genérico: %s", knowledge_file, e)
             sector_knowledge = "Actúa como experto administrativo general."
 
         # 2. Preparar Imagen
@@ -185,6 +192,7 @@ class AdminAssistantAgent:
         """
 
         try:
+            _t0 = time.time()
             response = self.openai.chat.completions.create(
                 model="gpt-4o",
                 messages=[
@@ -196,9 +204,11 @@ class AdminAssistantAgent:
                 response_format={"type": "json_object"},
                 max_tokens=1000
             )
+            _track(None, "gpt-4o", "image_extract_data",
+                   response, int((time.time() - _t0) * 1000))
             return json.loads(response.choices[0].message.content)
         except Exception as e:
-            print(f"❌ Error Vision: {e}")
+            logger.error("Error Vision API: %s", e)
             return None
 
     def _generate_professional_pdf(self, data, user_context):
@@ -217,7 +227,7 @@ class AdminAssistantAgent:
                 # Encode to Latin-1, replacing errors with ?
                 try:
                     return text.encode('latin-1', 'replace').decode('latin-1')
-                except:
+                except Exception:
                     return str(text)
 
             # Default logic
@@ -290,10 +300,7 @@ class AdminAssistantAgent:
             pdf.set_font("Arial", '', 10)
             
             subtotal = 0.0
-            
-            # Helper to sanitize text for FPDF (Latin-1)
-            def clean_text(text):
-                if not text: return ""
+
             for item in data.get('items', []):
                 desc = str(item.get('desc', 'Item'))
                 qty = float(item.get('qty', 1))
@@ -348,11 +355,9 @@ class AdminAssistantAgent:
             full_path = os.path.join(save_dir, filename)
             
             pdf.output(full_path)
-            print(f"✅ PDF Generado: {full_path}")
-            
-            # Return Web URL
+            logger.info("PDF generado: %s", full_path)
             return f"/static/generated_docs/{filename}"
-            
+
         except Exception as e:
-            print(f"❌ Error FPDF: {e}")
+            logger.error("Error generando PDF: %s", e)
             return None

@@ -1,49 +1,55 @@
+import logging
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
+from datetime import datetime, timezone, date as date_type
+
+_logger = logging.getLogger(__name__)
 
 db = SQLAlchemy()
 
+def _now():
+    return datetime.now(timezone.utc)
+
 class BusinessProfile(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    user_phone = db.Column(db.String(20), unique=False, nullable=False) # Phone still mandatory for bot, but not primary login
-    email = db.Column(db.String(120), unique=True, nullable=False) # New Login ID
+    user_phone = db.Column(db.String(20), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
     business_name = db.Column(db.String(100))
-    logo_path = db.Column(db.String(300)) # Logo URL for PPTX/Web
-    password_hash = db.Column(db.String(200)) # Auth
-    
+    logo_path = db.Column(db.String(300))
+    password_hash = db.Column(db.String(200))
+
     # Password Recovery
     reset_token = db.Column(db.String(100), nullable=True)
-    reset_token_expiry = db.Column(db.DateTime, nullable=True)
-    
+    reset_token_expiry = db.Column(db.DateTime(timezone=True), nullable=True)
+
     # SaaS Info
     plan_tier = db.Column(db.String(20), default='BASIC')
-    whatsapp_number = db.Column(db.String(20)) # Número asignado (si aplica)
-    twilio_sid = db.Column(db.String(50))
-    features = db.Column(db.JSON, default={}) # {"bot_enabled": true}
-    
+    features = db.Column(db.JSON, default={})
+
     # Chatbot Config
     system_prompt = db.Column(db.Text)
     static_knowledge = db.Column(db.JSON, default={})
-    
+
     # Marketplace (Suscripciones a Agentes)
-    # Lista de IDs de agentes activos ej: ["grant_hunter", "networker"]
     active_agents = db.Column(db.JSON, default=[])
-    # Configuración específica de cada agente ej: {"post_sales_service": {"ask_feedback": True}}
     agent_config = db.Column(db.JSON, default={})
-    
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Web Push (PWA notifications — replaces WhatsApp push)
+    push_subscription = db.Column(db.Text, nullable=True)  # JSON PushSubscription object
+
+    created_at = db.Column(db.DateTime(timezone=True), default=_now)
+
 
 class Ticket(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    user_phone = db.Column(db.String(20), nullable=False)
-    image_path = db.Column(db.String(300)) # URL o Path en Drive/S3
-    status = db.Column(db.String(20), default='pending') # pending, processed
-    
+    user_phone = db.Column(db.String(20), nullable=False, index=True)
+    image_path = db.Column(db.String(300))
+    status = db.Column(db.String(20), default='pending')
+
     # Datos Fiscales
     concept = db.Column(db.String(100))
     total = db.Column(db.Float)
-    date = db.Column(db.DateTime, default=datetime.utcnow)
-    
+    date = db.Column(db.DateTime(timezone=True), default=_now)
+
     # Detalles Avanzados
     nif = db.Column(db.String(20))
     provider = db.Column(db.String(100))
@@ -51,89 +57,115 @@ class Ticket(db.Model):
     base = db.Column(db.Float)
     tax_percent = db.Column(db.Float)
     fee = db.Column(db.Float)
-    
-    raw_data = db.Column(db.Text) # JSON respaldo
+
+    raw_data = db.Column(db.Text)
+
 
 class Appointment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    business_phone = db.Column(db.String(20), nullable=False) # Dueño del calendario
-    date = db.Column(db.String(20), nullable=False) # YYYY-MM-DD
-    time = db.Column(db.String(10), nullable=False) # HH:MM
+    business_phone = db.Column(db.String(20), nullable=False, index=True)
+    # Stored as proper Date — callers must pass datetime.date objects or "YYYY-MM-DD" strings
+    date = db.Column(db.Date, nullable=False)
+    time = db.Column(db.String(10), nullable=False)  # HH:MM
     client_name = db.Column(db.String(100))
     client_phone = db.Column(db.String(20))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime(timezone=True), default=_now)
+
 
 class ChatMessage(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    user_phone = db.Column(db.String(20), nullable=False, index=True) # Vinculado al cliente
-    role = db.Column(db.String(20), nullable=False) # 'user', 'assistant', 'tool'
+    user_phone = db.Column(db.String(20), nullable=False, index=True)
+    role = db.Column(db.String(20), nullable=False)  # 'user', 'assistant', 'tool'
     content = db.Column(db.Text)
-    tool_call_id = db.Column(db.String(100), nullable=True) # Para enlazar respuestas de tools
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # Required by OpenAI API for role='tool' messages
+    name = db.Column(db.String(100), nullable=True)
+    tool_call_id = db.Column(db.String(100), nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), default=_now)
+
 
 class Grant(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text)
-    sector_focus = db.Column(db.String(100)) # Ej: "Hostelería", "Tech", "General"
-    amount = db.Column(db.String(50)) # Ej: "Hasta 2.000€"
+    sector_focus = db.Column(db.String(100))
+    amount = db.Column(db.String(50))
     link = db.Column(db.String(300))
     deadline = db.Column(db.String(50))
-    # Lista de teléfonos notificados (JSON) para evitar spam
-    notified_phones = db.Column(db.JSON, default=[]) 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    notified_phones = db.Column(db.JSON, default=[])
+    created_at = db.Column(db.DateTime(timezone=True), default=_now)
+
 
 class SynergyMatch(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    user_a_phone = db.Column(db.String(20), nullable=False) # Quien recibe la sugerencia
-    user_b_phone = db.Column(db.String(20), nullable=False) # El candidato sugerido
-    score = db.Column(db.Integer) # 0-100 Puntuación de la IA
-    reason = db.Column(db.Text)   # Por qué hacen buena pareja
-    status = db.Column(db.String(20), default='suggested') # suggested, accepted, rejected
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    user_a_phone = db.Column(db.String(20), nullable=False)
+    user_b_phone = db.Column(db.String(20), nullable=False)
+    score = db.Column(db.Integer)
+    reason = db.Column(db.Text)
+    status = db.Column(db.String(20), default='suggested')
+    created_at = db.Column(db.DateTime(timezone=True), default=_now)
+
 
 class ActivityLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_phone = db.Column(db.String(20), nullable=False)
-    agent_name = db.Column(db.String(50), nullable=False) # Ej: "Business Coach", "Redactor"
-    action = db.Column(db.Text, nullable=False) # Ej: "Generado gráfico de gastos"
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    agent_name = db.Column(db.String(50), nullable=False)
+    action = db.Column(db.Text, nullable=False)
+    timestamp = db.Column(db.DateTime(timezone=True), default=_now)
 
     @staticmethod
     def log(phone, agent, action):
-        """Helper para guardar logs rápidamente desde cualquier agente"""
         try:
             new_log = ActivityLog(user_phone=phone, agent_name=agent, action=action)
             db.session.add(new_log)
             db.session.commit()
-            print(f"📝 Log guardado: {agent} -> {action}")
+            _logger.debug("ActivityLog: %s -> %s", agent, action)
         except Exception as e:
-            print(f"❌ Error guardando log: {e}")
+            _logger.error("Error guardando ActivityLog: %s", e)
             db.session.rollback()
+
 
 class Incident(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_phone = db.Column(db.String(20), nullable=False)
-    order_id = db.Column(db.String(50), nullable=True) # Ej: "ORD-2024-001"
-    type = db.Column(db.String(50)) # "Devolución", "Queja", "Info"
+    order_id = db.Column(db.String(50), nullable=True)
+    type = db.Column(db.String(50))
     status = db.Column(db.String(20), default="Abierto")
     description = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime(timezone=True), default=_now)
+
 
 class GeneratedDocument(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_phone = db.Column(db.String(20), nullable=False, index=True)
-    file_path = db.Column(db.String(300), nullable=False) # e.g. /static/generated_docs/budget_123.pdf
-    doc_type = db.Column(db.String(50)) # 'proposal', 'invoice', 'marketing_image', 'other'
-    client_name = db.Column(db.String(100), nullable=True) # Optional client context
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    file_path = db.Column(db.String(300), nullable=False)
+    doc_type = db.Column(db.String(50))
+    client_name = db.Column(db.String(100), nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), default=_now)
+
 
 class Notification(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_phone = db.Column(db.String(20), nullable=False, index=True)
     title = db.Column(db.String(100), nullable=False)
     message = db.Column(db.Text, nullable=False)
-    type = db.Column(db.String(20), default='info') # grant, networking, system, alert
-    link = db.Column(db.String(300), nullable=True) # Acción (ej: /marketplace)
+    type = db.Column(db.String(20), default='info')
+    link = db.Column(db.String(300), nullable=True)
     is_read = db.Column(db.Boolean, default=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime(timezone=True), default=_now)
+
+
+class LLMCall(db.Model):
+    """Registro de cada llamada a un modelo de lenguaje o generación de medios."""
+    __tablename__ = 'llm_call'
+    id = db.Column(db.Integer, primary_key=True)
+    user_phone = db.Column(db.String(20), nullable=True, index=True)
+    model = db.Column(db.String(60), nullable=False, index=True)
+    stage = db.Column(db.String(100), nullable=False)
+    prompt_tokens = db.Column(db.Integer, default=0)
+    completion_tokens = db.Column(db.Integer, default=0)
+    total_tokens = db.Column(db.Integer, default=0)
+    latency_ms = db.Column(db.Integer, default=0)
+    cost_usd = db.Column(db.Float, default=0.0)
+    success = db.Column(db.Boolean, default=True)
+    error_message = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), default=_now, index=True)

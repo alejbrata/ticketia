@@ -5,9 +5,6 @@ from datetime import datetime, timedelta
 
 # MOCK ENV VARS BEFORE IMPORT
 os.environ['OPENAI_API_KEY'] = 'sk-fake-key-for-testing'
-os.environ['TWILIO_ACCOUNT_SID'] = 'ACfake'
-os.environ['TWILIO_AUTH_TOKEN'] = 'fake'
-os.environ['TWILIO_WHATSAPP_NUMBER'] = 'whatsapp:+123456789'
 
 # Add path to sys to import modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))

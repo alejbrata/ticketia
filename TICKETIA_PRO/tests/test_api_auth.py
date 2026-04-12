@@ -24,9 +24,6 @@ from datetime import datetime
 
 # Env vars falsas para evitar errores de importacion
 os.environ.setdefault('OPENAI_API_KEY', 'sk-fake-key-for-testing')
-os.environ.setdefault('TWILIO_ACCOUNT_SID', 'ACfake')
-os.environ.setdefault('TWILIO_AUTH_TOKEN', 'fake')
-os.environ.setdefault('TWILIO_WHATSAPP_NUMBER', 'whatsapp:+123456789')
 os.environ.setdefault('SECRET_KEY', 'test-secret-key-very-long-and-random')
 os.environ.setdefault('MAIL_DEFAULT_SENDER', 'test@ticketia.com')
 
@@ -261,6 +258,8 @@ class TestAgentExecutor(TicketiaTestBase):
 
         mock_response = MagicMock()
         mock_response.choices = [mock_choice]
+        # usage=None para que llm_tracker no intente extraer tokens de un MagicMock
+        mock_response.usage = None
         return mock_response
 
     @patch('modules.agents.manager.get_openai_client')
@@ -371,6 +370,7 @@ class TestAPIEndpoints(TicketiaTestBase):
         mock_choice.message = mock_msg
         mock_response = MagicMock()
         mock_response.choices = [mock_choice]
+        mock_response.usage = None
         mock_client.chat.completions.create.return_value = mock_response
         mock_get_client.return_value = mock_client
 

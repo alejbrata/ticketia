@@ -1,5 +1,4 @@
 flask
-twilio
 openai
 python-dotenv
 psycopg2-binary
@@ -8,7 +7,6 @@ xlsxwriter
 flask-sqlalchemy
 flask-mail
 flask-admin
-schedule
 fpdf
 python-dateutil
 matplotlib
@@ -16,10 +14,12 @@ requests
 python-pptx
 Pillow
 runwayml
-gunicorn
+gunicorn[gevent]
+gevent
 pytest
 deepeval
 mcp[cli]
 duckduckgo-search
 flask-limiter
 APScheduler
+pywebpush

@@ -95,22 +95,37 @@
 
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
+            let buffer = '';  // acumula datos entre chunks
 
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
 
-                const chunk = decoder.decode(value);
-                const lines = chunk.split('\n');
+                buffer += decoder.decode(value, { stream: true });
+
+                // Procesar solo líneas completas (terminadas en \n)
+                const lines = buffer.split('\n');
+                // La última parte puede estar incompleta — la guardamos para el próximo chunk
+                buffer = lines.pop();
 
                 for (const line of lines) {
-                    if (line.startsWith('data: ')) {
+                    const trimmed = line.trim();
+                    if (trimmed.startsWith('data: ')) {
                         try {
-                            const data = JSON.parse(line.substring(6));
+                            const data = JSON.parse(trimmed.substring(6));
                             handleEvent(data);
-                        } catch (e) { console.error("Error parsing SSE", e); }
+                        } catch (e) {
+                            console.error("Error parsing SSE line:", trimmed, e);
+                        }
                     }
                 }
+            }
+
+            // Procesar lo que quede en el buffer al cerrar
+            if (buffer.trim().startsWith('data: ')) {
+                try {
+                    handleEvent(JSON.parse(buffer.trim().substring(6)));
+                } catch (_) {}
             }
 
             // Enable input again? Maybe new session button.
@@ -126,14 +141,72 @@
     }
 
     function handleEvent(data) {
-        if (data.type === 'message') {
-            // Highlight Speaker
+        console.log('[Council]', data.type, data.agent || '', (data.text || '').substring(0, 40));
+        if (data.type === 'typing') {
             highlightAvatar(data.agent);
-            addMessage(data.agent, data.text, data.name, data.emoji);
+            showTyping(data.agent, data.name, data.emoji);
+        } else if (data.type === 'message') {
+            removeTyping(data.agent);
+            highlightAvatar(data.agent);
+            addAgentMessage(data.agent, data.text, data.name, data.emoji, data.round);
+        } else if (data.type === 'divider') {
+            addDivider(data.text);
         } else if (data.type === 'plan') {
-            highlightAvatar(null); // Reset
+            removeTyping('system');
+            highlightAvatar(null);
             addPlan(data.text);
+        } else if (data.type === 'error') {
+            removeTyping('system');
+            addMessage('system', '❌ Error: ' + data.text);
         }
+    }
+
+    function addDivider(text) {
+        const container = document.getElementById('chat-container');
+        const div = document.createElement('div');
+        div.className = 'flex items-center gap-3 my-4';
+        div.innerHTML = `
+            <div class="flex-1 h-px bg-slate-200"></div>
+            <span class="text-xs font-bold text-slate-400 whitespace-nowrap">${text}</span>
+            <div class="flex-1 h-px bg-slate-200"></div>
+        `;
+        container.appendChild(div);
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function showTyping(agent, name, emoji) {
+        removeTyping(agent); // evitar duplicados
+        const container = document.getElementById('chat-container');
+        const div = document.createElement('div');
+        div.id = `typing-${agent}`;
+        div.className = 'flex justify-start animate-fade-in-up';
+
+        const colorClass = agent === 'socio' ? 'bg-rose-50 border-rose-100' :
+                           agent === 'gestor' ? 'bg-slate-50 border-slate-100' :
+                           agent === 'system' ? 'bg-indigo-50 border-indigo-100' :
+                           'bg-indigo-50 border-indigo-100';
+
+        div.innerHTML = `
+            <div class="${colorClass} px-4 py-3 rounded-xl rounded-tl-none border max-w-[85%] shadow-sm">
+                <div class="flex items-center gap-2">
+                    <span class="text-base">${emoji || '📝'}</span>
+                    <span class="text-xs font-bold opacity-60">${name || 'Secretario'}</span>
+                    <span class="text-xs text-slate-400 italic">escribiendo</span>
+                    <span class="flex gap-0.5 items-center">
+                        <span class="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style="animation-delay:0ms"></span>
+                        <span class="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style="animation-delay:150ms"></span>
+                        <span class="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style="animation-delay:300ms"></span>
+                    </span>
+                </div>
+            </div>
+        `;
+        container.appendChild(div);
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function removeTyping(agent) {
+        const el = document.getElementById(`typing-${agent}`);
+        if (el) el.remove();
     }
 
     function highlightAvatar(agentKey) {
@@ -149,41 +222,49 @@
         });
     }
 
-    function addMessage(agent, text, name, emoji) {
+    function addMessage(agent, text, name, emoji, round) {
         const container = document.getElementById('chat-container');
         const div = document.createElement('div');
-
         if (agent === 'user') {
             div.className = "flex justify-end";
-            div.innerHTML = `
-                <div class="bg-indigo-600 text-white px-5 py-3 rounded-2xl rounded-tr-none max-w-[80%] shadow-md">
-                    <p class="text-sm">${text}</p>
-                </div>
-            `;
-        } else if (agent === 'system') {
-            div.className = "flex justify-center";
-            div.innerHTML = `
-                <span class="text-xs font-bold text-slate-400 bg-slate-100 px-3 py-1 rounded-full">${text}</span>
-            `;
+            div.innerHTML = `<div class="bg-indigo-600 text-white px-5 py-3 rounded-2xl rounded-tr-none max-w-[80%] shadow-md"><p class="text-sm">${text}</p></div>`;
         } else {
-            // Agent Message
-            const colorClass = agent === 'socio' ? 'bg-rose-50 text-rose-900 border-rose-100' :
-                agent === 'gestor' ? 'bg-slate-50 text-slate-900 border-slate-100' :
-                    'bg-indigo-50 text-indigo-900 border-indigo-100'; // coach
-
-            div.className = "flex justify-start animate-fade-in-up";
-            div.innerHTML = `
-                <div class="${colorClass} p-4 rounded-xl rounded-tl-none border max-w-[85%] shadow-sm">
-                    <div class="flex items-center gap-2 mb-1">
-                        <span class="text-lg">${emoji}</span>
-                        <span class="text-xs font-bold opacity-70">${name}</span>
-                    </div>
-                    <p class="text-sm leading-relaxed">${text}</p>
-                </div>
-            `;
+            div.className = "flex justify-center";
+            div.innerHTML = `<span class="text-xs font-bold text-slate-400 bg-slate-100 px-3 py-1 rounded-full">${text}</span>`;
         }
-
         container.appendChild(div);
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function addAgentMessage(agent, text, name, emoji, round) {
+        const container = document.getElementById('chat-container');
+        console.log('[addAgentMessage]', agent, name, text.substring(0, 30));
+
+        const colors = {
+            socio:  { bg: '#fff1f2', border: '#fecdd3', text: '#881337', badgeBg: '#ffe4e6', badgeText: '#be123c' },
+            gestor: { bg: '#fffbeb', border: '#fde68a', text: '#78350f', badgeBg: '#fef3c7', badgeText: '#92400e' },
+            coach:  { bg: '#eef2ff', border: '#c7d2fe', text: '#1e1b4b', badgeBg: '#e0e7ff', badgeText: '#3730a3' },
+        };
+        const c = colors[agent] || colors.coach;
+
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = 'display:flex; justify-content:flex-start; margin-bottom:12px; animation: fadeInUp 0.4s ease-out forwards;';
+
+        const bubble = document.createElement('div');
+        bubble.style.cssText = `background:${c.bg}; border:1px solid ${c.border}; color:${c.text}; padding:14px 16px; border-radius:16px; border-top-left-radius:4px; max-width:85%; box-shadow:0 1px 3px rgba(0,0,0,.08);`;
+
+        const header = document.createElement('div');
+        header.style.cssText = 'display:flex; align-items:center; gap:8px; margin-bottom:8px;';
+        header.innerHTML = `<span style="font-size:1.2rem">${emoji || '💬'}</span><span style="font-size:11px; font-weight:700; background:${c.badgeBg}; color:${c.badgeText}; padding:2px 8px; border-radius:999px;">${name || agent}</span>${round === 2 ? '<span style="font-size:9px; font-weight:700; background:#e2e8f0; color:#64748b; padding:2px 6px; border-radius:999px;">réplica</span>' : ''}`;
+
+        const body = document.createElement('p');
+        body.style.cssText = 'font-size:14px; line-height:1.6; margin:0;';
+        body.textContent = text;
+
+        bubble.appendChild(header);
+        bubble.appendChild(body);
+        wrapper.appendChild(bubble);
+        container.appendChild(wrapper);
         container.scrollTop = container.scrollHeight;
     }
 
