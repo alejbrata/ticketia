@@ -5,7 +5,8 @@
 
     <!-- Header -->
     <header class="mb-8">
-        <h1 class="text-3xl font-bold text-slate-800 tracking-tight">
+        <a href="{{ url_for('web.dashboard') }}" class="text-sm text-slate-400 hover:text-indigo-600 transition-colors">← Inicio</a>
+        <h1 class="text-3xl font-bold text-slate-800 tracking-tight mt-2">
             Métricas LLM
             {% if is_admin %}<span class="text-sm font-normal text-indigo-500 ml-2">· Vista global</span>{% endif %}
         </h1>
