@@ -190,42 +190,88 @@
                         btn.classList.add('bg-green-600');
                         setTimeout(() => location.reload(), 2000);
                     } else {
-                        alert("❌ Error: " + data.error);
+                        window.showToast && window.showToast('Error: ' + data.error, 'error');
                         btn.innerHTML = originalHtml;
                         btn.disabled = false;
                         btn.classList.remove('opacity-75', 'cursor-wait');
                     }
                 } catch (e) {
-                    alert("Error de conexión");
+                    window.showToast && window.showToast('Error de conexion', 'error');
                     btn.innerHTML = originalHtml;
                     btn.disabled = false;
                 }
             }
         }
 
-        async function deleteDocument(docId, btnElement) {
-            if (!confirm("¿Seguro que quieres eliminar este archivo? No se puede deshacer.")) return;
-            const card = btnElement.closest('.bg-white');
-            if (card) { card.style.opacity = "0.5"; card.style.pointerEvents = "none"; }
+        let _pendingDeleteId   = null;
+        let _pendingDeleteCard = null;
+
+        function deleteDocument(docId, btnElement) {
+            _pendingDeleteId   = docId;
+            _pendingDeleteCard = btnElement.closest('.bg-white');
+            document.getElementById('deleteModal').classList.remove('hidden');
+        }
+
+        function closeDeleteModal() {
+            document.getElementById('deleteModal').classList.add('hidden');
+            _pendingDeleteId   = null;
+            _pendingDeleteCard = null;
+        }
+
+        async function confirmDelete() {
+            if (!_pendingDeleteId) return;
+            const card = _pendingDeleteCard;
+            const btn  = document.getElementById('confirmDeleteBtn');
+            btn.disabled = true;
+            btn.textContent = 'Eliminando...';
+            if (card) { card.style.opacity = '0.4'; card.style.pointerEvents = 'none'; }
+            document.getElementById('deleteModal').classList.add('hidden');
+
             try {
-                const response = await fetch(`/delete_document/${docId}`, { method: 'POST' });
-                const data = await response.json();
+                const res  = await fetch(`/delete_document/${_pendingDeleteId}`, { method: 'POST' });
+                const data = await res.json();
                 if (data.success) {
                     if (card) {
-                        card.style.opacity = "0";
-                        card.style.transform = "scale(0.9)";
+                        card.style.transition = 'all 0.3s ease';
+                        card.style.opacity    = '0';
+                        card.style.transform  = 'scale(0.9)';
                         setTimeout(() => card.remove(), 300);
                     } else { location.reload(); }
                 } else {
-                    alert("❌ Error: " + data.error);
-                    if (card) { card.style.opacity = "1"; card.style.pointerEvents = "all"; }
+                    // Rollback visual
+                    if (card) { card.style.opacity = '1'; card.style.pointerEvents = 'all'; }
+                    window.showToast && window.showToast('Error al eliminar: ' + data.error, 'error');
                 }
             } catch (e) {
-                alert("Error de conexión");
-                if (card) { card.style.opacity = "1"; card.style.pointerEvents = "all"; }
+                if (card) { card.style.opacity = '1'; card.style.pointerEvents = 'all'; }
+                window.showToast && window.showToast('Error de conexion. El archivo no fue eliminado.', 'error');
+            } finally {
+                btn.disabled    = false;
+                btn.textContent = 'Eliminar';
+                _pendingDeleteId   = null;
+                _pendingDeleteCard = null;
             }
         }
     </script>
+
+    <!-- Confirm Delete Modal -->
+    <div id="deleteModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] hidden flex items-end md:items-center justify-center p-4" onclick="closeDeleteModal()">
+        <div class="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl" onclick="event.stopPropagation()">
+            <div class="text-center mb-5">
+                <div class="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center text-2xl mx-auto mb-3">🗑️</div>
+                <h3 class="text-lg font-bold text-slate-800">Eliminar archivo</h3>
+                <p class="text-sm text-slate-500 mt-1">Esta accion no se puede deshacer.</p>
+            </div>
+            <div class="flex gap-3">
+                <button onclick="closeDeleteModal()" class="flex-1 py-3 rounded-2xl bg-slate-100 text-slate-700 font-bold text-sm hover:bg-slate-200 transition-colors">
+                    Cancelar
+                </button>
+                <button id="confirmDeleteBtn" onclick="confirmDelete()" class="flex-1 py-3 rounded-2xl bg-red-600 text-white font-bold text-sm hover:bg-red-700 transition-colors shadow-lg shadow-red-200">
+                    Eliminar
+                </button>
+            </div>
+        </div>
+    </div>
 
     <script src="//unpkg.com/alpinejs" defer></script>
 
