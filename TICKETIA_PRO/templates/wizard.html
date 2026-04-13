@@ -20,9 +20,14 @@
         <!-- Nombre -->
         <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
             <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Nombre Comercial</label>
-            <input type="text" name="business_name" value="{{ current_user.business_name }}"
-                placeholder="Ej: Clínica Dental Sonrisas"
-                class="w-full px-0 py-2 bg-transparent border-b border-slate-200 focus:border-indigo-500 outline-none transition-colors text-slate-800 font-medium placeholder-slate-300">
+            <div class="relative">
+                <input type="text" name="business_name" id="wiz-name" value="{{ current_user.business_name }}"
+                    placeholder="Ej: Clinica Dental Sonrisas" required
+                    class="w-full px-0 pr-6 py-2 bg-transparent border-b border-slate-200 focus:border-indigo-500 outline-none transition-colors text-slate-800 font-medium placeholder-slate-300"
+                    oninput="wv(this, /^.{2,}$/, '')">
+                <span id="wiz-name-ok" class="absolute right-0 top-2 text-emerald-500 text-sm hidden">✓</span>
+            </div>
+            <p id="wiz-name-err" class="text-xs text-red-500 mt-1 hidden">Minimo 2 caracteres</p>
 
             <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mt-4 mb-2">Logo de la Empresa
                 (Opcional)</label>
@@ -68,17 +73,22 @@
             </h3>
 
             <div>
-                <label class="block text-xs font-medium text-slate-400 mb-1">Horario de Atención</label>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Horario de Atencion</label>
                 <input type="text" name="schedule" value="{{ current_user.static_knowledge.get('schedule', '') }}"
                     placeholder="L-V: 9:00 - 20:00"
-                    class="w-full px-3 py-2 bg-slate-50 rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500 border border-slate-100">
+                    class="w-full px-3 py-2 bg-slate-50 rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500 border border-slate-100 transition-colors">
             </div>
 
             <div>
                 <label class="block text-xs font-medium text-slate-400 mb-1">Servicios Principales</label>
-                <input type="text" name="services" value="{{ current_user.static_knowledge.get('services', '') }}"
-                    placeholder="Ej: Menú del día, Cafés, Desayunos"
-                    class="w-full px-3 py-2 bg-slate-50 rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500 border border-slate-100">
+                <div class="relative">
+                    <input type="text" name="services" id="wiz-services" value="{{ current_user.static_knowledge.get('services', '') }}"
+                        placeholder="Ej: Menu del dia, Cafes, Desayunos"
+                        class="w-full px-3 py-2 pr-8 bg-slate-50 rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500 border border-slate-100 transition-colors"
+                        oninput="wv(this, /^.{5,}$/, '')">
+                    <span id="wiz-services-ok" class="absolute right-2.5 top-2 text-emerald-500 text-sm hidden">✓</span>
+                </div>
+                <p id="wiz-services-err" class="text-xs text-red-500 mt-1 hidden">Describe al menos tus servicios principales</p>
             </div>
 
             <div>
@@ -98,10 +108,38 @@
             </div>
         </div>
 
-        <button type="submit"
+        <button type="submit" id="wiz-submit"
             class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-indigo-200 transition-all transform active:scale-[0.98]">
-            💾 Guardar y Activar IA
+            Guardar y Activar IA
         </button>
     </form>
 </div>
+
+<script>
+    function wv(input, regex, errMsg) {
+        const errEl = document.getElementById(input.id + '-err');
+        const okEl  = document.getElementById(input.id + '-ok');
+        const valid = input.value.trim() === '' || regex.test(input.value.trim());
+        if (input.value.trim() === '') {
+            input.classList.remove('border-red-300', 'border-emerald-300', 'ring-1', 'ring-red-300', 'ring-emerald-300');
+            if (errEl) errEl.classList.add('hidden');
+            if (okEl)  okEl.classList.add('hidden');
+        } else if (valid) {
+            input.classList.add('border-emerald-300'); input.classList.remove('border-red-300');
+            if (errEl) errEl.classList.add('hidden');
+            if (okEl)  okEl.classList.remove('hidden');
+        } else {
+            input.classList.add('border-red-300'); input.classList.remove('border-emerald-300');
+            if (errEl) errEl.classList.remove('hidden');
+            if (okEl)  okEl.classList.add('hidden');
+        }
+    }
+
+    // Show save feedback
+    document.getElementById('wiz-submit').closest('form').addEventListener('submit', function(e) {
+        const btn = document.getElementById('wiz-submit');
+        btn.textContent = 'Guardando...';
+        btn.disabled = true;
+    });
+</script>
 {% endblock %}
