@@ -22,8 +22,9 @@ class TestTicketiaProactiveAgents(unittest.TestCase):
         app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:' # In-memory DB
         self.app = app.test_client()
         with app.app_context():
+            db.drop_all()
             db.create_all()
-            
+
             # Create Dummy User
             self.user = BusinessProfile(
                 user_phone="123456789",
@@ -66,7 +67,7 @@ class TestTicketiaProactiveAgents(unittest.TestCase):
             notif = Notification.query.filter_by(user_phone=user.user_phone, type='grant').first()
             self.assertIsNotNone(notif)
             self.assertIn("Nueva Ayuda", notif.title)
-            print("✅ Grant Hunter Test Passed")
+            print("OK Grant Hunter Test Passed")
 
     def test_networker_synergy(self):
         with app.app_context():
@@ -99,7 +100,7 @@ class TestTicketiaProactiveAgents(unittest.TestCase):
             self.assertIsNotNone(match)
             notif = Notification.query.filter_by(user_phone=user.user_phone, type='networking').first()
             self.assertIsNotNone(notif)
-            print("✅ Networker Test Passed")
+            print("OK Networker Test Passed")
 
     def test_business_coach_projection(self):
         with app.app_context():
@@ -131,7 +132,7 @@ class TestTicketiaProactiveAgents(unittest.TestCase):
             self.assertIsNotNone(notif)
             # Should be alert because +50% spending
             self.assertEqual(notif.type, 'alert') 
-            print("✅ Business Coach Test Passed")
+            print("OK Business Coach Test Passed")
 
     def test_post_sales_complaint(self):
         with app.app_context():
@@ -155,7 +156,7 @@ class TestTicketiaProactiveAgents(unittest.TestCase):
             notif = Notification.query.filter_by(user_phone=user.user_phone, type='alert').first()
             self.assertIsNotNone(notif)
             self.assertIn("CLIENTE ENFADADO", notif.title)
-            print("✅ Post-Sales Complaint Test Passed")
+            print("OK Post-Sales Complaint Test Passed")
 
 if __name__ == '__main__':
     unittest.main()

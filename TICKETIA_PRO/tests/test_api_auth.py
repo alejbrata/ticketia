@@ -53,6 +53,7 @@ class TicketiaTestBase(unittest.TestCase):
         self.client = app.test_client()
 
         with app.app_context():
+            db.drop_all()
             db.create_all()
             self._create_test_user()
 

@@ -84,6 +84,7 @@ class AdminRedactorTestBase(unittest.TestCase):
         self.client = app.test_client()
 
         with app.app_context():
+            db.drop_all()
             db.create_all()
             from werkzeug.security import generate_password_hash
             user = BusinessProfile(

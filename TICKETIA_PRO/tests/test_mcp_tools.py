@@ -53,6 +53,7 @@ class MCPToolsBase(unittest.TestCase):
         app.config['RATELIMIT_ENABLED'] = False
 
         with app.app_context():
+            db.drop_all()
             db.create_all()
             from werkzeug.security import generate_password_hash
             user = BusinessProfile(
