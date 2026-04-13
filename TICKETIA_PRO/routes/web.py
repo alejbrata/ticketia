@@ -272,6 +272,11 @@ def dashboard():
     
     # 2. Obtener Datos Reales
     profile = BusinessProfile.query.filter_by(user_phone=user_phone).first()
+
+    # Onboarding: inyectar datos de ejemplo si el usuario es nuevo (0 tickets)
+    if Ticket.query.filter_by(user_phone=user_phone).count() == 0:
+        _seed_demo_data_for_user(user_phone)
+
     # Limitamos a 5 para el dashboard
     tickets = Ticket.query.filter_by(user_phone=user_phone).order_by(Ticket.date.desc()).limit(5).all()
     # Para calcular contadores, necesitamos TODOS los tickets (o hacer queries count separadas)
@@ -722,6 +727,47 @@ def export_excel():
     logger.info("Generando Excel: %s", filename)
     
     return send_file(output, as_attachment=True, download_name=filename, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+def _seed_demo_data_for_user(user_phone):
+    """Inserta tickets y notificaciones de ejemplo para un usuario nuevo."""
+    from core.db_models import Ticket, Notification, Grant
+    from datetime import timedelta
+    import random
+
+    now = datetime.now()
+    providers = [
+        ("Mercadona", 84.20), ("Repsol Combustible", 120.00), ("El Corte Ingles", 230.50),
+        ("Amazon Business", 67.99), ("Iberdrola Luz", 145.30), ("Telefonica", 89.00),
+        ("Proveedor Materia Prima", 320.00), ("Seguridad Social", 280.00),
+        ("Alquiler Local", 950.00), ("Material Oficina", 45.60),
+    ]
+    existing = Ticket.query.filter_by(user_phone=user_phone).count()
+    if existing < 3:
+        for i, (provider, total) in enumerate(providers):
+            days_ago = random.randint(0, 60)
+            t = Ticket(
+                user_phone=user_phone,
+                provider=provider,
+                total=total,
+                base=round(total / 1.21, 2),
+                tax_percent=21,
+                concept=f"Compra {provider}",
+                date=now - timedelta(days=days_ago),
+                status='processed',
+            )
+            db.session.add(t)
+
+    # Notificación de bienvenida
+    existing_notif = Notification.query.filter_by(user_phone=user_phone, type='info').first()
+    if not existing_notif:
+        db.session.add(Notification(
+            user_phone=user_phone,
+            title="Bienvenido a Zeptai",
+            message="Tu cuenta esta lista. Configura tu asistente IA y activa los agentes proactivos desde el menu.",
+            type='info',
+        ))
+    db.session.commit()
+
 
 @web_bp.route('/demo')
 def demo_panel():
