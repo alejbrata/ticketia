@@ -418,6 +418,8 @@
                 // Add Bot Response
                 if (data.response) {
                     addMessage(data.response, 'bot');
+                } else if (response.status === 401) {
+                    addMessage('Sesion expirada. Vuelve a iniciar sesion para continuar.', 'bot');
                 } else {
                     addMessage('Error: ' + (data.error || 'Desconocido'), 'bot');
                 }
