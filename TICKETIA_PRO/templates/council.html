@@ -13,33 +13,34 @@
     </header>
 
     <!-- Council Members (Avatars) -->
-    <div class="flex justify-center gap-6 mb-8 px-4">
+    <div class="flex justify-center gap-6 mb-8 px-4" role="group" aria-label="Miembros del Consejo">
         <!-- Socio -->
-        <div class="flex flex-col items-center opacity-50 transition-opacity duration-300" id="avatar-socio">
-            <div
-                class="w-16 h-16 rounded-full bg-rose-100 flex items-center justify-center text-3xl shadow-sm border-2 border-rose-200">
+        <div class="flex flex-col items-center transition-all duration-300" id="avatar-socio" data-agent="socio" aria-label="El Socio — Ventas">
+            <div class="relative w-16 h-16 rounded-full bg-rose-100 flex items-center justify-center text-3xl shadow-sm border-2 border-rose-200 transition-all duration-300" id="avatar-ring-socio">
                 🐯
+                <!-- Speaking indicator (hidden by default) -->
+                <span class="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-rose-500 rounded-full border-2 border-white hidden" id="dot-socio" aria-hidden="true"></span>
             </div>
             <span class="text-xs font-bold text-rose-800 mt-2">El Socio</span>
-            <span class="text-[10px] text-rose-600">Ventas</span>
+            <span class="text-[10px] text-rose-600 font-medium bg-rose-50 px-1.5 rounded" id="role-socio">Ventas</span>
         </div>
         <!-- Gestor -->
-        <div class="flex flex-col items-center opacity-50 transition-opacity duration-300" id="avatar-gestor">
-            <div
-                class="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center text-3xl shadow-sm border-2 border-slate-200">
+        <div class="flex flex-col items-center transition-all duration-300" id="avatar-gestor" data-agent="gestor" aria-label="El Gestor — Fiscal">
+            <div class="relative w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center text-3xl shadow-sm border-2 border-amber-200 transition-all duration-300" id="avatar-ring-gestor">
                 🦉
+                <span class="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-amber-500 rounded-full border-2 border-white hidden" id="dot-gestor" aria-hidden="true"></span>
             </div>
-            <span class="text-xs font-bold text-slate-800 mt-2">El Gestor</span>
-            <span class="text-[10px] text-slate-600">Fiscal</span>
+            <span class="text-xs font-bold text-amber-900 mt-2">El Gestor</span>
+            <span class="text-[10px] text-amber-700 font-medium bg-amber-50 px-1.5 rounded" id="role-gestor">Fiscal</span>
         </div>
         <!-- Coach -->
-        <div class="flex flex-col items-center opacity-50 transition-opacity duration-300" id="avatar-coach">
-            <div
-                class="w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center text-3xl shadow-sm border-2 border-indigo-200">
+        <div class="flex flex-col items-center transition-all duration-300" id="avatar-coach" data-agent="coach" aria-label="El Coach — Productividad">
+            <div class="relative w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center text-3xl shadow-sm border-2 border-indigo-200 transition-all duration-300" id="avatar-ring-coach">
                 🚀
+                <span class="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-indigo-500 rounded-full border-2 border-white hidden" id="dot-coach" aria-hidden="true"></span>
             </div>
             <span class="text-xs font-bold text-indigo-800 mt-2">El Coach</span>
-            <span class="text-[10px] text-indigo-600">Productividad</span>
+            <span class="text-[10px] text-indigo-600 font-medium bg-indigo-50 px-1.5 rounded" id="role-coach">Productividad</span>
         </div>
     </div>
 
@@ -60,12 +61,14 @@
     </div>
 
     <!-- Input Area -->
-    <div class="fixed bottom-0 left-0 w-full bg-white/90 backdrop-blur-md border-t border-slate-200 p-4">
-        <div class="max-w-2xl mx-auto flex gap-2">
+    <div class="fixed bottom-0 left-0 w-full bg-white/90 backdrop-blur-md border-t border-slate-200 px-4 pt-3" style="padding-bottom: max(env(safe-area-inset-bottom), 12px);">
+        <div class="max-w-2xl mx-auto flex gap-2 pb-1">
             <input type="text" id="userInput"
                 class="flex-1 bg-slate-100 border-0 rounded-full px-5 py-3 focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800 placeholder-slate-400"
-                placeholder="Escribe tu problema...">
-            <button onclick="startSession()"
+                placeholder="Escribe tu problema..."
+                aria-label="Escribe el tema a debatir con el Consejo">
+            <button id="sendBtn" onclick="startSession()"
+                aria-label="Enviar al Consejo"
                 class="bg-indigo-600 text-white w-12 h-12 rounded-full flex items-center justify-center hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-transform active:scale-95">
                 ➤
             </button>
@@ -75,15 +78,16 @@
 </div>
 
 <script>
-    async function startSession() {
+    async function startSession(retryTopic) {
         const input = document.getElementById('userInput');
-        const topic = input.value.trim();
+        const topic = retryTopic || input.value.trim();
         if (!topic) return;
 
         // 1. Add User Message
-        addMessage('user', topic);
+        if (!retryTopic) addMessage('user', topic);
         input.value = '';
-        input.disabled = true; // Disable input during debate
+        input.disabled = true;
+        document.getElementById('sendBtn').disabled = true;
 
         // 2. Start Stream
         try {
@@ -128,15 +132,16 @@
                 } catch (_) {}
             }
 
-            // Enable input again? Maybe new session button.
-            addMessage('system', "La sesión ha finalizado. ¿Otro tema?");
+            addMessage('system', "Sesion finalizada. Escribe otro tema para continuar.");
             input.disabled = false;
+            document.getElementById('sendBtn').disabled = false;
             input.focus();
 
         } catch (e) {
             console.error(e);
-            addMessage('system', "❌ Hubo un error conectando con el Consejo.");
+            showCouncilError("Error de conexion con el Consejo. Revisa tu red e intenta de nuevo.", topic);
             input.disabled = false;
+            document.getElementById('sendBtn').disabled = false;
         }
     }
 
@@ -210,14 +215,27 @@
     }
 
     function highlightAvatar(agentKey) {
+        const ringColors = {
+            socio:  'border-rose-500',
+            gestor: 'border-amber-500',
+            coach:  'border-indigo-500',
+        };
         ['socio', 'gestor', 'coach'].forEach(k => {
-            const el = document.getElementById(`avatar-${k}`);
+            const ring = document.getElementById(`avatar-ring-${k}`);
+            const dot  = document.getElementById(`dot-${k}`);
+            const role = document.getElementById(`role-${k}`);
             if (k === agentKey) {
-                el.classList.remove('opacity-50', 'scale-100');
-                el.classList.add('opacity-100', 'scale-110');
+                // Active: scale up, colored thick border, dot visible, role tag visible
+                ring.classList.add('scale-110', 'border-4', ringColors[k], 'shadow-lg');
+                ring.classList.remove('border-2', 'opacity-40');
+                dot.classList.remove('hidden');
+                role.classList.add('font-bold');
             } else {
-                el.classList.add('opacity-50', 'scale-100');
-                el.classList.remove('opacity-100', 'scale-110');
+                // Inactive: smaller, thin border, desaturated (filter) instead of just opacity
+                ring.classList.remove('scale-110', 'border-4', ringColors[k], 'shadow-lg');
+                ring.classList.add('border-2', 'opacity-40');
+                dot.classList.add('hidden');
+                role.classList.remove('font-bold');
             }
         });
     }
@@ -238,33 +256,48 @@
 
     function addAgentMessage(agent, text, name, emoji, round) {
         const container = document.getElementById('chat-container');
-        console.log('[addAgentMessage]', agent, name, text.substring(0, 30));
-
-        const colors = {
-            socio:  { bg: '#fff1f2', border: '#fecdd3', text: '#881337', badgeBg: '#ffe4e6', badgeText: '#be123c' },
-            gestor: { bg: '#fffbeb', border: '#fde68a', text: '#78350f', badgeBg: '#fef3c7', badgeText: '#92400e' },
-            coach:  { bg: '#eef2ff', border: '#c7d2fe', text: '#1e1b4b', badgeBg: '#e0e7ff', badgeText: '#3730a3' },
-        };
-        const c = colors[agent] || colors.coach;
+        const agentKey  = ['socio','gestor','coach'].includes(agent) ? agent : 'coach';
 
         const wrapper = document.createElement('div');
-        wrapper.style.cssText = 'display:flex; justify-content:flex-start; margin-bottom:12px; animation: fadeInUp 0.4s ease-out forwards;';
+        wrapper.className = 'flex justify-start mb-3 animate-fade-in-up';
 
         const bubble = document.createElement('div');
-        bubble.style.cssText = `background:${c.bg}; border:1px solid ${c.border}; color:${c.text}; padding:14px 16px; border-radius:16px; border-top-left-radius:4px; max-width:85%; box-shadow:0 1px 3px rgba(0,0,0,.08);`;
+        bubble.className = `bubble-${agentKey} px-4 py-3.5 rounded-2xl rounded-tl-[4px] max-w-[85%] shadow-sm`;
 
         const header = document.createElement('div');
-        header.style.cssText = 'display:flex; align-items:center; gap:8px; margin-bottom:8px;';
-        header.innerHTML = `<span style="font-size:1.2rem">${emoji || '💬'}</span><span style="font-size:11px; font-weight:700; background:${c.badgeBg}; color:${c.badgeText}; padding:2px 8px; border-radius:999px;">${name || agent}</span>${round === 2 ? '<span style="font-size:9px; font-weight:700; background:#e2e8f0; color:#64748b; padding:2px 6px; border-radius:999px;">réplica</span>' : ''}`;
+        header.className = 'flex items-center gap-2 mb-2';
+        const replicaBadge = round === 2
+            ? '<span class="text-[9px] font-bold bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-full">replica</span>'
+            : '';
+        header.innerHTML = `
+            <span class="text-xl">${emoji || '💬'}</span>
+            <span class="text-[11px] font-bold badge-${agentKey} px-2 py-0.5 rounded-full">${name || agent}</span>
+            ${replicaBadge}`;
 
         const body = document.createElement('p');
-        body.style.cssText = 'font-size:14px; line-height:1.6; margin:0;';
+        body.className = 'text-sm leading-relaxed m-0';
         body.textContent = text;
 
         bubble.appendChild(header);
         bubble.appendChild(body);
         wrapper.appendChild(bubble);
         container.appendChild(wrapper);
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function showCouncilError(msg, topic) {
+        const container = document.getElementById('chat-container');
+        const div = document.createElement('div');
+        div.className = 'flex justify-center my-4';
+        div.innerHTML = `
+            <div class="bg-red-50 border border-red-200 rounded-2xl px-5 py-4 max-w-[90%] text-center">
+                <p class="text-sm text-red-700 font-medium mb-3">${msg}</p>
+                <button onclick="startSession(${JSON.stringify(topic)})"
+                    class="text-xs font-bold bg-red-600 text-white px-4 py-2 rounded-full hover:bg-red-700 transition-colors active:scale-95">
+                    Reintentar
+                </button>
+            </div>`;
+        container.appendChild(div);
         container.scrollTop = container.scrollHeight;
     }
 
@@ -296,19 +329,18 @@
 
 <style>
     @keyframes fadeInUp {
-        from {
-            opacity: 0;
-            transform: translateY(10px);
-        }
-
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
+        from { opacity: 0; transform: translateY(10px); }
+        to   { opacity: 1; transform: translateY(0); }
     }
+    .animate-fade-in-up { animation: fadeInUp 0.4s ease-out forwards; }
 
-    .animate-fade-in-up {
-        animation: fadeInUp 0.4s ease-out forwards;
-    }
+    /* Agent bubble theme classes — replaces inline style.cssText */
+    .bubble-socio  { background:#fff1f2; border:1px solid #fecdd3; color:#881337; }
+    .bubble-gestor { background:#fffbeb; border:1px solid #fde68a; color:#78350f; }
+    .bubble-coach  { background:#eef2ff; border:1px solid #c7d2fe; color:#1e1b4b; }
+
+    .badge-socio  { background:#ffe4e6; color:#be123c; }
+    .badge-gestor { background:#fef3c7; color:#92400e; }
+    .badge-coach  { background:#e0e7ff; color:#3730a3; }
 </style>
 {% endblock %}
