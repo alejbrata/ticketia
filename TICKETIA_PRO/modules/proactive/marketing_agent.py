@@ -133,15 +133,14 @@ class MarketingAgent:
         Stage 2 – GPT-4o Text: convert that analysis into a rich cinematic Runway Gen-3 prompt.
         """
         import base64
-        import mimetypes
 
         if not os.path.exists(image_path):
             logger.warning("Imagen no encontrada para analisis: %s", image_path)
             return "Cinematic tracking shot of a person using the product outdoors, natural lighting, movement, photorealistic, 4K"
 
-        mime_type, _ = mimetypes.guess_type(image_path)
-        if not mime_type:
-            mime_type = "image/png"
+        _ext = os.path.splitext(image_path)[1].lower()
+        mime_type = {"jpg": "image/jpeg", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                     ".png": "image/png", ".gif": "image/gif", ".webp": "image/webp"}.get(_ext, "image/png")
 
         with open(image_path, "rb") as image_file:
             encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
