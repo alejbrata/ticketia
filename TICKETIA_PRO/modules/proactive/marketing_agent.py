@@ -136,7 +136,7 @@ class MarketingAgent:
         import mimetypes
 
         if not os.path.exists(image_path):
-            print("❌ Imagen no encontrada para análisis.")
+            logger.warning("Imagen no encontrada para analisis: %s", image_path)
             return "Cinematic tracking shot of a person using the product outdoors, natural lighting, movement, photorealistic, 4K"
 
         mime_type, _ = mimetypes.guess_type(image_path)
