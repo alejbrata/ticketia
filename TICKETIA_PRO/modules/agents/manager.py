@@ -214,6 +214,14 @@ class AgentExecutor:
                     logger.error("Error guardando documento en DB: %s", e)
 
                 ActivityLog.log(self.phone_number, "Admin Redactor", "Generado presupuesto desde Imagen")
+                from modules.services.notification import NotificationService
+                NotificationService.send_in_app(
+                    self.phone_number,
+                    "📄 Presupuesto listo",
+                    "Tu presupuesto generado desde imagen ya está disponible en Documentos.",
+                    type='info',
+                    link='/documents'
+                )
                 return f"✅ Documento generado de la última imagen: {self.host_url.rstrip('/')}{pdf_path}"
             return "❌ Hubo un error procesando la imagen."
         return "❌ No encuentro ninguna imagen reciente subida como ticket."
@@ -254,6 +262,14 @@ class AgentExecutor:
                 db.session.add(new_doc)
                 db.session.commit()
                 ActivityLog.log(self.phone_number, "Admin Redactor", f"Generado presupuesto: {function_args.get('client_name')}")
+                from modules.services.notification import NotificationService
+                NotificationService.send_in_app(
+                    self.phone_number,
+                    "📄 Presupuesto listo",
+                    f"Tu presupuesto para {function_args.get('client_name') or 'cliente'} ya está disponible en Documentos.",
+                    type='info',
+                    link='/documents'
+                )
                 return "Se ha generado el documento correctamente. Puedes verlo en la sección Documentos."
             except Exception as e:
                 db.session.rollback()

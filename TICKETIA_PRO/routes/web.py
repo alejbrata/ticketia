@@ -273,26 +273,22 @@ def dashboard():
     # 2. Obtener Datos Reales
     profile = BusinessProfile.query.filter_by(user_phone=user_phone).first()
 
-    # Onboarding: inyectar datos de ejemplo si el usuario es nuevo (0 tickets)
-    if Ticket.query.filter_by(user_phone=user_phone).count() == 0:
-        _seed_demo_data_for_user(user_phone)
-
-    # Limitamos a 5 para el dashboard
-    tickets = Ticket.query.filter_by(user_phone=user_phone).order_by(Ticket.date.desc()).limit(5).all()
+    # Limitamos a 5 para el dashboard — ordenamos por id desc para mostrar los últimos subidos
+    tickets = Ticket.query.filter_by(user_phone=user_phone).order_by(Ticket.id.desc()).limit(5).all()
     # Para calcular contadores, necesitamos TODOS los tickets (o hacer queries count separadas)
     # Haremos queries separadas para contadores abajo para no traer todo a memoria en dashboard
 
     
     # --- MÉTRICAS ---
-    # A. Total Gastos Mes Actual (SQLAlchemy Robusto)
+    # A. Total Gastos Mes Actual — por fecha de subida (created_at), no por fecha del recibo
     now = datetime.now()
-    month_start = datetime(now.year, now.month, 1).date()
-    
+    month_start = datetime(now.year, now.month, 1)
+
     total_gastos = db.session.query(func.sum(Ticket.total)).filter(
         Ticket.user_phone == user_phone,
-        Ticket.date >= month_start
+        Ticket.created_at >= month_start
     ).scalar() or 0.0
-    
+
     # Formatear bonito (ej: 1.250,50)
     total_gastos_fmt = f"{total_gastos:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     
@@ -545,6 +541,9 @@ def save_config():
         profile.static_knowledge = static_data
         if logo_path:
             profile.logo_path = logo_path
+        features = profile.features or {}
+        features['bot_enabled'] = True
+        profile.features = features
     else:
         # Crear nuevo
         new_profile = BusinessProfile(
@@ -552,7 +551,8 @@ def save_config():
             business_name=b_name,
             system_prompt=generated_system_prompt.strip(),
             static_knowledge=static_data,
-            logo_path=logo_path
+            logo_path=logo_path,
+            features={'bot_enabled': True}
         )
         db.session.add(new_profile)
     
@@ -603,7 +603,14 @@ def export_excel():
         fee = t.fee
         if (fee is None or fee == 0) and t.base and t.tax_percent:
              fee = t.base * (t.tax_percent / 100)
-             
+
+        # Normalizar fecha a date (sin hora) para evitar errores de serialización en xlsxwriter
+        raw_date = t.date
+        if raw_date is not None and hasattr(raw_date, 'date'):
+            raw_date = raw_date.date()  # datetime → date
+        month_val = raw_date.month if raw_date else None
+        year_val  = raw_date.year  if raw_date else None
+
         # Construir URL de imagen
         full_img_url = ""
         if t.image_path:
@@ -611,14 +618,14 @@ def export_excel():
                 full_img_url = t.image_path
             else:
                 full_img_url = f"{base_url}{t.image_path}"
-        
+
         urls.append(full_img_url)
 
         data_list.append({
             "ID": t.id,
-            "Date": t.date,
-            "Month": t.date.month if t.date else None,
-            "Year": t.date.year if t.date else None,
+            "Date": raw_date,
+            "Month": month_val,
+            "Year": year_val,
             "NIF": t.nif,
             "Name": t.provider, # Mapeado desde provider
             "Ticket_Number": t.ticket_number,
@@ -645,7 +652,7 @@ def export_excel():
     
     output = io.BytesIO()
     
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+    with pd.ExcelWriter(output, engine='xlsxwriter', date_format='DD/MM/YYYY', datetime_format='DD/MM/YYYY') as writer:
         sheet_name = 'Gastos'
         df.to_excel(writer, index=False, sheet_name=sheet_name)
         

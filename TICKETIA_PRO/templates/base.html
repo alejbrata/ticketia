@@ -258,6 +258,29 @@
             else badge.classList.add('hidden');
         }
 
+        // --- POLLING: actualiza el badge cada 15s sin abrir el drawer ---
+        let _lastUnreadCount = {{ unread_notifications_count }};
+
+        async function pollUnreadCount() {
+            try {
+                const res = await fetch('/api/notifications/unread_count');
+                if (res.status === 401) return; // sesión expirada, silencioso
+                const data = await res.json();
+                const newCount = data.count || 0;
+                if (newCount > _lastUnreadCount) {
+                    updateBadge(newCount);
+                    window.showToast('Tienes nuevas notificaciones 🔔', 'info');
+                } else {
+                    updateBadge(newCount);
+                }
+                _lastUnreadCount = newCount;
+            } catch (e) { /* silencioso */ }
+        }
+
+        {% if session.get('user_phone') %}
+        setInterval(pollUnreadCount, 15000);
+        {% endif %}
+
         // Nav Drawer toggle
         window.toggleNavMenu = function() {
             const drawer  = document.getElementById('nav-drawer');

@@ -79,10 +79,16 @@ def mark_notification_read(notif_id):
 @app.route('/api/notifications/mark_all_read', methods=['POST'])
 def mark_all_notifications_read():
     if 'user_phone' not in session: return jsonify({"error": "Unauthorized"}), 401
-    
+
     Notification.query.filter_by(user_phone=session['user_phone'], is_read=False).update({Notification.is_read: True})
     db.session.commit()
     return jsonify({"success": True})
+
+@app.route('/api/notifications/unread_count')
+def notifications_unread_count():
+    if 'user_phone' not in session: return jsonify({"count": 0}), 401
+    count = Notification.query.filter_by(user_phone=session['user_phone'], is_read=False).count()
+    return jsonify({"count": count})
 
 # --- ADMIN PANEL CONFIGURATION ---
 class SecureModelView(ModelView):

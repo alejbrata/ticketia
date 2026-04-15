@@ -124,22 +124,23 @@ TOOLS_SCHEMA = [
         "type": "function",
         "function": {
             "name": "create_proposal_from_text",
-            "description": "Genera un presupuesto PDF formal directamente desde datos proporcionados por texto o voz.",
+            "description": "Genera un presupuesto PDF formal directamente desde datos proporcionados por texto o voz. IMPORTANTE: si el usuario no indica precios, debes estimarlos con precios de mercado razonables para España. Nunca uses 0 como precio — siempre pon un valor estimado realista.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "client_name": {"type": "string", "description": "Nombre del cliente."},
                     "items": {
                         "type": "array",
-                        "description": "Lista de items/servicios.",
+                        "description": "Lista de items/servicios. El campo 'price' es OBLIGATORIO y debe ser mayor que 0. Si el usuario no indicó precio, estima un precio de mercado realista para España.",
                         "items": {
                             "type": "object",
                             "properties": {
                                 "desc": {"type": "string", "description": "Descripción del servicio"},
                                 "qty": {"type": "integer", "description": "Cantidad"},
-                                "price": {"type": "number", "description": "Precio unitario"},
-                                "total": {"type": "number", "description": "Total de línea"}
-                            }
+                                "price": {"type": "number", "description": "Precio unitario en EUR. OBLIGATORIO, nunca 0. Estima precio de mercado si no se indica."},
+                                "total": {"type": "number", "description": "Total de línea (qty * price)"}
+                            },
+                            "required": ["desc", "qty", "price", "total"]
                         }
                     },
                     "total": {"type": "number", "description": "Total del presupuesto."},

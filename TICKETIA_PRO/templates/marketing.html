@@ -62,20 +62,34 @@
 
     <!-- Estado generando -->
     <div id="generatingCard" class="hidden bg-white rounded-[2rem] border border-purple-100 shadow-sm p-8 text-center mb-6">
-        <div class="text-5xl mb-4">⚙️</div>
-        <h3 class="font-bold text-slate-800 mb-2">Generando tu vídeo...</h3>
-        <p class="text-slate-500 text-sm mb-5 leading-relaxed">
-            La IA está animando tu foto. Esto tarda entre 1 y 2 minutos.<br>
-            Puedes cerrar esta página, recibirás una notificación cuando esté listo.
-        </p>
-        <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden mb-2">
-            <div id="progressBar" class="bg-gradient-to-r from-purple-500 to-pink-500 h-2 rounded-full transition-all duration-1000" style="width: 0%"></div>
+        <!-- Spinner (visible mientras genera) -->
+        <div id="generatingState">
+            <div class="text-5xl mb-4">⚙️</div>
+            <h3 class="font-bold text-slate-800 mb-2">Generando tu vídeo...</h3>
+            <p class="text-slate-500 text-sm mb-5 leading-relaxed">
+                La IA está animando tu foto. Esto tarda entre 1 y 2 minutos.
+            </p>
+            <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden mb-2">
+                <div id="progressBar" class="bg-gradient-to-r from-purple-500 to-pink-500 h-2 rounded-full transition-all duration-1000" style="width: 0%"></div>
+            </div>
+            <p id="progressLabel" class="text-xs text-slate-400 mb-4">Iniciando generacion...</p>
         </div>
-        <p id="progressLabel" class="text-xs text-slate-400 mb-4">Iniciando generacion...</p>
-        <a href="{{ url_for('web.documents_page') }}"
-            class="mt-1 inline-block text-sm font-bold text-purple-600 hover:text-purple-800">
-            Ver en Documentos → Vídeos ↗
-        </a>
+        <!-- Resultado (visible cuando termina) -->
+        <div id="videoResult" class="hidden">
+            <div class="text-5xl mb-3">🎉</div>
+            <h3 class="font-bold text-slate-800 mb-3">¡Vídeo listo!</h3>
+            <video id="videoPlayer" controls class="w-full rounded-2xl mb-4 shadow-lg" style="max-height:320px;"></video>
+            <div class="flex gap-3 justify-center">
+                <a id="videoDownloadLink" href="#" download
+                    class="inline-flex items-center gap-2 bg-purple-600 text-white font-bold px-5 py-3 rounded-xl hover:bg-purple-700 transition-colors text-sm">
+                    ⬇️ Descargar
+                </a>
+                <a href="{{ url_for('web.documents_page') }}"
+                    class="inline-flex items-center gap-2 bg-slate-100 text-slate-700 font-bold px-5 py-3 rounded-xl hover:bg-slate-200 transition-colors text-sm">
+                    📁 Documentos
+                </a>
+            </div>
+        </div>
     </div>
 
     <!-- Info extra -->
@@ -153,32 +167,61 @@
         btn.disabled = true;
         btn.textContent = '⏳ Enviando...';
 
+        // Mostrar card de progreso inmediatamente
+        document.getElementById('previewSection').classList.add('hidden');
+        document.getElementById('dropZone').classList.add('hidden');
+        document.getElementById('generatingCard').classList.remove('hidden');
+        startProgressAnimation();
+
         const formData = new FormData();
         formData.append('image', selectedFile);
 
         try {
+            // El fetch bloquea hasta que Runway termina (~1-2 min) — esperamos la URL final
             const response = await fetch('/generate_video_from_image', {
                 method: 'POST',
                 body: formData
             });
             const data = await response.json();
 
-            if (data.success) {
-                document.getElementById('previewSection').classList.add('hidden');
-                document.getElementById('dropZone').classList.add('hidden');
-                document.getElementById('generatingCard').classList.remove('hidden');
-                window.showToast("Video en proceso. Te avisamos cuando este listo.", "success");
-                startProgressAnimation();
+            if (data.success && data.url) {
+                showVideoResult(data.url);
             } else {
-                window.showToast("❌ Error: " + data.error, "error");
+                showVideoError(data.error || 'Error desconocido');
                 btn.disabled = false;
                 btn.textContent = '🎬 Generar Reel';
             }
         } catch (e) {
-            window.showToast("Error de conexión", "error");
+            showVideoError('Error de conexión');
             btn.disabled = false;
             btn.textContent = '🎬 Generar Reel';
         }
+    }
+
+    function showVideoResult(url) {
+        // Completar barra al 100%
+        const bar = document.getElementById('progressBar');
+        const label = document.getElementById('progressLabel');
+        if (bar) bar.style.width = '100%';
+        if (label) label.textContent = '¡Listo!';
+
+        // Ocultar spinner, mostrar vídeo
+        document.getElementById('generatingState').classList.add('hidden');
+        const resultDiv = document.getElementById('videoResult');
+        resultDiv.classList.remove('hidden');
+
+        const player = document.getElementById('videoPlayer');
+        const dlLink = document.getElementById('videoDownloadLink');
+        player.src = url;
+        dlLink.href = url;
+
+        window.showToast("🎉 ¡Vídeo generado!", "success");
+    }
+
+    function showVideoError(msg) {
+        document.getElementById('generatingCard').classList.add('hidden');
+        document.getElementById('dropZone').classList.remove('hidden');
+        window.showToast("❌ " + msg, "error");
     }
 </script>
 {% endblock %}
