@@ -5,7 +5,7 @@ from core.db_models import GeneratedDocument, ActivityLog, db
 
 logger = logging.getLogger(__name__)
 
-def perform_async_marketing_generation(user_phone, prompt, format_type, host_url, p_business_name, p_logo_path, context_app):
+def perform_async_marketing_generation(user_phone, prompt, format_type, host_url, p_business_name, p_logo_path, context_app, slide_count=None):
     """
     Ejecuta la generación de contenido de marketing en segundo plano para no bloquear
     la respuesta a la petición HTTP. El resultado queda guardado en Documentos (PWA).
@@ -17,7 +17,7 @@ def perform_async_marketing_generation(user_phone, prompt, format_type, host_url
             from modules.services.notification import NotificationService
             agent = MarketingAgent()
 
-            file_path = agent.generate_marketing_content(prompt, format_type, business_name=p_business_name, logo_path=p_logo_path, user_phone=user_phone)
+            file_path, doc_title = agent.generate_marketing_content(prompt, format_type, business_name=p_business_name, logo_path=p_logo_path, user_phone=user_phone, slide_count=slide_count)
 
             if file_path:
                 try:
@@ -25,7 +25,8 @@ def perform_async_marketing_generation(user_phone, prompt, format_type, host_url
                     new_doc = GeneratedDocument(
                         user_phone=user_phone,
                         file_path=file_path,
-                        doc_type=doc_type
+                        doc_type=doc_type,
+                        client_name=doc_title
                     )
                     db.session.add(new_doc)
                     db.session.commit()
@@ -55,12 +56,13 @@ def perform_async_marketing_generation(user_phone, prompt, format_type, host_url
             logger.error("Thread: error crítico para %s: %s", user_phone, e)
 
 
-def run_marketing_thread(user_phone, prompt, format_type, host_url, p_business_name, p_logo_path):
+def run_marketing_thread(user_phone, prompt, format_type, host_url, p_business_name, p_logo_path, slide_count=None):
     """Lanzador del hilo de marketing"""
     app_obj = current_app._get_current_object()
     thread = threading.Thread(
         target=perform_async_marketing_generation,
         args=(user_phone, prompt, format_type, host_url, p_business_name, p_logo_path, app_obj),
+        kwargs={"slide_count": slide_count},
         daemon=True,
     )
     thread.start()
