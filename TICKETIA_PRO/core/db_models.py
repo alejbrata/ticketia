@@ -59,6 +59,7 @@ class Ticket(db.Model):
     fee = db.Column(db.Float)
 
     raw_data = db.Column(db.Text)
+    created_at = db.Column(db.DateTime(timezone=True), default=_now)
 
 
 class Appointment(db.Model):

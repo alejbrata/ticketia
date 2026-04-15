@@ -127,6 +127,8 @@ def upload_web_ticket():
     user_phone = session['user_phone']
     try:
         result_text = process_ticket_image(filepath, user_phone)
+        if result_text.startswith("Error"):
+            return jsonify({'error': result_text}), 500
         return jsonify({'success': True, 'message': result_text})
     except Exception as e:
         logger.error("Error procesando ticket imagen: %s", e)

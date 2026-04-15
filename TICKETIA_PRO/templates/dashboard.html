@@ -102,17 +102,24 @@
 
         <div class="space-y-3">
             {% for ticket in tickets %}
-            <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center text-lg">
+            <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3 min-w-0">
+                    {% if ticket.image_path %}
+                    <a href="{{ ticket.image_path }}" target="_blank"
+                        class="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center text-lg flex-shrink-0 hover:bg-indigo-100 transition-colors">
+                        🧾
+                    </a>
+                    {% else %}
+                    <div class="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center text-lg flex-shrink-0">
                         🧾
                     </div>
-                    <div>
-                        <h4 class="font-bold text-slate-800 text-sm">{{ ticket.provider or 'Desconocido' }}</h4>
-                        <p class="text-slate-400 text-xs">{{ ticket.date.strftime('%d %b, %H:%M') }}</p>
+                    {% endif %}
+                    <div class="min-w-0">
+                        <h4 class="font-bold text-slate-800 text-sm truncate">{{ ticket.provider or 'Desconocido' }}</h4>
+                        <p class="text-slate-400 text-xs">{{ ticket.date.strftime('%d %b, %H:%M') }}{% if ticket.image_path %} · <a href="{{ ticket.image_path }}" target="_blank" class="text-indigo-500 hover:underline">Ver recibo</a>{% endif %}</p>
                     </div>
                 </div>
-                <span class="font-bold text-slate-800">-{{ ticket.total }}€</span>
+                <span class="font-bold text-slate-800 flex-shrink-0">-{{ "%.2f"|format(ticket.total) }}€</span>
             </div>
             {% else %}
             <div class="bg-white rounded-3xl p-8 text-center border-2 border-dashed border-slate-200">
@@ -273,14 +280,13 @@
     </div>
 </div>
 
-<!-- Ticket Upload Form (Hidden Inputs) -->
-<form id="ticketForm" enctype="multipart/form-data" class="hidden">
-    <!-- Input for Camera (Direct Access) -->
-    <input type="file" id="cameraInput" name="ticket" accept="image/*" capture="environment"
-        onchange="uploadTicket(this)">
-    <!-- Input for Gallery (File Picker) -->
-    <input type="file" id="galleryInput" name="ticket" accept="image/*" onchange="uploadTicket(this)">
-</form>
+<!-- Ticket file inputs: fuera de cualquier contenedor hidden para que onchange funcione en iOS -->
+<input type="file" id="cameraInput" name="ticket" accept="image/*" capture="environment"
+    onchange="uploadTicket(this)"
+    style="position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;">
+<input type="file" id="galleryInput" name="ticket" accept="image/*"
+    onchange="uploadTicket(this)"
+    style="position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;">
 
 <!-- Source Selection Modal -->
 <div id="sourceModal"
@@ -358,7 +364,7 @@
                 const data = await response.json();
                 if (data.success) {
                     window.showToast("✅ " + data.message, "success");
-                    setTimeout(() => location.reload(), 1500); // Delay reload to read toast
+                    setTimeout(() => window.location.href = '/transactions', 1500);
                 } else {
                     window.showToast("❌ Error: " + data.error, "error");
                 }

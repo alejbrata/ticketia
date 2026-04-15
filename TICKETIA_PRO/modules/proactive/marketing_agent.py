@@ -5,8 +5,10 @@ import requests
 import json
 from datetime import datetime
 from pptx import Presentation
-from pptx.util import Pt
+from pptx.util import Pt, Inches
 from pptx.dml.color import RGBColor
+from pptx.enum.text import PP_ALIGN
+from pptx.oxml.ns import qn
 
 from core.config import Config
 from core.llm_tracker import track as _track
@@ -241,74 +243,82 @@ OUTPUT: Only the final prompt. No explanations. In English. Max 80 words."""
             return "Cinematic tracking shot of a person using the product outdoors, natural lighting, wind, movement, photorealistic, 4K"
     def _generate_pptx_slide(self, topic, business_name):
         try:
-            # 1. Estructurar contenido COMPLETO + TEMA
-            presentation_data = self._get_presentation_structure(topic)
-            theme_key = presentation_data.get('theme', 'CORPORATE').upper()
-            theme = self.THEMES.get(theme_key, self.THEMES['CORPORATE'])
-            
-            # 2. Crear PPT
-            prs = Presentation()
-            
-            # --- Slide 1: Título Principal ---
-            title_slide_layout = prs.slide_layouts[0]
-            slide = prs.slides.add_slide(title_slide_layout)
-            self._apply_theme(slide, theme) # Aplicar estilos
-            
-            title = slide.shapes.title
-            subtitle = slide.placeholders[1]
-            
-            title.text = presentation_data.get('title', 'Propuesta')
-            # Incluir nombre empresa en subtítulo
-            subtitle.text = f"{presentation_data.get('subtitle', '')}\nPropuesto por: {business_name}"
-            
-            self._style_text(title, theme['title'], bold=True, size=Pt(44))
-            self._style_text(subtitle, theme['text'], size=Pt(24))
+            import re
 
-            # --- Slides de Contenido ---
-            for slide_data in presentation_data.get('slides', []):
-                bullet_slide_layout = prs.slide_layouts[1] # Título + Bullets
-                slide = prs.slides.add_slide(bullet_slide_layout)
-                self._apply_theme(slide, theme)
-                
-                # Título de la Slide
-                shapes = slide.shapes
-                title_shape = shapes.title
-                title_shape.text = slide_data.get('title', 'Detalle')
-                self._style_text(title_shape, theme['title'], bold=True, size=Pt(36))
-                
-                # Cuerpo (Bullets)
-                body_shape = shapes.placeholders[1]
-                tf = body_shape.text_frame
-                tf.word_wrap = True
-                # Limpiar texto existente (placeholder)
-                tf.clear() 
+            # 1. Parse requested slide count
+            num_match = re.search(r'\b(\d+)\s*(?:slides?|diapositivas?)\b', topic, re.IGNORECASE)
+            num_total = int(num_match.group(1)) if num_match else 4
+            num_total = max(2, min(8, num_total))
+            num_content = num_total - 1  # portada cuenta como 1
 
-                points = slide_data.get('points', [])
-                if points:
-                    # Usar el primer párrafo (que clear() deja vacío pero existente)
-                    p = tf.paragraphs[0]
-                    p.text = points[0]
+            # 2. Contenido de GPT con count exacto
+            presentation_data = self._get_presentation_structure(topic, num_content)
+
+            # 3. Abrir plantilla (hereda tema, colores, tipografías del diseñador)
+            template_path = os.path.join(self.base_dir, 'static', 'plantilla.pptx')
+            prs = Presentation(template_path)
+
+            # 4. Borrar todos los slides existentes de la plantilla
+            sldIdLst = prs.slides._sldIdLst
+            for sldId in list(sldIdLst):
+                rId = sldId.get(qn('r:id'))
+                prs.part.drop_rel(rId)
+                sldIdLst.remove(sldId)
+
+            # Layouts de la plantilla:
+            # 5 = "Título de sección"  → ph[0] CENTER_TITLE, ph[1] SUBTITLE
+            # 1 = "Título y contenido" → ph[0] TITLE, ph[1] OBJECT (bullets)
+            # 12 = "Contenido 3"       → ph[0] TITLE, ph[1] OBJECT (cierre)
+            layout_cover   = prs.slide_layouts[5]
+            layout_content = prs.slide_layouts[1]
+            layout_closing = prs.slide_layouts[12]
+
+            def fill_text(placeholder, text):
+                placeholder.text_frame.clear()
+                p = placeholder.text_frame.paragraphs[0]
+                p.text = text
+
+            def fill_bullets(placeholder, points):
+                tf = placeholder.text_frame
+                tf.clear()
+                for i, point in enumerate(points):
+                    p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+                    p.text = point
                     p.level = 0
-                    p.space_after = Pt(10)
-                    p.font.color.rgb = RGBColor(*theme['text'])
-                    p.font.size = Pt(18)
 
-                    # Añadir el resto
-                    for point in points[1:]:
-                        p = tf.add_paragraph()
-                        p.text = point
-                        p.level = 0
-                        p.space_after = Pt(10)
-                        p.font.color.rgb = RGBColor(*theme['text'])
-                        p.font.size = Pt(18)
+            # ── PORTADA ───────────────────────────────────────────────────────
+            slide = prs.slides.add_slide(layout_cover)
+            for ph in slide.placeholders:
+                idx = ph.placeholder_format.idx
+                if idx == 0:
+                    fill_text(ph, presentation_data.get('title', 'Presentación'))
+                elif idx == 1:
+                    fill_text(ph, f"{presentation_data.get('subtitle', '')}\n{business_name}")
 
-            # Guardar
-            filename = f"presentation_{int(datetime.now().timestamp())}.pptx"
+            # ── SLIDES DE CONTENIDO ───────────────────────────────────────────
+            slides_data = presentation_data.get('slides', [])[:num_content]
+            for i, slide_data in enumerate(slides_data):
+                # Último slide de contenido usa el layout de cierre si es el final
+                is_last = (i == len(slides_data) - 1)
+                layout = layout_closing if is_last else layout_content
+                slide = prs.slides.add_slide(layout)
+                for ph in slide.placeholders:
+                    idx = ph.placeholder_format.idx
+                    try:
+                        if idx == 0:
+                            fill_text(ph, slide_data.get('title', f'Sección {i+1}'))
+                        elif idx == 1:
+                            fill_bullets(ph, slide_data.get('points', []))
+                    except Exception:
+                        pass  # ignorar placeholders de imagen u otros tipos
+
+            # 5. Guardar
+            filename   = f"presentation_{int(datetime.now().timestamp())}.pptx"
             local_path = os.path.join(self.output_folder, filename)
             prs.save(local_path)
-            
+
             return f"{Config.PUBLIC_URL}/static/generated_docs/{filename}"
-            
+
         except Exception as e:
             logger.error("Error PPTX: %s", e)
             return None
@@ -436,53 +446,60 @@ OUTPUT: Only the final prompt. No explanations. In English. Max 80 words."""
         )
         return resp.choices[0].message.content
 
-    def _get_presentation_structure(self, topic):
-        sys = """
-        Eres un Consultor Senior de Negocio experto en storytelling.
-        Tu objetivo es crear el GUIÓN DETALLADO para una presentación de alto impacto (5-6 diapositivas).
-        
-        INPUT: Tema del usuario (ej: "Consultoría Gemini").
-        OUTPUT: JSON Estricto con el contenido real.
-        
-        REGLAS DE CONTENIDO:
-        - NO uses frases vacías como "Punto 1". Escribe CONTENIDO REAL y VALIOSO.
-        - Cada diapositiva debe tener entre 3 y 5 "points".
-        - Los "points" deben ser frases completas y explicativas.
-        
-        REGLAS DE ESTILO (Theme):
-        - Clasifica el tema en: 'TECH', 'ECO', 'CORPORATE', 'LUXURY', 'CREATIVE'.
-        
-        FORMATO JSON:
-        {
-            "theme": "TECH",
-            "title": "TÍTULO PRINCIPAL ATRACTIVO",
-            "subtitle": "Subtítulo que venda la idea",
-            "slides": [
-                {
-                    "title": "1. El Desafío Actual",
-                    "points": [
-                        "Dato impactante: El 40% del tiempo se pierde en tareas repetitivas.",
-                        "La competencia ya está adoptando IA generativa.",
-                        "Coste de oportunidad de no innovar."
-                    ]
-                },
-                ...
+    def _get_presentation_structure(self, topic, num_content_slides=3):
+        sys_prompt = f"""Eres un Consultor Senior experto en storytelling y presentaciones de negocio de alto impacto.
+
+TAREA: Crea el guión para una presentación con EXACTAMENTE {num_content_slides} diapositivas de contenido.
+
+REGLAS:
+- El array "slides" debe tener EXACTAMENTE {num_content_slides} objetos. Ni uno más, ni uno menos.
+- Escribe contenido REAL, específico y valioso. Nada de "Punto 1" ni frases vacías.
+- Cada diapositiva: 3-4 "points" concisos pero informativos (1-2 líneas cada uno).
+- "theme": elige el más apropiado entre 'TECH', 'ECO', 'CORPORATE', 'LUXURY', 'CREATIVE'.
+
+OUTPUT JSON ESTRICTO (sin texto fuera del JSON):
+{{
+    "theme": "CORPORATE",
+    "title": "TÍTULO IMPACTANTE EN MAYÚSCULAS",
+    "subtitle": "Subtítulo que venda la propuesta",
+    "slides": [
+        {{
+            "title": "1. Nombre de la Sección",
+            "points": [
+                "Primer punto con dato o insight concreto.",
+                "Segundo punto de valor real.",
+                "Tercer punto de acción o conclusión."
             ]
-        }
-        """
+        }}
+    ]
+}}"""
         try:
             resp = self.openai.chat.completions.create(
                 model="gpt-4o",
-                messages=[{"role": "system", "content": sys}, {"role": "user", "content": topic}],
+                messages=[{"role": "system", "content": sys_prompt}, {"role": "user", "content": topic}],
                 response_format={"type": "json_object"},
-                max_tokens=1500
+                max_tokens=2000
             )
-            return json.loads(resp.choices[0].message.content)
+            data = json.loads(resp.choices[0].message.content)
+            # Hard-enforce slide count in case GPT ignores the instruction
+            slides = data.get('slides', [])
+            if len(slides) > num_content_slides:
+                data['slides'] = slides[:num_content_slides]
+            elif len(slides) < num_content_slides:
+                for i in range(len(slides), num_content_slides):
+                    data['slides'].append({
+                        "title": f"Sección {i + 1}",
+                        "points": ["Contenido pendiente de completar."]
+                    })
+            return data
         except Exception as e:
             logger.error("Error GPT JSON estructura presentación: %s", e)
             return {
                 "theme": "CORPORATE",
-                "title": "Error",
-                "subtitle": "Intenta de nuevo",
-                "slides": []
+                "title": "Presentación",
+                "subtitle": "Propuesta de valor",
+                "slides": [
+                    {"title": f"Sección {i + 1}", "points": ["Contenido no disponible."]}
+                    for i in range(num_content_slides)
+                ]
             }
