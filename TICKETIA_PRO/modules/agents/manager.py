@@ -280,6 +280,7 @@ class AgentExecutor:
     def _tool_generate_marketing(self, function_args):
         prompt_text = function_args.get("prompt")
         fmt = function_args.get("format")
+        slide_count = function_args.get("slide_count")
         empresa = self.business_profile.business_name
         logo_path_db = self.business_profile.logo_path
 
@@ -290,6 +291,7 @@ class AgentExecutor:
             host_url=self.host_url,
             p_business_name=empresa,
             p_logo_path=logo_path_db,
+            slide_count=slide_count,
         )
         ActivityLog.log(self.phone_number, "Marketing Agent", f"Iniciado diseño: {prompt_text[:30]}...")
         return "⏳ ¡Oído! Me pongo a diseñarlo ahora mismo. Tardaré unos 20-30 segundos. Te avisaré cuando esté listo. 🚀"

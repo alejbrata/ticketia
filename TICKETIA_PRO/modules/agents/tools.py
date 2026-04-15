@@ -163,6 +163,10 @@ TOOLS_SCHEMA = [
                         "type": "string",
                         "enum": ["image", "slide"],
                         "description": "'image' para carteles/fotos, 'slide' para presentaciones."
+                    },
+                    "slide_count": {
+                        "type": "integer",
+                        "description": "Número total de diapositivas para presentaciones (formato 'slide'). Incluye la portada. Por defecto 5. Rango: 2-8."
                     }
                 },
                 "required": ["prompt", "format"]

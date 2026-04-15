@@ -34,7 +34,7 @@ class MarketingAgent:
         self.output_folder = os.path.join(self.base_dir, 'static', 'generated_docs')
         os.makedirs(self.output_folder, exist_ok=True)
 
-    def generate_marketing_content(self, prompt_text, content_type="image", business_name="Mi Empresa", logo_path=None, user_phone=None):
+    def generate_marketing_content(self, prompt_text, content_type="image", business_name="Mi Empresa", logo_path=None, user_phone=None, slide_count=None):
         """
         Genera contenido creativo.
         content_type: 'image' (DALL-E 3) o 'slide' (PowerPoint).
@@ -43,20 +43,16 @@ class MarketingAgent:
         logger.info("MarketingAgent: creando %s para %s", content_type, business_name)
 
         if content_type == "image":
-            return self._generate_dalle_image(prompt_text, business_name, logo_path)
+            return self._generate_dalle_image(prompt_text, business_name, logo_path), None
         elif content_type == "slide":
-            return self._generate_pptx_slide(prompt_text, business_name)
+            return self._generate_pptx_slide(prompt_text, business_name, slide_count=slide_count)
         elif content_type == "video":
-            # 1. Visual Intelligence: Analizar Imagen para crear Prompt
             target_image = logo_path if logo_path else "dummy_product.jpg"
             video_prompt = self._analyze_product_context(target_image, business_name=business_name)
-
-            # 2. Generar Video con Runway (Image + Text)
-            # Pasamos la imagen original y el prompt mejorado
             video_url = self._generate_runway_video(video_prompt, input_image_path=target_image)
-            return video_url
+            return video_url, None
         else:
-            return None
+            return None, None
 
     def _generate_dalle_image(self, user_prompt, business_name, logo_path=None):
         try:
@@ -241,13 +237,16 @@ OUTPUT: Only the final prompt. No explanations. In English. Max 80 words."""
         except Exception as e:
             logger.error("Error Visual Intelligence: %s", e)
             return "Cinematic tracking shot of a person using the product outdoors, natural lighting, wind, movement, photorealistic, 4K"
-    def _generate_pptx_slide(self, topic, business_name):
+    def _generate_pptx_slide(self, topic, business_name, slide_count=None):
         try:
             import re
 
-            # 1. Parse requested slide count
-            num_match = re.search(r'\b(\d+)\s*(?:slides?|diapositivas?)\b', topic, re.IGNORECASE)
-            num_total = int(num_match.group(1)) if num_match else 4
+            # 1. Número de slides: parámetro explícito > regex en el prompt > default 5
+            if slide_count and isinstance(slide_count, int):
+                num_total = slide_count
+            else:
+                num_match = re.search(r'\b(\d+)\s*(?:slides?|diapositivas?|p[aá]ginas?|l[aá]minas?)\b', topic, re.IGNORECASE)
+                num_total = int(num_match.group(1)) if num_match else 5
             num_total = max(2, min(8, num_total))
             num_content = num_total - 1  # portada cuenta como 1
 
@@ -265,10 +264,10 @@ OUTPUT: Only the final prompt. No explanations. In English. Max 80 words."""
                 prs.part.drop_rel(rId)
                 sldIdLst.remove(sldId)
 
-            # Layouts de la plantilla:
-            # 5 = "Título de sección"  → ph[0] CENTER_TITLE, ph[1] SUBTITLE
-            # 1 = "Título y contenido" → ph[0] TITLE, ph[1] OBJECT (bullets)
-            # 12 = "Contenido 3"       → ph[0] TITLE, ph[1] OBJECT (cierre)
+            # Layouts verificados de plantilla.pptx (13 layouts en total):
+            # [5]  "Título de sección"   → idx 0 CENTER_TITLE, idx 1 SUBTITLE
+            # [1]  "Título y contenido " → idx 0 TITLE, idx 1 OBJECT (bullets)
+            # [12] "Contenido 3"         → idx 0 TITLE, idx 1 OBJECT (cierre)
             layout_cover   = prs.slide_layouts[5]
             layout_content = prs.slide_layouts[1]
             layout_closing = prs.slide_layouts[12]
@@ -317,11 +316,16 @@ OUTPUT: Only the final prompt. No explanations. In English. Max 80 words."""
             local_path = os.path.join(self.output_folder, filename)
             prs.save(local_path)
 
-            return f"{Config.PUBLIC_URL}/static/generated_docs/{filename}"
+            # 6. Título corto para mostrar en Documentos (máx 5 palabras, title-case)
+            raw_title = presentation_data.get('title', '')
+            words = raw_title.split()[:5]
+            short_title = ' '.join(words).title() if words else 'Presentación'
+
+            return f"{Config.PUBLIC_URL}/static/generated_docs/{filename}", short_title
 
         except Exception as e:
             logger.error("Error PPTX: %s", e)
-            return None
+            return None, None
 
     def _generate_runway_video(self, prompt, input_image_path=None):
         try:
