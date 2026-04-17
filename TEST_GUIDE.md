@@ -28,7 +28,30 @@ with app.app_context():
 
 Esto inserta **10 tickets históricos** y una **notificación de bienvenida**.
 
-### 0.3 Datos sintéticos adicionales ⚠️
+### 0.3 Base de Conocimiento RAG (pgvector) — cargar antes de la demo
+
+Para que el asistente responda con datos reales de la empresa es necesario indexar al menos un documento.
+
+**Archivo listo para usar:** `ialex_solutions_knowledge_base.pdf` (raíz del repositorio)
+
+**Pasos:**
+1. Entra en la app y ve a **Menú lateral → 📚 Base de Conocimiento** o abre [http://localhost:5000/knowledge](http://localhost:5000/knowledge).
+2. Arrastra `ialex_solutions_knowledge_base.pdf` sobre la zona de subida (o pulsa para seleccionarlo).
+3. Pulsa **"Procesar e indexar"** — los embeddings se generan en segundo plano con `text-embedding-3-small`.
+4. Cuando el documento aparezca en la lista, el RAG está activo.
+
+**Verificar que funciona** — prueba en el chat:
+
+| Pregunta | Respuesta esperada |
+|---|---|
+| `"¿Cuánto cuesta implantar un agente IA?"` | Tarifas del catálogo (Starter 2.500 €, Business 6.000 €…) |
+| `"¿Tenéis demo gratuita?"` | Demo personalizada de 45 min, contacto hola@ialex-solutions.com |
+| `"¿Qué modelos de IA usáis?"` | GPT-4o, Claude 3.5 Sonnet, Gemini 1.5 Pro |
+| `"¿Cuál es el email de soporte?"` | soporte@ialex-solutions.com |
+
+> **Cómo funciona:** el PDF se trocea en fragmentos de ~400 caracteres, cada uno se convierte en un vector de 1.536 dimensiones almacenado en PostgreSQL con la extensión `pgvector`. Al llegar una pregunta al chat, se recuperan los 5 fragmentos más similares por distancia coseno y se inyectan en el contexto del LLM antes de generar la respuesta.
+
+### 0.4 Datos sintéticos adicionales ⚠️
 > Algunas funcionalidades necesitan datos que el seed de demo **no genera**.  
 > Ver sección [Apéndice: Script de datos sintéticos](#apéndice-script-de-datos-sintéticos).
 

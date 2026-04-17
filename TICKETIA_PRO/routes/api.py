@@ -8,6 +8,7 @@ from flask import Blueprint, request, session, jsonify, Response, stream_with_co
 logger = logging.getLogger(__name__)
 from core.db_models import BusinessProfile, db, Notification, GeneratedDocument, LLMCall
 from modules.proactive.marketing_agent import MarketingAgent
+from modules.agents.background_tasks import run_marketing_thread
 from modules.tickets.logic import process_ticket_image
 from modules.agents.manager import run_agent
 from core.limiter import limiter
@@ -43,7 +44,6 @@ def generate_video_from_image():
         file.save(local_path)
 
         # Lanzar en background para no bloquear la petición HTTP (Runway tarda 1-2 min)
-        from modules.agents.background_tasks import run_marketing_thread
         run_marketing_thread(
             user_phone=user_phone,
             prompt="Genera un reel de producto animado y dinámico",
