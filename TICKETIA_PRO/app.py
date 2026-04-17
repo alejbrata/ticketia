@@ -131,11 +131,12 @@ admin.add_view(SecureModelView(LLMCall, db.session, name='🧠 Métricas LLM'))
 # admin.add_view(SecureModelView(Appointment, db.session, name='📅 Citas'))
 
 with app.app_context():
-    # Activar extensión pgvector antes de create_all para que el tipo vector esté disponible
+    # Activar extensión pgvector solo en PostgreSQL (no en SQLite de tests)
     from sqlalchemy import text
-    with db.engine.connect() as conn:
-        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-        conn.commit()
+    if 'postgresql' in app.config.get('SQLALCHEMY_DATABASE_URI', ''):
+        with db.engine.connect() as conn:
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+            conn.commit()
     db.create_all()
 
 

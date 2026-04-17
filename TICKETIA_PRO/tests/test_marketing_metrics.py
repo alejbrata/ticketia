@@ -467,13 +467,10 @@ class TestVideoEndpoint(MetricsTestBase):
         )
         self.assertEqual(resp.status_code, 400)
 
-    @patch('routes.api.MarketingAgent')
-    def test_successful_generation_returns_url(self, MockAgent):
-        """Pipeline completo mockeado: devuelve 200 con campo 'url'."""
-        instance = MagicMock()
-        instance.generate_marketing_content.return_value = \
-            'http://test.local/static/generated_docs/runway_12345.mp4'
-        MockAgent.return_value = instance
+    @patch('routes.api.run_marketing_thread')
+    def test_successful_generation_returns_processing(self, mock_thread):
+        """El endpoint async devuelve 200 con processing=True (Runway corre en background)."""
+        mock_thread.return_value = None  # el thread se lanza y no devuelve nada
 
         fake_image = io.BytesIO(b'\x89PNG\r\n\x1a\nfakedata')
         resp = self.client.post(
@@ -485,14 +482,29 @@ class TestVideoEndpoint(MetricsTestBase):
         self.assertEqual(resp.status_code, 200)
         data = json.loads(resp.data)
         self.assertTrue(data['success'])
-        self.assertIn('url', data)
+        self.assertTrue(data.get('processing'))
+        self.assertIn('message', data)
 
-    @patch('routes.api.MarketingAgent')
-    def test_failed_generation_returns_500(self, MockAgent):
-        """Si el agente devuelve None, el endpoint responde 500."""
-        instance = MagicMock()
-        instance.generate_marketing_content.return_value = None
-        MockAgent.return_value = instance
+    @patch('routes.api.run_marketing_thread')
+    def test_thread_launched_on_valid_request(self, mock_thread):
+        """Verifica que run_marketing_thread se llama con el user_phone correcto."""
+        mock_thread.return_value = None
+
+        fake_image = io.BytesIO(b'\x89PNG\r\n\x1a\nfakedata')
+        self.client.post(
+            '/generate_video_from_image',
+            data={'image': (fake_image, 'shirt.png')},
+            content_type='multipart/form-data',
+        )
+
+        self.assertTrue(mock_thread.called)
+        call_kwargs = mock_thread.call_args[1]
+        self.assertEqual(call_kwargs.get('user_phone'), self.TEST_PHONE)
+
+    @patch('routes.api.run_marketing_thread')
+    def test_failed_generation_returns_500(self, mock_thread):
+        """Si run_marketing_thread lanza excepción, el endpoint responde 500."""
+        mock_thread.side_effect = Exception("Runway unavailable")
 
         fake_image = io.BytesIO(b'\x89PNG\r\n\x1a\nfakedata')
         resp = self.client.post(
@@ -504,23 +516,6 @@ class TestVideoEndpoint(MetricsTestBase):
         self.assertEqual(resp.status_code, 500)
         data = json.loads(resp.data)
         self.assertFalse(data['success'])
-
-    @patch('routes.api.MarketingAgent')
-    def test_user_phone_passed_to_agent(self, MockAgent):
-        """user_phone de la sesión se propaga al generate_marketing_content."""
-        instance = MagicMock()
-        instance.generate_marketing_content.return_value = 'http://test.local/fake.mp4'
-        MockAgent.return_value = instance
-
-        fake_image = io.BytesIO(b'\x89PNG\r\n\x1a\nfakedata')
-        self.client.post(
-            '/generate_video_from_image',
-            data={'image': (fake_image, 'shirt.png')},
-            content_type='multipart/form-data',
-        )
-
-        call_kwargs = instance.generate_marketing_content.call_args[1]
-        self.assertEqual(call_kwargs.get('user_phone'), self.TEST_PHONE)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -1,7 +1,13 @@
 import logging
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timezone, date as date_type
-from pgvector.sqlalchemy import Vector
+try:
+    from pgvector.sqlalchemy import Vector as _Vector
+    _EMBEDDING_COL = _Vector(1536)
+except ImportError:
+    # Fallback para entornos de test (SQLite) donde pgvector no está disponible
+    from sqlalchemy import Text as _Text
+    _EMBEDDING_COL = _Text()
 
 _logger = logging.getLogger(__name__)
 
@@ -164,7 +170,7 @@ class KnowledgeChunk(db.Model):
     source_type = db.Column(db.String(50), nullable=False)   # 'wizard' | 'document'
     source_name = db.Column(db.String(255), nullable=False)  # nombre del campo o del fichero
     content = db.Column(db.Text, nullable=False)
-    embedding = db.Column(Vector(1536))                      # text-embedding-3-small
+    embedding = db.Column(_EMBEDDING_COL)                    # Vector(1536) en PostgreSQL, Text en SQLite/test
     created_at = db.Column(db.DateTime(timezone=True), default=_now)
 
 
