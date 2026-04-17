@@ -35,6 +35,27 @@ class AgentExecutor:
             sp = f"Eres un asistente IA inteligente para la empresa {self.business_profile.business_name}. Ayuda al usuario con sus tareas de gestión, presupuestos y dudas."
         return sp
 
+    def _build_rag_system_prompt(self, user_message: str) -> str:
+        """
+        Enriquece el system prompt con los fragmentos más relevantes de la
+        base de conocimiento vectorial (pgvector RAG).
+        Si no hay chunks o falla el retrieval, devuelve el system prompt base.
+        """
+        base = self.system_prompt
+        try:
+            from modules.services.embeddings import retrieve_chunks
+            chunks = retrieve_chunks(self.phone_number, user_message, top_k=5)
+            if chunks:
+                context = "\n".join(f"- {c}" for c in chunks)
+                return (
+                    f"{base}\n\n"
+                    f"CONTEXTO RELEVANTE DE LA BASE DE CONOCIMIENTO:\n{context}\n\n"
+                    f"Usa este contexto para responder con precisión. Si la respuesta no está en el contexto, indícalo."
+                )
+        except Exception as e:
+            logger.warning("RAG retrieval falló, usando system prompt base: %s", e)
+        return base
+
     def execute(self):
         try:
             # 1. DISPATCHER DE IMÁGENES (ADMIN REDACTOR)
@@ -44,9 +65,10 @@ class AgentExecutor:
             # 2. Guardar Mensaje del Usuario
             HistoryService.save_interaction(self.phone_number, "user", self.user_message)
 
-            # 3. Construir Contexto
+            # 3. Construir Contexto con RAG
             history = HistoryService.get_recent_history(self.phone_number, limit=10)
-            messages = [{"role": "system", "content": self.system_prompt}]
+            rag_prompt = self._build_rag_system_prompt(self.user_message)
+            messages = [{"role": "system", "content": rag_prompt}]
             messages.extend(history)
 
             # 4. LLM Generation

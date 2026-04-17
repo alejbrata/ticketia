@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block title %}Tienda de Agentes — Zeptai{% endblock %}
 
 {% block content %}
 <div class="px-6 py-8 pb-24 max-w-lg mx-auto w-full">
@@ -29,6 +30,7 @@
         icon="🩺",
         title="Business Coach",
         desc="Analiza tus gastos y te da consejos financieros diarios.",
+        guide="Necesita al menos 5 tickets de gasto registrados para generar análisis útiles. Se ejecuta cada mañana.",
         active=("business_health" in current_user.active_agents)
         %}
         {% include "components/agent_card.html" %}
@@ -40,6 +42,7 @@
         icon="🤝",
         title="Networker",
         desc="Te conecta con otros negocios de Zeptai para sinergias.",
+        guide="Compara tu sector y servicios con otros usuarios para sugerir colaboraciones. Requiere perfil completo en '✨ Entrenar IA'.",
         active=("networker" in current_user.active_agents)
         %}
         {% include "components/agent_card.html" %}

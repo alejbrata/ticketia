@@ -22,7 +22,7 @@ services:
 
   # ── Base de datos PostgreSQL ──────────────────────────────────────────────
   db:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
     container_name: ticketia_db
     environment:
       POSTGRES_USER: postgres

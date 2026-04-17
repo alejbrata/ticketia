@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block title %}Configurar IA — Zeptai{% endblock %}
 
 {% block content %}
 <div class="px-6 py-8 max-w-lg mx-auto w-full">
@@ -13,6 +14,23 @@
             🧠 Entrena a tu Asistente
         </h1>
         <p class="text-slate-500 text-sm mt-1">Define cómo debe comportarse tu IA.</p>
+
+        <!-- Indicador de progreso -->
+        <div class="mt-5 flex items-center gap-2" aria-label="Progreso de configuración">
+            {% set steps = [('1','Identidad','✓'), ('2','Personalidad','✓'), ('3','Conocimiento','✓'), ('4','Guardar','→')] %}
+            {% for num, label, icon in steps %}
+            <div class="flex-1 flex flex-col items-center gap-1">
+                <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold
+                    {% if loop.index < 4 %}bg-indigo-600 text-white{% else %}bg-indigo-100 text-indigo-600{% endif %}">
+                    {{ num }}
+                </div>
+                <span class="text-[10px] font-medium text-slate-400 text-center leading-tight">{{ label }}</span>
+            </div>
+            {% if not loop.last %}
+            <div class="flex-none w-6 h-px bg-slate-200 mb-4"></div>
+            {% endif %}
+            {% endfor %}
+        </div>
     </header>
 
     <form action="{{ url_for('web.save_config') }}" method="POST" enctype="multipart/form-data" class="space-y-6">
@@ -73,7 +91,7 @@
             </h3>
 
             <div>
-                <label class="block text-xs font-medium text-slate-400 mb-1">Horario de Atencion</label>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Horario de Atención</label>
                 <input type="text" name="schedule" value="{{ current_user.static_knowledge.get('schedule', '') }}"
                     placeholder="L-V: 9:00 - 20:00"
                     class="w-full px-3 py-2 bg-slate-50 rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500 border border-slate-100 transition-colors">

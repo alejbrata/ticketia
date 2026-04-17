@@ -1,6 +1,7 @@
 import logging
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timezone, date as date_type
+from pgvector.sqlalchemy import Vector
 
 _logger = logging.getLogger(__name__)
 
@@ -152,6 +153,18 @@ class Notification(db.Model):
     type = db.Column(db.String(20), default='info')
     link = db.Column(db.String(300), nullable=True)
     is_read = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime(timezone=True), default=_now)
+
+
+class KnowledgeChunk(db.Model):
+    """Fragmento de conocimiento del negocio almacenado como embedding vectorial."""
+    __tablename__ = 'knowledge_chunk'
+    id = db.Column(db.Integer, primary_key=True)
+    user_phone = db.Column(db.String(20), nullable=False, index=True)
+    source_type = db.Column(db.String(50), nullable=False)   # 'wizard' | 'document'
+    source_name = db.Column(db.String(255), nullable=False)  # nombre del campo o del fichero
+    content = db.Column(db.Text, nullable=False)
+    embedding = db.Column(Vector(1536))                      # text-embedding-3-small
     created_at = db.Column(db.DateTime(timezone=True), default=_now)
 
 

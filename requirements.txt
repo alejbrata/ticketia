@@ -1,5 +1,7 @@
 flask
 openai
+pgvector
+pypdf
 python-dotenv
 psycopg2-binary
 pandas

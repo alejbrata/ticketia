@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block title %}Reels & Vídeos — Zeptai{% endblock %}
 
 {% block content %}
 <div class="px-6 py-8 pb-24 max-w-2xl mx-auto w-full">
@@ -177,7 +178,6 @@
         formData.append('image', selectedFile);
 
         try {
-            // El fetch bloquea hasta que Runway termina (~1-2 min) — esperamos la URL final
             const response = await fetch('/generate_video_from_image', {
                 method: 'POST',
                 body: formData
@@ -185,7 +185,11 @@
             const data = await response.json();
 
             if (data.success && data.url) {
+                // Respuesta síncrona legada (por si se mantiene)
                 showVideoResult(data.url);
+            } else if (data.success && data.processing) {
+                // Generación asíncrona — mostrar estado de espera con notificación
+                showAsyncWaiting();
             } else {
                 showVideoError(data.error || 'Error desconocido');
                 btn.disabled = false;
@@ -216,6 +220,29 @@
         dlLink.href = url;
 
         window.showToast("🎉 ¡Vídeo generado!", "success");
+    }
+
+    function showAsyncWaiting() {
+        // Runway genera en background — completar la barra y mostrar mensaje de espera
+        const bar = document.getElementById('progressBar');
+        const label = document.getElementById('progressLabel');
+        if (bar) bar.style.width = '100%';
+        if (label) label.textContent = '¡Enviado! Generando en segundo plano...';
+
+        document.getElementById('generatingState').classList.add('hidden');
+        const resultDiv = document.getElementById('videoResult');
+        resultDiv.classList.remove('hidden');
+        resultDiv.innerHTML = `
+            <div class="text-5xl mb-3">⏳</div>
+            <h3 class="font-bold text-slate-800 mb-2">Generando tu vídeo...</h3>
+            <p class="text-slate-500 text-sm leading-relaxed mb-5">
+                Runway ML está procesando tu foto. Esto tarda entre 1 y 2 minutos.<br>
+                <strong>Puedes cerrar esta pantalla</strong> — te avisaremos con una notificación cuando esté listo en <a href="/documents" class="text-purple-600 underline font-bold">Documentos</a>.
+            </p>
+            <a href="/documents" class="inline-flex items-center gap-2 bg-slate-100 text-slate-700 font-bold px-5 py-3 rounded-xl hover:bg-slate-200 transition-colors text-sm">
+                📁 Ir a Documentos
+            </a>`;
+        window.showToast("Vídeo en proceso — te avisamos cuando esté listo 🎬", "info");
     }
 
     function showVideoError(msg) {

@@ -541,9 +541,8 @@ def save_config():
         profile.static_knowledge = static_data
         if logo_path:
             profile.logo_path = logo_path
-        features = profile.features or {}
-        features['bot_enabled'] = True
-        profile.features = features
+        # Crear dict nuevo para que SQLAlchemy detecte el cambio en columna JSON
+        profile.features = {**(profile.features or {}), 'bot_enabled': True}
     else:
         # Crear nuevo
         new_profile = BusinessProfile(
@@ -557,7 +556,25 @@ def save_config():
         db.session.add(new_profile)
     
     db.session.commit()
-    
+
+    # Re-indexar conocimiento del wizard en pgvector (background)
+    import threading
+    _app = current_app._get_current_object()
+    _phone = user_phone
+    _sk = static_data
+    _sp = generated_system_prompt.strip()
+
+    def _reindex():
+        with _app.app_context():
+            try:
+                from modules.services.embeddings import ingest_wizard_chunks
+                ingest_wizard_chunks(_phone, _sk, _sp)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning("Error re-indexando wizard: %s", e)
+
+    threading.Thread(target=_reindex, daemon=True).start()
+
     flash('¡Configuración guardada y Agente IA actualizado!', 'success')
     return redirect(url_for('web.dashboard'))
 

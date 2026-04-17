@@ -42,32 +42,21 @@ def generate_video_from_image():
         local_path = os.path.join(upload_dir, filename)
         file.save(local_path)
 
-        agent = MarketingAgent()
-        video_url = agent.generate_marketing_content(
-            prompt_text="",
-            content_type="video",
-            business_name=profile.business_name,
-            logo_path=local_path,
+        # Lanzar en background para no bloquear la petición HTTP (Runway tarda 1-2 min)
+        from modules.agents.background_tasks import run_marketing_thread
+        run_marketing_thread(
             user_phone=user_phone,
+            prompt="Genera un reel de producto animado y dinámico",
+            format_type="video",
+            host_url=os.environ.get('PUBLIC_URL', 'http://localhost:5000'),
+            p_business_name=profile.business_name,
+            p_logo_path=local_path,
         )
-
-        if video_url:
-            relative_path = "/static/generated_docs/" + os.path.basename(video_url)
-            new_doc = GeneratedDocument(
-                user_phone=user_phone,
-                file_path=relative_path,
-                doc_type='video_prompt',
-                client_name="Video Strategy AI",
-                created_at=datetime.now(timezone.utc)
-            )
-            db.session.add(new_doc)
-            db.session.commit()
-            return jsonify({"success": True, "message": "Video generando...", "url": video_url})
-        else:
-            return jsonify({"success": False, "error": "Falló la generación"}), 500
+        return jsonify({"success": True, "processing": True,
+                        "message": "¡En marcha! Te avisaremos cuando el vídeo esté listo en Documentos."})
 
     except Exception as e:
-        logger.error("Error generando vídeo: %s", e)
+        logger.error("Error iniciando generación de vídeo: %s", e)
         return jsonify({"success": False, "error": str(e)}), 500
 
 

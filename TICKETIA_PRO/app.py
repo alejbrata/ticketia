@@ -131,15 +131,22 @@ admin.add_view(SecureModelView(LLMCall, db.session, name='🧠 Métricas LLM'))
 # admin.add_view(SecureModelView(Appointment, db.session, name='📅 Citas'))
 
 with app.app_context():
+    # Activar extensión pgvector antes de create_all para que el tipo vector esté disponible
+    from sqlalchemy import text
+    with db.engine.connect() as conn:
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        conn.commit()
     db.create_all()
 
 
 # --- BLUEPRINTS REGISTRATION ---
 from routes.web import web_bp
 from routes.api import api_bp
+from routes.knowledge import knowledge_bp
 
 app.register_blueprint(web_bp)
 app.register_blueprint(api_bp)
+app.register_blueprint(knowledge_bp)
 
 @app.errorhandler(404)
 def page_not_found(e):
