@@ -106,8 +106,14 @@
             <a href="{{ url_for('web.council_page') }}" onclick="toggleNavMenu()" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-colors {{ nav_active_drawer if current_page == 'council' else nav_idle_drawer }}">
                 <span class="text-lg">🏛️</span><span>Consejo Pyme</span>
             </a>
+            <a href="{{ url_for('web.agenda') }}" onclick="toggleNavMenu()" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-colors {{ nav_active_drawer if current_page == 'agenda' else nav_idle_drawer }}">
+                <span class="text-lg">📅</span><span>Agenda</span>
+            </a>
             <a href="{{ url_for('web.metrics_page') }}" onclick="toggleNavMenu()" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-colors {{ nav_active_drawer if current_page == 'metrics' else nav_idle_drawer }}">
                 <span class="text-lg">📈</span><span>Métricas</span>
+            </a>
+            <a href="{{ url_for('web.chatbot_cliente') }}" onclick="toggleNavMenu()" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-colors {{ nav_active_drawer if current_page == 'chatbot_cliente' else nav_idle_drawer }}">
+                <span class="text-lg">💬</span><span>Chatbot Cliente</span>
             </a>
             <a href="{{ url_for('web.profile') }}" onclick="toggleNavMenu()" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-colors {{ nav_active_drawer if current_page == 'profile' else nav_idle_drawer }}">
                 <span class="text-lg">👤</span><span>Mi Perfil</span>

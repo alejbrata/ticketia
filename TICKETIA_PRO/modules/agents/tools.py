@@ -37,7 +37,7 @@ class CalendarTools:
         return f"Huecos disponibles el {date}: {', '.join(available_slots)}"
 
     @staticmethod
-    def book_appointment(date: str, time: str, client_name: str, phone: str, business_phone: str) -> str:
+    def book_appointment(date: str, time: str, business_phone: str, client_name: str = "", phone: str = "") -> str:
         """
         Reserva una cita. Realiza doble verificación de conflictos.
         date debe venir como 'YYYY-MM-DD'.
@@ -67,7 +67,8 @@ class CalendarTools:
         try:
             db.session.add(new_appt)
             db.session.commit()
-            return f"Cita confirmada para el {date} a las {time}. ¡Te esperamos, {client_name}!"
+            quien = f" con {client_name}" if client_name else ""
+            return f"Cita confirmada{quien} para el {date} a las {time}."
         except Exception as e:
             db.session.rollback()
             print(f"Error DB book_appointment: {e}")
@@ -99,16 +100,16 @@ TOOLS_SCHEMA = [
         "type": "function",
         "function": {
             "name": "book_appointment",
-            "description": "Reserva una cita en el calendario para un cliente específico.",
+            "description": "Reserva una cita en el calendario. Solo fecha y hora son obligatorios. Nombre y teléfono son opcionales — NO los pidas si el usuario no los ha proporcionado.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "date": {"type": "string", "description": "Fecha de la cita (YYYY-MM-DD)."},
                     "time": {"type": "string", "description": "Hora de la cita (HH:MM)."},
-                    "client_name": {"type": "string", "description": "Nombre del cliente."},
-                    "phone": {"type": "string", "description": "Teléfono de contacto del cliente."}
+                    "client_name": {"type": "string", "description": "Nombre o empresa. Opcional, usar cadena vacía si no se indica."},
+                    "phone": {"type": "string", "description": "Teléfono del cliente. Opcional, usar cadena vacía si no se indica."}
                 },
-                "required": ["date", "time", "client_name", "phone"]
+                "required": ["date", "time"]
             }
         }
     },

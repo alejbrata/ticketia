@@ -41,7 +41,8 @@ class AgentExecutor:
         base de conocimiento vectorial (pgvector RAG).
         Si no hay chunks o falla el retrieval, devuelve el system prompt base.
         """
-        base = self.system_prompt
+        today = datetime.now().strftime("%A, %d de %B de %Y")
+        base = f"{self.system_prompt}\n\nFecha y hora actual: {today}. Usa esta fecha como referencia para cualquier tarea de agendado o planificación."
         try:
             from modules.services.embeddings import retrieve_chunks
             chunks = retrieve_chunks(self.phone_number, user_message, top_k=5)
