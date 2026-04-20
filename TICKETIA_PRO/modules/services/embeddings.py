@@ -10,14 +10,15 @@ Responsabilidades:
 """
 
 import logging
-from typing import Optional
+import re
 
 logger = logging.getLogger(__name__)
 
 EMBEDDING_MODEL = "text-embedding-3-small"
 EMBEDDING_DIM   = 1536
-CHUNK_SIZE      = 400   # caracteres por chunk en documentos
-CHUNK_OVERLAP   = 50    # solapamiento entre chunks
+# ~400 tokens × 4 chars/token. Overlap del 25% para cubrir boundaries sin duplicar contexto.
+CHUNK_SIZE      = 1600
+CHUNK_OVERLAP   = 400
 
 
 # ---------------------------------------------------------------------------
@@ -100,20 +101,68 @@ def ingest_wizard_chunks(user_phone: str, static_knowledge: dict, system_prompt:
 # ---------------------------------------------------------------------------
 
 def _split_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:
-    """Divide texto en chunks con solapamiento."""
-    chunks = []
-    start = 0
-    while start < len(text):
-        end = start + chunk_size
-        chunks.append(text[start:end].strip())
-        start += chunk_size - overlap
-    return [c for c in chunks if len(c) > 30]  # descartar fragmentos muy cortos
+    """
+    Chunker recursivo: intenta cortar por párrafos, luego por frases, luego por
+    caracteres. Garantiza que ningún chunk supera chunk_size y que hay overlap
+    entre chunks consecutivos para no perder contexto en los límites.
+    """
+    separators = ["\n\n", "\n", ". ", " ", ""]
+
+    def _recursive(text: str, seps: list[str]) -> list[str]:
+        sep = seps[0]
+        next_seps = seps[1:]
+        if not sep:
+            # nivel base: partir por chars con overlap
+            result = []
+            start = 0
+            while start < len(text):
+                end = start + chunk_size
+                result.append(text[start:end].strip())
+                start += chunk_size - overlap
+            return result
+
+        parts = re.split(re.escape(sep), text)
+        chunks, current = [], ""
+        for part in parts:
+            candidate = (current + sep + part).strip() if current else part.strip()
+            if len(candidate) <= chunk_size:
+                current = candidate
+            else:
+                if current:
+                    chunks.append(current)
+                # si la parte sola ya es mayor que chunk_size, bajar de nivel
+                if len(part.strip()) > chunk_size and next_seps:
+                    chunks.extend(_recursive(part.strip(), next_seps))
+                else:
+                    current = part.strip()
+        if current:
+            chunks.append(current)
+        return chunks
+
+    raw = _recursive(text, separators)
+
+    # añadir solapamiento entre chunks consecutivos
+    result = []
+    for i, chunk in enumerate(raw):
+        if i > 0 and len(chunk) < chunk_size:
+            prev_tail = raw[i - 1][-overlap:]
+            chunk = (prev_tail + " " + chunk).strip()
+        result.append(chunk)
+
+    return [c for c in result if len(c) > 50]
 
 
 def _extract_text_from_file(file_path: str, filename: str) -> str:
-    """Extrae texto plano de PDF o TXT."""
+    """Extrae texto en markdown de PDF (preservando estructura) o lee TXT/MD tal cual."""
     ext = filename.rsplit('.', 1)[-1].lower()
     if ext == 'pdf':
+        try:
+            import pymupdf4llm
+            return pymupdf4llm.to_markdown(file_path)
+        except ImportError:
+            logger.warning("pymupdf4llm no disponible, usando pypdf como fallback para '%s'", filename)
+        except Exception as e:
+            logger.error("Error convirtiendo PDF a markdown '%s': %s", filename, e)
         try:
             from pypdf import PdfReader
             reader = PdfReader(file_path)

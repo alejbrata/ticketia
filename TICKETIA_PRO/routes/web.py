@@ -928,3 +928,39 @@ def metrics_page():
     return render_template('metrics.html', current_page='metrics', is_admin=is_admin)
 
 
+@web_bp.route('/agenda')
+def agenda():
+    if not session.get('user_phone'):
+        return redirect(url_for('web.login'))
+    return render_template('agenda.html', current_page='agenda')
+
+
+@web_bp.route('/agenda/events')
+def agenda_events():
+    if not session.get('user_phone'):
+        return jsonify([])
+    from core.db_models import Appointment
+    user_phone = session['user_phone']
+    appointments = Appointment.query.filter_by(business_phone=user_phone).all()
+    events = []
+    for a in appointments:
+        start = f"{a.date}T{a.time}:00"
+        events.append({
+            'id': a.id,
+            'title': a.client_name or 'Cliente',
+            'start': start,
+            'extendedProps': {
+                'client_phone': a.client_phone or '',
+            }
+        })
+    return jsonify(events)
+
+
+@web_bp.route('/chatbot-cliente')
+def chatbot_cliente():
+    if not session.get('user_phone'):
+        return redirect(url_for('web.login'))
+    business_name = session.get('business_name', 'Mi Negocio')
+    return render_template('chatbot_cliente.html', current_page='chatbot_cliente', business_name=business_name)
+
+
