@@ -1,4 +1,5 @@
-# 100 Preguntas del Tribunal TFM — Ticketia Pro / Zeptai
+# -*- coding: utf-8 -*-
+preguntas = """# 100 Preguntas del Tribunal TFM — Ticketia Pro / Zeptai
 
 ---
 
@@ -327,3 +328,9 @@ La originalidad esta en la combinacion e integracion: RAG + Tool Calling + MCP +
 
 **100. Que consejo darias a alguien que empieza un TFM de IA aplicada?**
 Empieza con el caso de uso mas estrecho posible y demuestralo funcionando antes de ampliar. La tentacion de anadir features es el mayor enemigo. Un golden path robusto impresiona mas que diez features a medias. Y mide todo desde el primer dia: latencia, coste, errores.
+"""
+
+with open('preguntas_tribunal_tfm.md', 'w', encoding='utf-8') as f:
+    f.write(preguntas)
+
+print(f"Archivo generado: preguntas_tribunal_tfm.md ({len(preguntas)} caracteres, 100 preguntas)")

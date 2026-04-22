@@ -19,31 +19,54 @@ class PostSalesAgent:
         """
         Analiza el mensaje y ejecuta acciones respetando la POLITICA DE EMPRESA.
         """
-        # 0. Cargar Configuración de Seguridad
+        # 0. Cargar configuración de seguridad (agent_config) y política del wizard (static_knowledge)
         config = owner_profile.agent_config or {}
         ps_config = config.get("post_sales", {})
-        
-        forbidden_items = ps_config.get("forbidden_items", [])
-        exchange_config = ps_config.get("exchange_policy", {})
-        exchange_url = exchange_config.get("url")
+
+        forbidden_items    = ps_config.get("forbidden_items", [])
+        exchange_config    = ps_config.get("exchange_policy", {})
+        exchange_url       = exchange_config.get("url")
         exchange_instructions = exchange_config.get("instructions")
-        allow_refunds = ps_config.get("allow_refunds", False)
+        allow_refunds      = ps_config.get("allow_refunds", False)
+
+        sk = owner_profile.static_knowledge or {}
+        if isinstance(sk, str):
+            try:
+                sk = json.loads(sk)
+            except Exception:
+                sk = {}
+
+        faq             = sk.get("faq", "")
+        return_policy   = sk.get("return_policy", "")
+        support_contact = sk.get("support_contact", "")
+        delivery_time   = sk.get("delivery_time", "")
+        warranty_info   = sk.get("warranty_info", "")
+
+        # Contexto de empresa para los prompts del agente
+        cs_context = f"""
+Política de devoluciones: {return_policy or 'No especificada'}
+Tiempo de entrega/respuesta: {delivery_time or 'No especificado'}
+Garantía: {warranty_info or 'No especificada'}
+Contacto de soporte: {support_contact or 'No especificado'}
+Preguntas frecuentes: {faq or 'No especificadas'}
+""".strip()
 
         # 1. Análisis de intención + EXTRACCIÓN DE PRODUCTO
         tools_prompt = f"""
-        Eres un experto en Atención al Cliente. Tu trabajo es CLASIFICAR el mensaje y detectar el PRODUCTO.
-        
+        Eres un experto en Atención al Cliente de {owner_profile.business_name}. Tu trabajo es CLASIFICAR el mensaje y detectar el PRODUCTO.
+
         FORMATO RESPUESTA: JSON
         {{
-            "intent": "RETOUR" | "EXCHANGE" | "STATUS" | "COMPLAINT" | "GENERAL",
+            "intent": "RETOUR" | "EXCHANGE" | "STATUS" | "COMPLAINT" | "WARRANTY" | "GENERAL",
             "product": "nombre del producto identificado o null",
             "sentiment": "positive" | "neutral" | "angry"
         }}
-        
+
         Reglas:
         - Si quiere devolver algo (reembolso): RETOUR
         - Si quiere cambiar talla o color: EXCHANGE
         - Si pregunta dónde está su pedido: STATUS
+        - Si pregunta por garantía: WARRANTY
         - Si está enfadado/queja: COMPLAINT
         """
         try:
@@ -73,41 +96,33 @@ class PostSalesAgent:
         
         if "RETOUR" in intent:
             # 🛡️ FILTRO 1: Artículos Prohibidos
-            is_forbidden = False
-            for bad_item in forbidden_items:
-                if bad_item in product.lower():
-                    is_forbidden = True
-                    break
-            
+            is_forbidden = any(bad_item in product.lower() for bad_item in forbidden_items)
+
             if is_forbidden:
-                response_text = f"🚫 Lo siento, pero por motivos de higiene y política de empresa, NO admitimos devoluciones de artículos como '{product}' (está en nuestra lista de artículos no retornables)."
+                response_text = f"🚫 Lo siento, pero por política de empresa no admitimos devoluciones de '{product}' (artículo no retornable)."
                 ActivityLog.log(user_phone, "Post-Venta", f"🛑 Devolución DENEGADA: {product}")
-            
+
             # 🛡️ FILTRO 2: Permisos de Reembolso Automático
             elif not allow_refunds:
-                response_text = "📝 He registrado tu solicitud de devolución. Un supervisor revisará el caso y te contactará en breve."
+                policy_note = f"\n\nNuestra política: {return_policy}" if return_policy else ""
+                contact_note = f"\n\nSi tienes dudas: {support_contact}" if support_contact else ""
+                response_text = f"📝 He registrado tu solicitud de devolución. Un supervisor revisará el caso y te contactará en breve.{policy_note}{contact_note}"
                 self._log_incident(user_phone, "PENDING", "Solicitud Devolución (Requiere Aprobación)", user_message)
-                
-                # ALERTA AL DUEÑO
                 NotificationService.send_in_app(
                     user_phone=owner_profile.user_phone,
                     title="⚠️ Solicitud de Devolución",
-                    message=f"El cliente {user_phone} quiere devolver '{product}'. Requiere aprobación manual.",
+                    message=f"El cliente quiere devolver '{product}'. Requiere aprobación manual.",
                     type="alert",
-                    link="/incidents" # Futuro dashboard incidencias
+                    link="/incidents"
                 )
-                
+
             else:
                 # ✅ APROBADO: Generar etiqueta
                 fake_order_id = f"PED-{int(datetime.now().timestamp())}"
-                relative_path = self._generate_return_label(user_phone, fake_order_id)
-                
-                # Construir URL absoluta usando PUBLIC_URL (env var centralizada)
+                relative_path = self._generate_return_label(user_phone, fake_order_id, return_policy)
                 host = os.environ.get('PUBLIC_URL', 'http://localhost:5000').rstrip('/')
                 media_url = f"{host}{relative_path}"
-                
-                response_text = f"✅ He tramitado tu devolución para el pedido {fake_order_id}.\n\nAquí tienes tu etiqueta de envío. 📦"
-                
+                response_text = f"✅ He tramitado tu devolución (ref. {fake_order_id}). Aquí tienes tu etiqueta de envío. 📦"
                 self._log_incident(user_phone, fake_order_id, "Devolución Aprobada", user_message)
                 ActivityLog.log(user_phone, "Post-Venta", f"Generada etiqueta devolución {fake_order_id}")
 
@@ -117,64 +132,79 @@ class PostSalesAgent:
             elif exchange_instructions:
                 response_text = f"🔄 {exchange_instructions}"
             else:
-                response_text = "🔄 Para cambiar, gestiona la devolución y haz un nuevo pedido."
+                response_text = "🔄 Para cambiar un artículo, gestiona la devolución y realiza un nuevo pedido."
 
         elif "STATUS" in intent:
-            response_text = "🚚 Tu pedido está en reparto. Llegará antes de las 14:00."
+            time_note = delivery_time or "el plazo habitual"
+            response_text = f"🚚 Tu pedido está siendo procesado. El tiempo estimado de entrega es {time_note}."
+            if support_contact:
+                response_text += f" Si necesitas más detalles, contacta con nosotros en {support_contact}."
+
+        elif "WARRANTY" in intent:
+            if warranty_info:
+                response_text = f"🛡️ Información de garantía: {warranty_info}"
+            else:
+                response_text = "🛡️ Todos nuestros productos tienen la garantía legal de 2 años."
+            if support_contact:
+                response_text += f" Para gestionar una incidencia de garantía contacta en {support_contact}."
+            ActivityLog.log(user_phone, "Post-Venta", "Consulta de garantía atendida")
 
         elif "COMPLAINT" in intent or sentiment == "angry":
             self._log_incident(user_phone, "N/A", "Queja", user_message)
-            
-            # ALERTA URGENTE AL DUEÑO
             NotificationService.send_in_app(
                 user_phone=owner_profile.user_phone,
                 title="🚨 CLIENTE ENFADADO",
-                message=f"Cliente {user_phone} ha puesto una queja: '{user_message[:50]}...'. Atender URGENTE.",
+                message=f"Queja recibida: '{user_message[:60]}...'. Atender URGENTE.",
                 type="alert"
             )
-
-            # Respuesta calmada IA
             try:
-                prompt = "Actúa como Manager de Experiencia de Cliente. El usuario está enfadado. Calma la situación sin prometer dinero. Sé empático y profesional."
+                prompt = (
+                    f"Actúas como Manager de Experiencia de Cliente de {owner_profile.business_name}. "
+                    f"El cliente está enfadado. Calma la situación sin prometer dinero. Sé empático y profesional.\n\n"
+                    f"Contexto de la empresa:\n{cs_context}"
+                )
                 response = self.client.chat.completions.create(
                     model="gpt-4o",
-                    messages=[
-                        {"role": "system", "content": prompt},
-                        {"role": "user", "content": user_message}
-                    ]
+                    messages=[{"role": "system", "content": prompt}, {"role": "user", "content": user_message}]
                 )
                 response_text = response.choices[0].message.content
             except Exception as e:
                 logger.warning("PostSales: error generando respuesta para queja: %s", e)
                 response_text = "Entiendo tu malestar. He elevado tu incidencia con prioridad ALTA a dirección."
+            ActivityLog.log(user_phone, "Post-Venta", "🔴 Queja: IA calma al cliente + Alerta dueño")
 
-            ActivityLog.log(user_phone, "Post-Venta", "🔴 Queja: IA Calma al cliente + Alerta Dueño")
-            
         else:
-            # Respuesta general
-            response = self.client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": "Eres un asistente de postventa amable. Responde brevemente."},
-                    {"role": "user", "content": user_message}
-                ]
+            # Respuesta general usando FAQ y contexto configurado
+            prompt = (
+                f"Eres el asistente de atención al cliente de {owner_profile.business_name}. "
+                f"Responde de forma breve y útil basándote en el siguiente contexto de la empresa:\n\n{cs_context}"
             )
-            response_text = response.choices[0].message.content
+            try:
+                response = self.client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[{"role": "system", "content": prompt}, {"role": "user", "content": user_message}]
+                )
+                response_text = response.choices[0].message.content
+            except Exception as e:
+                logger.warning("PostSales: error en respuesta general: %s", e)
+                response_text = "Gracias por contactarnos. En breve un agente atenderá tu consulta."
 
         return response_text, media_url
 
-    def _generate_return_label(self, phone, order_id):
+    def _generate_return_label(self, phone, order_id, return_policy=""):
         """Genera un PDF simple simulando una etiqueta de envío."""
         pdf = FPDF()
         pdf.add_page()
-        
-        # ... Lógica PDF (Simplificada para no ocupar tanto espacio, mantenemos la original) ...
         pdf.set_font("Arial", "B", 16)
         pdf.cell(200, 10, txt="ETIQUETA DE DEVOLUCION", ln=1, align="C")
         pdf.ln(10)
         pdf.set_font("Arial", size=12)
         pdf.cell(200, 10, txt=f"Ref: {order_id}", ln=1)
         pdf.cell(200, 10, txt=f"Cliente: {phone}", ln=1)
+        if return_policy:
+            pdf.ln(5)
+            pdf.set_font("Arial", "I", 10)
+            pdf.multi_cell(0, 8, txt=f"Politica de devoluciones: {return_policy}")
         
         filename = f"return_label_{order_id}.pdf"
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

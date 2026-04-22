@@ -17,7 +17,7 @@
 
         <!-- Indicador de progreso -->
         <div class="mt-5 flex items-center gap-2" aria-label="Progreso de configuración">
-            {% set steps = [('1','Identidad','✓'), ('2','Personalidad','✓'), ('3','Conocimiento','✓'), ('4','Guardar','→')] %}
+            {% set steps = [('1','Identidad','✓'), ('2','Negocio','✓'), ('3','Atención','✓'), ('4','Guardar','→')] %}
             {% for num, label, icon in steps %}
             <div class="flex-1 flex flex-col items-center gap-1">
                 <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold
@@ -123,6 +123,53 @@
                 <textarea name="business_instructions" rows="4"
                     placeholder="Ej: No aceptamos reservas en terraza por teléfono, la cocina cierra 30 min antes del cierre, somos Pet Friendly solo en la zona de barra..."
                     class="w-full px-3 py-2 bg-slate-50 rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500 border border-slate-100">{{ current_user.static_knowledge.get('instructions', '') }}</textarea>
+            </div>
+        </div>
+
+        <!-- Atención al Cliente y Postventa -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+            <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                🎧 Atención al Cliente y Postventa
+            </h3>
+            <p class="text-xs text-slate-400 -mt-2">Tu IA usará esta información para gestionar dudas, devoluciones y reclamaciones automáticamente.</p>
+
+            <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Preguntas Frecuentes (FAQ)</label>
+                <textarea name="faq" rows="3"
+                    placeholder="Ej: ¿Hacéis envíos? Sí, en 24-48h. ¿Aceptáis cambios? Sí en 30 días con ticket..."
+                    class="w-full px-3 py-2 bg-slate-50 rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500 border border-slate-100">{{ current_user.static_knowledge.get('faq', '') }}</textarea>
+            </div>
+
+            <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Política de Devoluciones</label>
+                <textarea name="return_policy" rows="2"
+                    placeholder="Ej: Aceptamos devoluciones en 30 días. El producto debe estar sin usar y con etiqueta..."
+                    class="w-full px-3 py-2 bg-slate-50 rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500 border border-slate-100">{{ current_user.static_knowledge.get('return_policy', '') }}</textarea>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Tiempo de Entrega / Respuesta</label>
+                    <input type="text" name="delivery_time"
+                        value="{{ current_user.static_knowledge.get('delivery_time', '') }}"
+                        placeholder="Ej: 24-48h laborables"
+                        class="w-full px-3 py-2 bg-slate-50 rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500 border border-slate-100">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Garantía</label>
+                    <input type="text" name="warranty_info"
+                        value="{{ current_user.static_knowledge.get('warranty_info', '') }}"
+                        placeholder="Ej: 2 años por ley, 1 año piezas"
+                        class="w-full px-3 py-2 bg-slate-50 rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500 border border-slate-100">
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Contacto de Soporte</label>
+                <input type="text" name="support_contact"
+                    value="{{ current_user.static_knowledge.get('support_contact', '') }}"
+                    placeholder="Ej: soporte@miempresa.com · 900 123 456 (L-V 9-18h)"
+                    class="w-full px-3 py-2 bg-slate-50 rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500 border border-slate-100">
             </div>
         </div>
 
