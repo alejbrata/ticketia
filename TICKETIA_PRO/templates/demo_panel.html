@@ -77,6 +77,27 @@
         <div id="hunter-result" class="hidden mt-3"></div>
     </div>
 
+    <!-- PASO 4 -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
+        <div class="flex items-center gap-3 mb-1">
+            <span class="w-7 h-7 rounded-full bg-violet-600 text-white text-sm font-bold flex items-center justify-center flex-shrink-0">4</span>
+            <h3 class="font-bold text-lg text-slate-800">Agente Networker — Sinergias B2B</h3>
+        </div>
+        <p class="text-sm text-slate-500 ml-10 mb-3">Detecta oportunidades de negocio entre empresas de la plataforma usando IA. <strong class="text-slate-700">Normalmente se ejecuta automáticamente a las 09:00 cada mañana.</strong></p>
+        <div class="ml-10 mb-4 bg-violet-50 rounded-xl px-4 py-3 text-xs text-violet-700 leading-relaxed space-y-0.5">
+            <div>🏢 Crea una empresa complementaria ficticia (agencia de marketing)</div>
+            <div>🤖 GPT-4o analiza la sinergia y calcula un score 0-100</div>
+            <div>🤝 Si supera 80/100 genera la oportunidad de negocio</div>
+            <div>🔔 Notifica a ambas empresas con la razón personalizada</div>
+        </div>
+        <button id="btn-networker" onclick="triggerAgent('networker', 'btn-networker', 'networker-result', 'networker-label')"
+            class="w-full bg-violet-600 text-white py-3 rounded-xl font-bold hover:bg-violet-700 transition-all flex items-center justify-center gap-2">
+            <span id="networker-icon">🤝</span>
+            <span id="networker-label">Lanzar Agente Networker Ahora</span>
+        </button>
+        <div id="networker-result" class="hidden mt-3"></div>
+    </div>
+
     <!-- CTA VER RESULTADO -->
     <div id="goto-dashboard" class="hidden bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl p-6 text-white text-center shadow-xl">
         <p class="text-xl font-bold mb-1">🎉 ¡Agentes ejecutados!</p>
@@ -183,11 +204,12 @@
             icon.textContent = '✅';
             label.textContent = '¡Ejecutado con éxito!';
 
-            const isCoach = name === 'coach';
-            const color = isCoach ? 'indigo' : 'emerald';
-            const msg = isCoach
-                ? '📊 El agente analizó tus gastos del mes, proyectó el fin de mes y generó un informe con insight de GPT-4o. La notificación ya está disponible en el Dashboard.'
-                : '💰 El agente escaneó las subvenciones activas, usó GPT-4o para filtrar las más relevantes para tu sector y generó un mensaje personalizado. Revisa las notificaciones.';
+            const messages = {
+                coach:     { color: 'indigo',  msg: '📊 El agente analizó tus gastos del mes, proyectó el fin de mes y generó un informe con insight de GPT-4o. La notificación ya está disponible en el Dashboard.' },
+                hunter:    { color: 'emerald', msg: '💰 El agente escaneó las subvenciones activas, usó GPT-4o para filtrar las más relevantes para tu sector y generó un mensaje personalizado. Revisa las notificaciones.' },
+                networker: { color: 'violet',  msg: '🤝 El agente detectó una sinergia con CreativaMente Marketing (score 85/100). GPT-4o generó la razón de negocio personalizada y la notificación ya está en el Dashboard.' },
+            };
+            const { color, msg } = messages[name] || { color: 'indigo', msg: 'Agente ejecutado correctamente.' };
 
             resultDiv.innerHTML = `
                 <div class="bg-${color}-50 border border-${color}-200 text-${color}-800 rounded-xl px-4 py-3 text-sm font-medium leading-relaxed">
@@ -195,7 +217,7 @@
                 </div>`;
 
             agentsRun++;
-            if (agentsRun >= 2) {
+            if (agentsRun >= 3) {
                 const cta = document.getElementById('goto-dashboard');
                 cta.classList.remove('hidden');
                 setTimeout(() => cta.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300);

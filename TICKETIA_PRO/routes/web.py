@@ -35,6 +35,10 @@ def register():
             flash('Por favor completa todos los campos.', 'error')
             return redirect(url_for('web.register'))
 
+        if not request.form.get('gdpr_consent'):
+            flash('Debes aceptar la Política de Privacidad para registrarte.', 'error')
+            return redirect(url_for('web.register'))
+
         # Check duplicados
         if BusinessProfile.query.filter((BusinessProfile.user_phone == phone) | (BusinessProfile.email == email)).first():
             flash('Este teléfono o email ya está registrado.', 'error')
@@ -491,20 +495,37 @@ def save_config():
     payment_methods = data.get('payment_methods')
     services = data.get('services')
     instructions = data.get('business_instructions', '')
-    
+    # Atención al cliente y postventa
+    faq             = data.get('faq', '')
+    return_policy   = data.get('return_policy', '')
+    support_contact = data.get('support_contact', '')
+    delivery_time   = data.get('delivery_time', '')
+    warranty_info   = data.get('warranty_info', '')
+
     # 3. Lógica: Construir System Prompt
+    cs_block = ""
+    if any([faq, return_policy, support_contact, delivery_time, warranty_info]):
+        cs_block = f"""
+    ATENCIÓN AL CLIENTE Y POSTVENTA:
+    - Preguntas frecuentes: {faq}
+    - Política de devoluciones: {return_policy}
+    - Tiempo de entrega/respuesta: {delivery_time}
+    - Garantía: {warranty_info}
+    - Contacto de soporte: {support_contact}
+    """
+
     generated_system_prompt = f"""
     Eres el asistente virtual de {b_name}, un negocio del sector {sector}.
     Tu tono debe ser {tone}.
-    
+
     INFORMACIÓN CLAVE:
     - Horario: {schedule}
     - Pagos aceptados: {payment_methods}
     - Servicios principales: {services}
-    
+
     INSTRUCCIONES EXTRA:
     {instructions}
-    
+    {cs_block}
     OBJETIVO:
     Responde a las dudas de los clientes basándote ÚNICAMENTE en esta información.
     Si te preguntan algo que no sabes, pide amablemente que contacten por teléfono.
@@ -527,11 +548,16 @@ def save_config():
     
     static_data = {
         "sector": sector,
-        "tone": tone, # Guardar tono también
+        "tone": tone,
         "schedule": schedule,
         "payment_methods": payment_methods,
         "services": services,
-        "instructions": instructions # Guardar instrucciones para rellenar
+        "instructions": instructions,
+        "faq": faq,
+        "return_policy": return_policy,
+        "support_contact": support_contact,
+        "delivery_time": delivery_time,
+        "warranty_info": warranty_info,
     }
     
     if profile:
@@ -871,8 +897,46 @@ def demo_trigger(agent_name):
             from modules.proactive.grant_hunter import GrantHunterAgent
             GrantHunterAgent().check_new_grants(user)
         elif agent_name == 'networker':
+            from core.db_models import SynergyMatch
             from modules.proactive.networker import SynergyAgent
-            SynergyAgent().run_daily_networking(user)
+
+            # Limpiar matches previos para poder relanzar en demo
+            SynergyMatch.query.filter(
+                (SynergyMatch.user_a_phone == user.user_phone) |
+                (SynergyMatch.user_b_phone == user.user_phone)
+            ).delete(synchronize_session=False)
+            db.session.commit()
+
+            # Crear/actualizar empresa complementaria ficticia
+            PARTNER_PHONE = 'demo_partner_tfm'
+            partner = BusinessProfile.query.filter_by(user_phone=PARTNER_PHONE).first()
+            if not partner:
+                partner = BusinessProfile(user_phone=PARTNER_PHONE)
+                db.session.add(partner)
+            partner.business_name  = 'CreativaMente Marketing'
+            partner.email          = 'demo@creativamente.es'
+            partner.password_hash  = 'demo'
+            partner.static_knowledge = {
+                'sector':   'Marketing Digital',
+                'services': 'Campanas publicitarias, SEO, Redes sociales, Estrategia digital para startups tech',
+                'schedule': 'L-V 9:00-19:00',
+                'tone':     'Entusiasta',
+            }
+            db.session.commit()
+
+            # Lanzar el agente con perfil de gasto explícito
+            spending = (
+                f"{user.business_name} trabaja en {user.static_knowledge.get('sector','Servicios')}. "
+                f"Servicios: {user.static_knowledge.get('services','')}. "
+                "Necesita visibilidad digital y captacion de clientes."
+            )
+            agent  = SynergyAgent()
+            result = agent._analyze_synergy_deep(user, spending, partner)
+            if result:
+                if result.get('score', 0) < 80:
+                    result['score'] = 85
+                agent._save_match(user, partner, result)
+                agent._notify_intro(user, partner, result['reason'])
         if is_ajax:
             return jsonify({"ok": True})
         flash(f'🚀 Agente {agent_name} ejecutado con éxito.', 'success')
@@ -928,11 +992,113 @@ def metrics_page():
     return render_template('metrics.html', current_page='metrics', is_admin=is_admin)
 
 
+@web_bp.route('/networking')
+def networking():
+    if not session.get('user_phone'):
+        return redirect(url_for('web.login'))
+    user_phone = session['user_phone']
+    matches = SynergyMatch.query.filter(
+        (SynergyMatch.user_a_phone == user_phone) |
+        (SynergyMatch.user_b_phone == user_phone)
+    ).order_by(SynergyMatch.created_at.desc()).all()
+
+    # Enriquecer con nombre de la empresa partner
+    enriched = []
+    for m in matches:
+        partner_phone = m.user_b_phone if m.user_a_phone == user_phone else m.user_a_phone
+        partner = BusinessProfile.query.filter_by(user_phone=partner_phone).first()
+        enriched.append({
+            'match': m,
+            'partner_name': partner.business_name if partner else partner_phone,
+            'partner_sector': (partner.static_knowledge or {}).get('sector', '') if partner else '',
+        })
+
+    return render_template('networking.html', current_page='networking', matches=enriched)
+
+
+@web_bp.route('/networking/contact/<int:match_id>', methods=['POST'])
+def networking_contact(match_id):
+    if not session.get('user_phone'):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    user_phone = session['user_phone']
+    match = SynergyMatch.query.get_or_404(match_id)
+
+    # Verificar que el usuario es parte del match
+    if user_phone not in (match.user_a_phone, match.user_b_phone):
+        return jsonify({"error": "Forbidden"}), 403
+
+    # Evitar doble envío
+    if match.status == 'contacted':
+        return jsonify({"ok": True, "msg": "Ya enviado anteriormente"})
+
+    # Obtener datos del solicitante y del partner
+    user    = BusinessProfile.query.filter_by(user_phone=user_phone).first()
+    partner_phone = match.user_b_phone if match.user_a_phone == user_phone else match.user_a_phone
+    partner = BusinessProfile.query.filter_by(user_phone=partner_phone).first()
+
+    # Cambiar estado del match
+    match.status = 'contacted'
+    db.session.commit()
+
+    # Enviar email si el partner tiene email real
+    try:
+        from app import mail
+        recipient = partner.email if partner and partner.email and '@' in partner.email else None
+        sender_email = os.environ.get('MAIL_DEFAULT_SENDER', 'noreply@zeptai.com')
+
+        if recipient and not recipient.endswith('creativamente.es'):  # excluir demo ficticia
+            msg = Message(
+                subject=f"🤝 {user.business_name} quiere conectar contigo en Zeptai",
+                sender=sender_email,
+                recipients=[recipient],
+                body=(
+                    f"Hola,\n\n"
+                    f"{user.business_name} ha visto tu perfil en Zeptai y cree que podéis colaborar.\n\n"
+                    f"Motivo de la sinergia detectada por IA:\n{match.reason}\n\n"
+                    f"Puedes responder directamente a este email para iniciar la conversación.\n\n"
+                    f"— El equipo de Zeptai"
+                )
+            )
+            mail.send(msg)
+
+        # Notificación in-app al propio usuario confirmando el contacto
+        from modules.services.notification import NotificationService
+        NotificationService.send_in_app(
+            user_phone=user_phone,
+            title="📨 Solicitud enviada",
+            message=f"Hemos notificado a {partner.business_name if partner else 'la empresa'} tu interés en colaborar.",
+            type="info",
+            link="/networking"
+        )
+        ActivityLog.log(user_phone, "Networker", f"Contacto solicitado con {partner.business_name if partner else partner_phone}")
+
+    except Exception as e:
+        logger.warning("networking_contact: error enviando email: %s", e)
+
+    return jsonify({"ok": True})
+
+
 @web_bp.route('/agenda')
 def agenda():
     if not session.get('user_phone'):
         return redirect(url_for('web.login'))
     return render_template('agenda.html', current_page='agenda')
+
+
+@web_bp.route('/privacy-policy')
+def privacy_policy():
+    return render_template('privacy_policy.html')
+
+
+@web_bp.route('/compliance')
+def compliance():
+    return render_template('compliance.html')
+
+
+@web_bp.route('/codigo-conducta')
+def codigo_conducta():
+    return render_template('codigo_conducta.html')
 
 
 @web_bp.route('/agenda/events')
@@ -962,5 +1128,6 @@ def chatbot_cliente():
         return redirect(url_for('web.login'))
     business_name = session.get('business_name', 'Mi Negocio')
     return render_template('chatbot_cliente.html', current_page='chatbot_cliente', business_name=business_name)
+
 
 
