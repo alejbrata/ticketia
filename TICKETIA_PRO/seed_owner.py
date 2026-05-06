@@ -10,18 +10,14 @@ NOMBRE_NEGOCIO = os.environ.get("DEMO_BUSINESS_NAME", "Demo Business S.L.")
 
 def seed():
     with app.app_context():
-        print(f"🌱 Conectando a Base de Datos: {app.config['SQLALCHEMY_DATABASE_URI']}")
-        
-        # 1. Crear Tablas
-        print("🛠️  Creando tablas...")
+        print(f"[seed] DB: {app.config['SQLALCHEMY_DATABASE_URI']}")
+
         db.create_all()
-        
-        # 2. Verificar/Crear Usuario
-        print(f"👤 Verificando usuario: {MI_TELEFONO}...")
+        print("[seed] Tablas creadas.")
+
         existing_user = BusinessProfile.query.filter_by(user_phone=MI_TELEFONO).first()
-        
+
         if not existing_user:
-            print("   - Usuario no existe. Creando...")
             new_profile = BusinessProfile(
                 user_phone=MI_TELEFONO,
                 email=os.environ.get("DEMO_EMAIL", "admin@demo.com"),
@@ -32,11 +28,11 @@ def seed():
             )
             db.session.add(new_profile)
             db.session.commit()
-            print("✅ Usuario Admin Creado (Pass: 1234)")
+            print(f"[seed] Usuario creado: {MI_TELEFONO} / {os.environ.get('DEMO_EMAIL', 'admin@demo.com')}")
         else:
-            print("ℹ️  El usuario ya existe.")
+            print(f"[seed] Usuario ya existe: {MI_TELEFONO}")
 
-        print("✅ Base de datos inicializada correctamente.")
+        print("[seed] Listo.")
 
 if __name__ == "__main__":
     seed()
