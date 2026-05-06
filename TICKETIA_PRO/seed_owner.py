@@ -1,10 +1,12 @@
 from app import app
 from core.db_models import db, BusinessProfile
 from werkzeug.security import generate_password_hash
+import os
 
-# Configuración del Dueño
-MI_TELEFONO = "+34630339601"
-NOMBRE_NEGOCIO = "Mi Empresa S.L."
+# Configuración del usuario demo
+# Personaliza estas variables o pásalas por entorno
+MI_TELEFONO = os.environ.get("DEMO_PHONE", "+34600000001")
+NOMBRE_NEGOCIO = os.environ.get("DEMO_BUSINESS_NAME", "Demo Business S.L.")
 
 def seed():
     with app.app_context():
@@ -22,8 +24,8 @@ def seed():
             print("   - Usuario no existe. Creando...")
             new_profile = BusinessProfile(
                 user_phone=MI_TELEFONO,
-                email="admin@ticketia.com",
-                password_hash=generate_password_hash("1234"),
+                email=os.environ.get("DEMO_EMAIL", "admin@demo.com"),
+                password_hash=generate_password_hash(os.environ.get("DEMO_PASSWORD", "demo1234")),
                 business_name=NOMBRE_NEGOCIO,
                 plan_tier='PRO_FULL',
                 features={"tickets_allowed": True, "bot_enabled": True, "dashboard_access": True}
