@@ -96,6 +96,7 @@ class TestAuthentication(TicketiaTestBase):
             'phone': '+34600000099',
             'password': 'OtraContraseña456!',
             'business_name': 'Negocio Nuevo',
+            'gdpr_consent': 'on',
         }, follow_redirects=True)
 
         self.assertEqual(resp.status_code, 200)
@@ -111,6 +112,7 @@ class TestAuthentication(TicketiaTestBase):
             'phone': '+34600000099',
             'password': 'OtraContraseña456!',
             'business_name': 'Duplicado',
+            'gdpr_consent': 'on',
         }, follow_redirects=True)
 
         self.assertEqual(resp.status_code, 200)
@@ -126,6 +128,7 @@ class TestAuthentication(TicketiaTestBase):
             'phone': self.TEST_PHONE,  # duplicado
             'password': 'OtraContraseña456!',
             'business_name': 'Duplicado',
+            'gdpr_consent': 'on',
         }, follow_redirects=True)
 
         self.assertEqual(resp.status_code, 200)
