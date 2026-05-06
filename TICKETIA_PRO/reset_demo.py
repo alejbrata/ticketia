@@ -2,7 +2,7 @@
 """
 reset_demo.py — Limpia todos los datos de demo de una cuenta para empezar de cero.
 Uso:
-    docker exec ticketia_app python reset_demo.py 630339601
+    docker compose exec web python reset_demo.py +34600000001
 """
 import sys
 from app import app, db
@@ -91,5 +91,7 @@ def reset(phone):
 
 
 if __name__ == '__main__':
-    phone = sys.argv[1] if len(sys.argv) > 1 else '630339601'
+    import os
+    default_phone = os.environ.get("DEMO_PHONE", "+34600000001")
+    phone = sys.argv[1] if len(sys.argv) > 1 else default_phone
     reset(phone)
