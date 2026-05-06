@@ -84,8 +84,8 @@ APIs Externas:
 ## Instalación local
 
 ### Requisitos
-- Docker Desktop
-- Cuenta OpenAI con acceso a GPT-4o
+- Docker Desktop instalado y en ejecución
+- API key de OpenAI con acceso a GPT-4o
 
 ### Pasos
 
@@ -96,25 +96,38 @@ cd ticketia
 
 # 2. Configurar variables de entorno
 cp .env.example .env
-# Editar .env con tus API keys (OPENAI_API_KEY obligatorio)
-
-# 3. Levantar contenedores
-docker compose up -d
-
-# 4. Abrir en el navegador
-# http://localhost:5000
 ```
 
-### Variables de entorno requeridas
+Abre `.env` y rellena al menos estas dos variables:
+```
+SECRET_KEY=<cadena aleatoria larga>
+OPENAI_API_KEY=sk-...
+```
+Las demás son opcionales para la evaluación básica (ver tabla abajo).
 
-| Variable | Descripción |
-|----------|-------------|
-| `OPENAI_API_KEY` | API key de OpenAI (GPT-4o + Whisper) |
-| `SECRET_KEY` | Clave secreta Flask (genera con `python -c "import secrets; print(secrets.token_hex(32))"`) |
-| `DATABASE_URL` | URL PostgreSQL (se auto-configura con Docker Compose) |
-| `RUNWAY_API_KEY` | Opcional — para generación de vídeo con Runway Gen-3 |
-| `VAPID_PUBLIC_KEY` | Opcional — para push notifications PWA |
-| `VAPID_PRIVATE_KEY` | Opcional — para push notifications PWA |
+```bash
+# 3. Levantar la aplicación con Docker
+docker compose up -d
+
+# 4. Crear usuario de prueba y cargar datos demo
+docker compose exec web python seed_owner.py
+docker compose exec web python seed_demo.py
+
+# 5. Abrir en el navegador
+# http://localhost:5000
+# Usuario: admin@demo.com  |  Contraseña: demo1234
+```
+
+### Variables de entorno
+
+| Variable | Obligatoria | Descripción |
+|----------|:-----------:|-------------|
+| `SECRET_KEY` | Sí | Clave Flask — genera con `python -c "import secrets; print(secrets.token_hex(32))"` |
+| `OPENAI_API_KEY` | Sí | API key de OpenAI ([platform.openai.com/api-keys](https://platform.openai.com/api-keys)) |
+| `MAIL_USERNAME` / `MAIL_PASSWORD` | No | Gmail + App Password para envío de correos |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | No | Push notifications PWA (genera con `npx web-push generate-vapid-keys`) |
+| `RUNWAYML_API_SECRET` | No | Generación de vídeo con Runway Gen-3 |
+| `DATABASE_URL` | No | PostgreSQL externo — Docker Compose usa SQLite por defecto |
 
 ---
 

@@ -85,9 +85,10 @@ def demo_sinergias(phone_demo):
 
 
 if __name__ == '__main__':
-    import sys
+    import sys, os
+    default_phone = os.environ.get("DEMO_PHONE", "+34600000001")
     if len(sys.argv) > 1 and sys.argv[1] == 'sinergias':
-        phone = sys.argv[2] if len(sys.argv) > 2 else '630339601'
+        phone = sys.argv[2] if len(sys.argv) > 2 else default_phone
         demo_sinergias(phone)
     else:
-        generate_fake_history(sys.argv[1] if len(sys.argv) > 1 else '630339601')
+        generate_fake_history(sys.argv[1] if len(sys.argv) > 1 else default_phone)
