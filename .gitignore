@@ -51,3 +51,6 @@ test_docker/
 
 # Misc
 tatus
+
+# Demo assets (generated locally, not tracked)
+demo_business_knowledge.pdf
