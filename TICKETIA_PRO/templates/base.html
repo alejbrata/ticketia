@@ -162,9 +162,9 @@
         <!-- Flash Messages (Server Side) -->
         {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
-        <div class="px-6 py-4 absolute top-0 w-full z-40 pointer-events-none space-y-2">
+        <div class="px-6 py-4 absolute top-0 w-full z-40 pointer-events-none space-y-2" id="flash-container">
             {% for category, message in messages %}
-            <div class="p-4 rounded-xl shadow-lg text-sm font-bold animate-fade-in-up mx-auto max-w-sm pointer-events-auto transition-opacity duration-500
+            <div class="flash-msg p-4 rounded-xl shadow-lg text-sm font-bold animate-fade-in-up mx-auto max-w-sm pointer-events-auto transition-all duration-500
                             {% if category == 'error' %} bg-red-500 text-white
                             {% elif category == 'success' %} bg-green-500 text-white
                             {% else %} bg-blue-500 text-white {% endif %}">
@@ -172,6 +172,15 @@
             </div>
             {% endfor %}
         </div>
+        <script>
+            document.querySelectorAll('.flash-msg').forEach(function(el) {
+                setTimeout(function() {
+                    el.style.opacity = '0';
+                    el.style.transform = 'translateY(-8px)';
+                    setTimeout(function() { el.remove(); }, 500);
+                }, 3500);
+            });
+        </script>
         {% endif %}
         {% endwith %}
 
