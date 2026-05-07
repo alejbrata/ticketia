@@ -357,6 +357,10 @@ def dashboard():
         current_page='dashboard'
     )
 
+@web_bp.route('/tickets')
+def tickets_redirect():
+    return redirect(url_for('web.transactions'), 301)
+
 @web_bp.route('/transactions')
 def transactions():
     if 'user_phone' not in session:
