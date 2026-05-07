@@ -10,7 +10,9 @@ class Config:
         uri = uri.replace("postgres://", "postgresql://", 1)
 
     basedir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
-    SQLALCHEMY_DATABASE_URI = uri or 'sqlite:///' + os.path.join(basedir, 'instance', 'zeptai.db')
+    _instance_dir = os.path.join(basedir, 'instance')
+    os.makedirs(_instance_dir, exist_ok=True)
+    SQLALCHEMY_DATABASE_URI = uri or 'sqlite:///' + os.path.join(_instance_dir, 'zeptai.db')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     # Session security
