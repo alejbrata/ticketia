@@ -155,20 +155,18 @@
             bubble.innerHTML = formatted;
 
             if (role === 'bot') {
-                // Columna: burbuja arriba, feedback abajo alineado a la derecha
-                const col = document.createElement('div');
-                col.className = 'flex flex-col items-start max-w-[85%]';
-                col.appendChild(bubble);
-
-                const feedback = document.createElement('div');
-                feedback.className = 'flex gap-3 mt-1.5 self-end pr-1';
-                feedback.innerHTML = `
-                    <button onclick="sendFeedback(1, this, '${id}')" title="Util"
-                        class="feedback-btn text-sm text-slate-300 hover:text-emerald-500 transition-colors">&#128077;</button>
-                    <button onclick="sendFeedback(-1, this, '${id}')" title="No util"
-                        class="feedback-btn text-sm text-slate-300 hover:text-red-400 transition-colors">&#128078;</button>`;
-                col.appendChild(feedback);
-                div.appendChild(col);
+                // Feedback dentro de la burbuja, separado por línea sutil al fondo
+                bubble.innerHTML += `
+                    <div class="flex items-center justify-between mt-2 pt-2 border-t border-slate-100">
+                        <span class="text-[10px] text-slate-300">¿Útil?</span>
+                        <div class="flex gap-2" id="fb-${id}">
+                            <button onclick="sendFeedback(1, this, '${id}')"
+                                class="text-base leading-none text-slate-300 hover:text-emerald-500 transition-colors active:scale-125">&#128077;</button>
+                            <button onclick="sendFeedback(-1, this, '${id}')"
+                                class="text-base leading-none text-slate-300 hover:text-red-400 transition-colors active:scale-125">&#128078;</button>
+                        </div>
+                    </div>`;
+                div.appendChild(bubble);
             } else {
                 div.appendChild(bubble);
             }
@@ -185,9 +183,8 @@
     }
 
     async function sendFeedback(rating, btn, msgId) {
-        const container = btn.closest('div');
         const msgDiv = document.getElementById(msgId);
-        const preview = msgDiv ? msgDiv.querySelector('div')?.innerText?.slice(0, 200) : '';
+        const preview = msgDiv ? msgDiv.innerText?.slice(0, 200) : '';
         try {
             await fetch('/api/chat/feedback', {
                 method: 'POST',
@@ -195,9 +192,12 @@
                 body: JSON.stringify({rating, message_preview: preview}),
             });
         } catch(e) {}
-        container.innerHTML = rating === 1
-            ? '<span class="text-xs text-emerald-600 font-medium">Gracias por tu valoracion</span>'
-            : '<span class="text-xs text-slate-400 font-medium">Gracias, lo tendremos en cuenta</span>';
+        const fbArea = document.getElementById('fb-' + msgId);
+        if (fbArea) {
+            fbArea.innerHTML = rating === 1
+                ? '<span class="text-[11px] text-emerald-500 font-medium">Gracias &#128077;</span>'
+                : '<span class="text-[11px] text-slate-400 font-medium">Gracias &#128078;</span>';
+        }
     }
 
     // Focus al cargar
