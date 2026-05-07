@@ -468,7 +468,10 @@
             });
             const data = await response.json();
 
-            if (data.success) {
+            if (data.navigate) {
+                window.showToast("Navegando...", "info");
+                setTimeout(() => window.location.href = data.navigate, 400);
+            } else if (data.success) {
                 window.showToast(data.response, "success");
                 setTimeout(() => location.reload(), 2000);
             } else {

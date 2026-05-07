@@ -15,6 +15,29 @@ from core.limiter import limiter
 
 api_bp = Blueprint('api', __name__)
 
+# Mapa de palabras clave → ruta para navegación por voz
+_NAV_MAP = {
+    '/dashboard':       ['inicio', 'home', 'principal', 'dashboard', 'volver al inicio'],
+    '/agenda':          ['agenda', 'citas', 'calendario', 'reuniones', 'reunión'],
+    '/transactions':    ['gastos', 'tickets', 'movimientos', 'facturas', 'transacciones'],
+    '/agents':          ['agentes', 'equipo', 'bots', 'mis agentes'],
+    '/knowledge':       ['conocimiento', 'documentos', 'base de conocimiento', 'archivos'],
+    '/marketing':       ['marketing', 'vídeos', 'videos', 'diseño', 'redes sociales', 'publicidad'],
+    '/metrics':         ['métricas', 'metricas', 'estadísticas', 'estadisticas', 'análisis'],
+    '/chatbot-cliente': ['chatbot', 'chat cliente', 'asistente cliente'],
+    '/profile':         ['perfil', 'mi perfil', 'cuenta', 'contraseña'],
+    '/council':         ['consejo', 'council', 'asesores', 'debate'],
+    '/demo':            ['demo', 'panel de demo', 'demostración', 'presentación'],
+}
+
+def _detect_nav_command(text: str):
+    """Devuelve la ruta si el texto es un comando de navegación, o None."""
+    t = text.lower().strip().rstrip('.')
+    for route, keywords in _NAV_MAP.items():
+        if any(kw in t for kw in keywords):
+            return route
+    return None
+
 # ---------------------------------------------------------------------------
 # Marketing / Video
 # ---------------------------------------------------------------------------
@@ -223,6 +246,12 @@ def upload_web_audio():
             )
         user_text = transcript.text
         logger.info("Web Audio transcrito: %s...", user_text[:50])
+
+        # ── Detección de comandos de navegación por voz ──────────────────────
+        nav_route = _detect_nav_command(user_text)
+        if nav_route:
+            logger.info("Comando de navegación detectado: %s → %s", user_text, nav_route)
+            return jsonify({'success': True, 'navigate': nav_route})
 
         user_profile = BusinessProfile.query.filter_by(user_phone=session['user_phone']).first()
         bot_response = run_agent(user_text, session['user_phone'], user_profile)
