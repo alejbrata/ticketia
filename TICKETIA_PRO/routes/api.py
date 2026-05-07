@@ -18,7 +18,7 @@ api_bp = Blueprint('api', __name__)
 # Mapa de palabras clave → ruta para navegación por voz
 _NAV_MAP = {
     '/dashboard':       ['inicio', 'home', 'principal', 'dashboard', 'volver al inicio'],
-    '/agenda':          ['agenda', 'citas', 'calendario', 'reuniones', 'reunión'],
+    '/agenda':          ['agenda', 'citas', 'calendario', 'reuniones'],
     '/transactions':    ['gastos', 'tickets', 'movimientos', 'facturas', 'transacciones'],
     '/agents':          ['agentes', 'equipo', 'bots', 'mis agentes'],
     '/knowledge':       ['conocimiento', 'documentos', 'base de conocimiento', 'archivos'],
@@ -30,12 +30,42 @@ _NAV_MAP = {
     '/demo':            ['demo', 'panel de demo', 'demostración', 'presentación'],
 }
 
+# Palabras que indican acción tras la keyword — no es navegación sino una instrucción
+_ACTION_WORDS = {
+    'una', 'un', 'con', 'para', 'el', 'la', 'los', 'las', 'a', 'de',
+    'del', 'al', 'mi', 'mis', 'esta', 'este', 'nuevo', 'nueva',
+    'reunión', 'cita', 'tarea', 'llamada', 'evento',
+}
+
 def _detect_nav_command(text: str):
-    """Devuelve la ruta si el texto es un comando de navegación, o None."""
-    t = text.lower().strip().rstrip('.')
+    """
+    Devuelve la ruta si el texto es un comando de navegación puro, o None.
+
+    Reglas:
+    - El texto debe ser corto (≤ 5 palabras) — frases largas son instrucciones al agente.
+    - La palabra siguiente a la keyword no debe ser una palabra de acción
+      (ej: "agenda una reunión" → acción; "agenda" solo → navegación).
+    """
+    t = text.lower().strip().rstrip('.').rstrip('?').rstrip('!')
+    words = t.split()
+
+    # Frases largas son instrucciones al LLM, no navegación
+    if len(words) > 5:
+        return None
+
     for route, keywords in _NAV_MAP.items():
-        if any(kw in t for kw in keywords):
-            return route
+        for kw in keywords:
+            if kw in t:
+                # Comprobar que la palabra que sigue a la keyword no es de acción
+                kw_words = kw.split()
+                try:
+                    idx = words.index(kw_words[0])
+                    next_word = words[idx + len(kw_words)] if idx + len(kw_words) < len(words) else None
+                    if next_word and next_word in _ACTION_WORDS:
+                        continue   # es una instrucción, no navegación
+                except (ValueError, IndexError):
+                    pass
+                return route
     return None
 
 # ---------------------------------------------------------------------------
