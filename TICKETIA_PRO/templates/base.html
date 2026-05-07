@@ -479,6 +479,13 @@
                 // Add Bot Response
                 if (data.response) {
                     addMessage(data.response, 'bot');
+                    // Auto-refresh calendar if a booking was just confirmed
+                    const appointmentKeywords = ['cita confirmada', 'cita agendada', 'reunión programada',
+                        'reunion programada', 'he agendado', 'he programado', 'quedamos el', 'programada para'];
+                    const lower = data.response.toLowerCase();
+                    if (appointmentKeywords.some(k => lower.includes(k)) && window._agendaCalendar) {
+                        setTimeout(() => window._agendaCalendar.refetchEvents(), 600);
+                    }
                 } else if (response.status === 401) {
                     addMessage('Sesion expirada. Vuelve a iniciar sesion para continuar.', 'bot');
                 } else {

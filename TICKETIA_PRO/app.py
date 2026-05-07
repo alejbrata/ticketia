@@ -131,13 +131,32 @@ admin.add_view(SecureModelView(LLMCall, db.session, name='🧠 Métricas LLM'))
 # admin.add_view(SecureModelView(Appointment, db.session, name='📅 Citas'))
 
 with app.app_context():
-    # Activar extensión pgvector solo en PostgreSQL (no en SQLite de tests)
     from sqlalchemy import text
-    if 'postgresql' in app.config.get('SQLALCHEMY_DATABASE_URI', ''):
+    uri = app.config.get('SQLALCHEMY_DATABASE_URI', '')
+
+    if 'postgresql' in uri:
         with db.engine.connect() as conn:
             conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
             conn.commit()
+
     db.create_all()
+
+    # Migración automática: añadir end_time si no existe (sin perder datos)
+    try:
+        with db.engine.connect() as conn:
+            if 'postgresql' in uri:
+                conn.execute(text(
+                    "ALTER TABLE appointment ADD COLUMN IF NOT EXISTS end_time VARCHAR(10)"
+                ))
+            else:
+                cols = [r[1] for r in conn.execute(text("PRAGMA table_info(appointment)"))]
+                if 'end_time' not in cols:
+                    conn.execute(text(
+                        "ALTER TABLE appointment ADD COLUMN end_time VARCHAR(10)"
+                    ))
+            conn.commit()
+    except Exception:
+        pass
 
 
 # --- BLUEPRINTS REGISTRATION ---

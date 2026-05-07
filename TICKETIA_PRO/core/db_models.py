@@ -74,7 +74,8 @@ class Appointment(db.Model):
     business_phone = db.Column(db.String(20), nullable=False, index=True)
     # Stored as proper Date — callers must pass datetime.date objects or "YYYY-MM-DD" strings
     date = db.Column(db.Date, nullable=False)
-    time = db.Column(db.String(10), nullable=False)  # HH:MM
+    time = db.Column(db.String(10), nullable=False)      # HH:MM start
+    end_time = db.Column(db.String(10), nullable=True)   # HH:MM end (None = start + 1h)
     client_name = db.Column(db.String(100))
     client_phone = db.Column(db.String(20))
     created_at = db.Column(db.DateTime(timezone=True), default=_now)
