@@ -1,5 +1,5 @@
-// Service Worker for Ticketia PWA (v3 - Web Push + Cache Strategy)
-const CACHE_NAME = 'ticketia-v3-cache';
+// Service Worker for Ticketia PWA (v4 - Web Push + Cache Strategy)
+const CACHE_NAME = 'ticketia-v4-cache';
 const STATIC_ASSETS = [
     '/static/manifest.json',
     '/static/logo_zeptai.png',
