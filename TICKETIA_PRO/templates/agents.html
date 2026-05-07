@@ -4,20 +4,20 @@
 {% block content %}
 <div class="px-6 py-8 pb-24 max-w-5xl mx-auto w-full">
 
-    <header class="mb-10 text-center animate-fade-in-up">
+    <header class="mb-8 text-center animate-fade-in-up">
         <a href="{{ url_for('web.dashboard') }}" class="inline-block text-sm text-slate-400 hover:text-indigo-600 transition-colors mb-4">← Inicio</a>
-        <h1 class="text-4xl font-bold text-slate-900 tracking-tight mb-4">Tu Equipo de Agentes IA 🤖</h1>
-        <p class="text-lg text-slate-600 max-w-2xl mx-auto">
+        <h1 class="text-2xl md:text-4xl font-bold text-slate-900 tracking-tight mb-3">Tu Equipo de Agentes IA 🤖</h1>
+        <p class="text-sm md:text-lg text-slate-600 max-w-2xl mx-auto">
             Ticketia Pro no es solo un bot. Es un equipo completo de especialistas trabajando 24/7 para tu negocio.
             Aquí puedes ver quién está activo y qué puede hacer por ti.
         </p>
     </header>
 
-    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
 
         <!-- AGENT 1: CUSTOMER SERVICE (CORE) -->
         <div
-            class="bg-white rounded-[2rem] p-8 shadow-xl shadow-indigo-100 border border-indigo-50 relative overflow-hidden group hover:-translate-y-2 transition-transform duration-300">
+            class="bg-white rounded-2xl md:rounded-[2rem] p-5 md:p-8 shadow-lg shadow-indigo-100 border border-indigo-50 relative overflow-hidden group hover:-translate-y-1 transition-transform duration-300">
             <div class="absolute top-0 left-0 w-full h-2 bg-indigo-500"></div>
             <div class="flex items-center gap-4 mb-6">
                 <div
@@ -54,7 +54,7 @@
 
         <!-- AGENT 2: POST SALES (SERVICE) -->
         <div
-            class="bg-white rounded-[2rem] p-8 shadow-xl shadow-rose-100 border border-rose-50 relative overflow-hidden group hover:-translate-y-2 transition-transform duration-300">
+            class="bg-white rounded-2xl md:rounded-[2rem] p-5 md:p-8 shadow-lg shadow-rose-100 border border-rose-50 relative overflow-hidden group hover:-translate-y-1 transition-transform duration-300">
             <div class="absolute top-0 left-0 w-full h-2 bg-rose-500"></div>
             <div class="flex items-center gap-4 mb-6">
                 <div
@@ -90,7 +90,7 @@
 
         <!-- AGENT 3: MARKETING -->
         <div
-            class="bg-white rounded-[2rem] p-8 shadow-xl shadow-purple-100 border border-purple-50 relative overflow-hidden group hover:-translate-y-2 transition-transform duration-300">
+            class="bg-white rounded-2xl md:rounded-[2rem] p-5 md:p-8 shadow-lg shadow-purple-100 border border-purple-50 relative overflow-hidden group hover:-translate-y-1 transition-transform duration-300">
             <div class="absolute top-0 left-0 w-full h-2 bg-purple-600"></div>
             <div class="flex items-center gap-4 mb-6">
                 <div
@@ -126,16 +126,16 @@
     </div>
 
     <!-- Acceso rápido a Reels -->
-    <div class="mt-10 bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-100 rounded-2xl p-6 flex items-center justify-between gap-4">
+    <div class="mt-6 bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-100 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div class="flex items-center gap-4">
-            <div class="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center text-2xl shadow-lg">🎬</div>
+            <div class="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center text-xl sm:text-2xl shadow-lg flex-shrink-0">🎬</div>
             <div>
-                <h3 class="font-bold text-slate-800">Crear Reels & Vídeos</h3>
-                <p class="text-slate-500 text-sm">Convierte una foto de producto en un vídeo listo para publicar</p>
+                <h3 class="font-bold text-slate-800 text-sm sm:text-base">Crear Reels & Vídeos</h3>
+                <p class="text-slate-500 text-xs sm:text-sm">Convierte una foto de producto en un vídeo listo para publicar</p>
             </div>
         </div>
         <a href="{{ url_for('web.marketing_page') }}"
-            class="flex-shrink-0 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold px-5 py-3 rounded-xl shadow-md hover:opacity-90 transition-opacity text-sm">
+            class="w-full sm:w-auto text-center bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold px-5 py-3 rounded-xl shadow-md hover:opacity-90 transition-opacity text-sm">
             Ir a Reels →
         </a>
     </div>

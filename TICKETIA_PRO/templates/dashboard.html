@@ -184,10 +184,8 @@
                         <div class="flex-1">
                             <p class="text-sm text-slate-700 leading-snug">{{ item.action }}</p>
                             <div class="flex items-center gap-2 mt-1">
-                                <span class="text-[10px] font-bold text-slate-400">{{ item.timestamp.strftime('%H:%M')
-                                    }}</span>
-                                <span
-                                    class="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200">
+                                <span class="text-xs font-bold text-slate-400">{{ item.timestamp.strftime('%H:%M') }}</span>
+                                <span class="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200">
                                     {{ item.agent_name }}
                                 </span>
                             </div>
@@ -295,11 +293,13 @@
 <div id="sourceModal"
     class="fixed inset-0 bg-black/50 z-[60] hidden flex items-end md:items-center justify-center p-4 backdrop-blur-sm"
     onclick="closeSourceModal()">
-    <div class="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl transform transition-all translate-y-full md:translate-y-0 duration-300"
+    <div class="bg-white w-full max-w-sm rounded-t-[2rem] md:rounded-[2rem] p-6 shadow-2xl transform transition-all translate-y-full md:translate-y-0 duration-300"
         id="sourceModalContent" onclick="event.stopPropagation()">
+        <!-- Handle bar for mobile bottom sheet -->
+        <div class="w-10 h-1 bg-slate-200 rounded-full mx-auto mb-4 md:hidden"></div>
         <div class="flex justify-between items-center mb-6">
             <h3 class="text-lg font-bold text-slate-800">Añadir Ticket</h3>
-            <button onclick="closeSourceModal()" class="text-slate-400 hover:text-slate-600 p-2">✕</button>
+            <button onclick="closeSourceModal()" class="w-10 h-10 flex items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors">✕</button>
         </div>
 
         <div class="grid grid-cols-2 gap-4">
