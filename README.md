@@ -109,13 +109,20 @@ Las demás son opcionales para la evaluación básica (ver tabla abajo).
 # 3. Levantar la aplicación con Docker
 docker compose up -d
 
-# 4. Crear usuario de prueba y cargar datos demo
-docker compose exec web python seed_owner.py
-docker compose exec web python seed_demo.py
+# 4. Cargar todos los datos demo de una vez
+docker compose exec web python seed_all.py
 
 # 5. Abrir en el navegador
 # http://localhost:5000
 # Usuario: admin@demo.com  |  Contraseña: demo1234
+```
+
+`seed_all.py` hace en un solo paso: reset de BD, usuario demo con plan PRO_FULL, configuración del asistente IA (sector, FAQ, garantías), generación e indexación del PDF de conocimiento en pgvector (25 chunks RAG) y 15 tickets de historial de gastos.
+
+Para volver a empezar de cero en cualquier momento:
+
+```bash
+docker compose exec web python seed_all.py
 ```
 
 ### Variables de entorno
