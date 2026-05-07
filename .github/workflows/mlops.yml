@@ -34,3 +34,7 @@ jobs:
       - name: Run AI agent evaluations
         working-directory: ./TICKETIA_PRO
         run: python mlops/eval_agents.py
+
+      - name: Run RAG quality evaluations
+        working-directory: ./TICKETIA_PRO
+        run: python mlops/eval_rag.py

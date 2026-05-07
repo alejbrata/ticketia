@@ -71,6 +71,36 @@
         </div>
     </div>
 
+    <!-- RAG Quality Section -->
+    <div class="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm mb-6">
+        <h2 class="font-bold text-slate-700 mb-4 text-sm uppercase tracking-wider">Calidad RAG · Base de Conocimiento</h2>
+        <div class="grid grid-cols-2 gap-4 mb-4">
+            <div class="bg-slate-50 rounded-xl p-4">
+                <p class="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">Relevancia media</p>
+                <p class="text-2xl font-bold text-indigo-600" id="rag-relevance">—</p>
+                <p class="text-xs text-slate-400 mt-0.5">0% sin contexto · 100% perfecto</p>
+            </div>
+            <div class="bg-slate-50 rounded-xl p-4">
+                <p class="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">Consultas RAG</p>
+                <p class="text-2xl font-bold text-slate-800" id="rag-queries">—</p>
+                <p class="text-xs text-slate-400 mt-0.5" id="rag-chunks">— chunks por consulta</p>
+            </div>
+        </div>
+        <div class="border-t border-slate-100 pt-4">
+            <p class="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-3">Feedback del chatbot</p>
+            <div class="flex items-center gap-4">
+                <div class="flex-1 h-3 rounded-full bg-slate-100 overflow-hidden" id="feedback-bar-container">
+                    <div id="feedback-bar-ok" class="h-full rounded-full bg-emerald-500 transition-all duration-700" style="width:0%"></div>
+                </div>
+                <div class="flex gap-3 text-sm flex-shrink-0">
+                    <span class="text-emerald-600 font-bold" id="fb-ok">👍 —</span>
+                    <span class="text-red-400 font-bold" id="fb-ko">👎 —</span>
+                </div>
+            </div>
+            <p class="text-xs text-slate-400 mt-2" id="fb-rate">Sin datos de feedback aun</p>
+        </div>
+    </div>
+
     <!-- Empty state (hidden by default) -->
     <div id="empty-state" class="hidden text-center py-16 text-slate-400">
         <p class="text-5xl mb-4">🤖</p>
@@ -229,5 +259,37 @@ async function loadMetrics() {
 }
 
 loadMetrics();
+loadRagMetrics();
+
+async function loadRagMetrics() {
+    try {
+        const res = await fetch('/api/metrics/rag');
+        if (!res.ok) return;
+        const d = await res.json();
+
+        // RAG quality
+        const rel = d.rag.relevance_pct;
+        document.getElementById('rag-relevance').textContent = rel !== null ? rel + '%' : 'Sin datos';
+        document.getElementById('rag-queries').textContent   = fmt(d.rag.total_queries);
+        document.getElementById('rag-chunks').textContent    = d.rag.avg_chunks !== null
+            ? d.rag.avg_chunks + ' chunks por consulta' : 'Sin consultas aun';
+
+        // Colore el % de relevancia
+        if (rel !== null) {
+            const el = document.getElementById('rag-relevance');
+            el.className = 'text-2xl font-bold ' + (rel >= 70 ? 'text-emerald-600' : rel >= 40 ? 'text-amber-500' : 'text-red-500');
+        }
+
+        // Feedback
+        const fb = d.feedback;
+        if (fb.total > 0) {
+            document.getElementById('fb-ok').textContent = '👍 ' + fb.ok;
+            document.getElementById('fb-ko').textContent = '👎 ' + fb.ko;
+            document.getElementById('feedback-bar-ok').style.width = fb.ok_rate + '%';
+            document.getElementById('fb-rate').textContent =
+                fb.ok_rate + '% de respuestas valoradas positivamente (' + fb.total + ' valoraciones)';
+        }
+    } catch(e) {}
+}
 </script>
 {% endblock %}

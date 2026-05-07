@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from flask import Blueprint, request, session, jsonify, Response, stream_with_context, current_app
 
 logger = logging.getLogger(__name__)
-from core.db_models import BusinessProfile, db, Notification, GeneratedDocument, LLMCall
+from core.db_models import BusinessProfile, db, Notification, GeneratedDocument, LLMCall, ChatFeedback, RagRetrieval
 from modules.proactive.marketing_agent import MarketingAgent
 from modules.agents.background_tasks import run_marketing_thread
 from modules.tickets.logic import process_ticket_image
@@ -90,6 +90,65 @@ def chat_api():
     return jsonify({"response": response_text})
 
 
+@api_bp.route('/api/chat/feedback', methods=['POST'])
+@limiter.limit("60 per minute")
+def chat_feedback():
+    if 'user_phone' not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+    data = request.get_json() or {}
+    rating = data.get('rating')
+    if rating not in (1, -1):
+        return jsonify({"error": "rating must be 1 or -1"}), 400
+    preview = str(data.get('message_preview', ''))[:200]
+    db.session.add(ChatFeedback(
+        user_phone=session['user_phone'],
+        rating=rating,
+        message_preview=preview,
+    ))
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+@api_bp.route('/api/metrics/rag', methods=['GET'])
+def rag_metrics():
+    if 'user_phone' not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    from sqlalchemy import func
+    phone = session['user_phone']
+
+    # Score medio RAG (últimas 100 consultas del usuario)
+    rag_stats = db.session.query(
+        func.count(RagRetrieval.id).label('total_queries'),
+        func.avg(RagRetrieval.avg_score).label('avg_score'),
+        func.avg(RagRetrieval.chunks_returned).label('avg_chunks'),
+    ).filter(RagRetrieval.user_phone == phone).first()
+
+    # Feedback del chatbot
+    feedback_stats = db.session.query(
+        func.count(ChatFeedback.id).label('total'),
+        func.sum(db.case((ChatFeedback.rating == 1, 1), else_=0)).label('ok'),
+        func.sum(db.case((ChatFeedback.rating == -1, 1), else_=0)).label('ko'),
+    ).filter(ChatFeedback.user_phone == phone).first()
+
+    total_fb = feedback_stats.total or 0
+    ok = int(feedback_stats.ok or 0)
+    ko = int(feedback_stats.ko or 0)
+
+    return jsonify({
+        "rag": {
+            "total_queries": int(rag_stats.total_queries or 0),
+            "avg_score": round(float(rag_stats.avg_score), 3) if rag_stats.avg_score else None,
+            "avg_chunks": round(float(rag_stats.avg_chunks), 1) if rag_stats.avg_chunks else None,
+            "relevance_pct": round((1 - float(rag_stats.avg_score)) * 100, 1) if rag_stats.avg_score else None,
+        },
+        "feedback": {
+            "total": total_fb,
+            "ok": ok,
+            "ko": ko,
+            "ok_rate": round(ok / total_fb * 100, 1) if total_fb else None,
+        },
+    })
 
 
 # ---------------------------------------------------------------------------
