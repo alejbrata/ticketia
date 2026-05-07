@@ -15,58 +15,57 @@ from core.limiter import limiter
 
 api_bp = Blueprint('api', __name__)
 
-# Mapa de palabras clave → ruta para navegación por voz
-_NAV_MAP = {
-    '/dashboard':       ['inicio', 'home', 'principal', 'dashboard', 'volver al inicio'],
-    '/agenda':          ['agenda', 'citas', 'calendario', 'reuniones'],
-    '/transactions':    ['gastos', 'tickets', 'movimientos', 'facturas', 'transacciones'],
-    '/agents':          ['agentes', 'equipo', 'bots', 'mis agentes'],
-    '/knowledge':       ['conocimiento', 'documentos', 'base de conocimiento', 'archivos'],
-    '/marketing':       ['marketing', 'vídeos', 'videos', 'diseño', 'redes sociales', 'publicidad'],
-    '/metrics':         ['métricas', 'metricas', 'estadísticas', 'estadisticas', 'análisis'],
-    '/chatbot-cliente': ['chatbot', 'chat cliente', 'asistente cliente'],
-    '/profile':         ['perfil', 'mi perfil', 'cuenta', 'contraseña'],
-    '/council':         ['consejo', 'council', 'asesores', 'debate'],
-    '/demo':            ['demo', 'panel de demo', 'demostración', 'presentación'],
-}
+_NAV_SECTIONS = """
+- /dashboard      → inicio, home, pantalla principal, volver al inicio
+- /agenda         → ver agenda, mis citas, calendario, qué tengo hoy/mañana/esta semana, reuniones
+- /transactions   → gastos, tickets, movimientos, facturas, mis compras
+- /agents         → agentes, equipo de IA, mis bots
+- /knowledge      → base de conocimiento, documentos, archivos subidos
+- /marketing      → marketing, vídeos, redes sociales, publicidad, contenido
+- /metrics        → métricas, estadísticas, análisis, rendimiento
+- /chatbot-cliente→ chatbot, chat con cliente, asistente cliente, vista cliente
+- /profile        → perfil, mi cuenta, contraseña, datos personales
+- /council        → consejo, debate, asesores, the council
+- /demo           → panel de demo, demostración, presentación
+"""
 
-# Palabras que indican acción tras la keyword — no es navegación sino una instrucción
-_ACTION_WORDS = {
-    'una', 'un', 'con', 'para', 'el', 'la', 'los', 'las', 'a', 'de',
-    'del', 'al', 'mi', 'mis', 'esta', 'este', 'nuevo', 'nueva',
-    'reunión', 'cita', 'tarea', 'llamada', 'evento',
-}
+_INTENT_PROMPT = """Eres el clasificador de intención de una app de gestión empresarial con IA.
+El usuario ha hablado por micrófono. Debes decidir si quiere NAVEGAR a una sección o EJECUTAR una acción.
 
-def _detect_nav_command(text: str):
+Secciones disponibles:{sections}
+
+Comando del usuario: "{text}"
+
+Reglas:
+- NAVEGAR: el usuario quiere VER o IR a una sección ("enséñame la agenda", "quiero ver mis gastos", "llévame a métricas").
+- ACCIÓN: el usuario quiere hacer algo ("agenda una reunión", "¿cuánto gasté?", "genera un presupuesto").
+- Si hay duda, prefiere ACCIÓN para no interrumpir al asistente.
+
+Responde ÚNICAMENTE con JSON válido, sin texto adicional:
+{{"type":"navigate","route":"/agenda"}} o {{"type":"action"}}"""
+
+
+def _classify_voice_intent(text: str, openai_client) -> dict | None:
     """
-    Devuelve la ruta si el texto es un comando de navegación puro, o None.
-
-    Reglas:
-    - El texto debe ser corto (≤ 5 palabras) — frases largas son instrucciones al agente.
-    - La palabra siguiente a la keyword no debe ser una palabra de acción
-      (ej: "agenda una reunión" → acción; "agenda" solo → navegación).
+    Usa GPT-4o-mini para clasificar si el comando de voz es navegación o acción.
+    Devuelve {'type': 'navigate', 'route': '...'} o {'type': 'action'}.
+    Devuelve None si falla, para que el flujo continúe con el agente normal.
     """
-    t = text.lower().strip().rstrip('.').rstrip('?').rstrip('!')
-    words = t.split()
-
-    # Frases largas son instrucciones al LLM, no navegación
-    if len(words) > 5:
+    try:
+        prompt = _INTENT_PROMPT.format(sections=_NAV_SECTIONS, text=text)
+        resp = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=30,
+            temperature=0,
+        )
+        raw = resp.choices[0].message.content.strip()
+        result = json.loads(raw)
+        logger.info("Voice intent clasificado: %r → %s", text[:60], result)
+        return result
+    except Exception as e:
+        logger.warning("Voice intent classification falló, usando agente: %s", e)
         return None
-
-    for route, keywords in _NAV_MAP.items():
-        for kw in keywords:
-            if kw in t:
-                # Comprobar que la palabra que sigue a la keyword no es de acción
-                kw_words = kw.split()
-                try:
-                    idx = words.index(kw_words[0])
-                    next_word = words[idx + len(kw_words)] if idx + len(kw_words) < len(words) else None
-                    if next_word and next_word in _ACTION_WORDS:
-                        continue   # es una instrucción, no navegación
-                except (ValueError, IndexError):
-                    pass
-                return route
-    return None
 
 # ---------------------------------------------------------------------------
 # Marketing / Video
@@ -277,11 +276,10 @@ def upload_web_audio():
         user_text = transcript.text
         logger.info("Web Audio transcrito: %s...", user_text[:50])
 
-        # ── Detección de comandos de navegación por voz ──────────────────────
-        nav_route = _detect_nav_command(user_text)
-        if nav_route:
-            logger.info("Comando de navegación detectado: %s → %s", user_text, nav_route)
-            return jsonify({'success': True, 'navigate': nav_route})
+        # ── Clasificación de intención por LLM ───────────────────────────────
+        intent = _classify_voice_intent(user_text, client)
+        if intent and intent.get('type') == 'navigate':
+            return jsonify({'success': True, 'navigate': intent['route']})
 
         user_profile = BusinessProfile.query.filter_by(user_phone=session['user_phone']).first()
         bot_response = run_agent(user_text, session['user_phone'], user_profile)
