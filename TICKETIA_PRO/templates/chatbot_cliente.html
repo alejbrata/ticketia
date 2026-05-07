@@ -152,6 +152,17 @@
             let formatted = text.replace(/\n/g, '<br>');
             formatted = formatted.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" class="underline font-bold text-inherit">$1</a>');
             bubble.innerHTML = formatted;
+
+            if (role === 'bot') {
+                const feedback = document.createElement('div');
+                feedback.className = 'flex gap-2 mt-1.5 ml-1';
+                feedback.innerHTML = `
+                    <button onclick="sendFeedback(1, this, '${id}')" title="Util"
+                        class="feedback-btn text-xs text-slate-400 hover:text-emerald-600 transition-colors">&#128077;</button>
+                    <button onclick="sendFeedback(-1, this, '${id}')" title="No util"
+                        class="feedback-btn text-xs text-slate-400 hover:text-red-500 transition-colors">&#128078;</button>`;
+                div.appendChild(feedback);
+            }
         }
 
         div.appendChild(bubble);
@@ -163,6 +174,22 @@
     function scrollClientToBottom() {
         const c = document.getElementById('clientMessages');
         c.scrollTop = c.scrollHeight;
+    }
+
+    async function sendFeedback(rating, btn, msgId) {
+        const container = btn.closest('div');
+        const msgDiv = document.getElementById(msgId);
+        const preview = msgDiv ? msgDiv.querySelector('div')?.innerText?.slice(0, 200) : '';
+        try {
+            await fetch('/api/chat/feedback', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({rating, message_preview: preview}),
+            });
+        } catch(e) {}
+        container.innerHTML = rating === 1
+            ? '<span class="text-xs text-emerald-600 font-medium">Gracias por tu valoracion</span>'
+            : '<span class="text-xs text-slate-400 font-medium">Gracias, lo tendremos en cuenta</span>';
     }
 
     // Focus al cargar

@@ -189,3 +189,24 @@ class LLMCall(db.Model):
     success = db.Column(db.Boolean, default=True)
     error_message = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), default=_now, index=True)
+
+
+class ChatFeedback(db.Model):
+    """Feedback OK/KO del usuario sobre cada respuesta del chatbot."""
+    __tablename__ = 'chat_feedback'
+    id = db.Column(db.Integer, primary_key=True)
+    user_phone = db.Column(db.String(20), nullable=False, index=True)
+    rating = db.Column(db.SmallInteger, nullable=False)   # +1 OK, -1 KO
+    message_preview = db.Column(db.String(200))           # primeros 200 chars de la respuesta
+    created_at = db.Column(db.DateTime(timezone=True), default=_now, index=True)
+
+
+class RagRetrieval(db.Model):
+    """Log de cada consulta RAG: cuántos chunks se recuperaron y su score medio."""
+    __tablename__ = 'rag_retrieval'
+    id = db.Column(db.Integer, primary_key=True)
+    user_phone = db.Column(db.String(20), nullable=False, index=True)
+    query_preview = db.Column(db.String(200))             # primeros 200 chars de la query
+    chunks_returned = db.Column(db.Integer, default=0)
+    avg_score = db.Column(db.Float, nullable=True)        # 0=perfecto, 1=sin relación (distancia coseno)
+    created_at = db.Column(db.DateTime(timezone=True), default=_now, index=True)

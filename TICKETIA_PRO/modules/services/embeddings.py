@@ -217,13 +217,21 @@ def ingest_document(user_phone: str, file_path: str, filename: str) -> int:
 
 def retrieve_chunks(user_phone: str, query: str, top_k: int = 5) -> list[str]:
     """
-    Devuelve los top_k chunks más relevantes para la query del usuario.
-    Usa distancia coseno de pgvector.
+    Devuelve los top_k chunks más relevantes. Loguea la calidad en RagRetrieval.
     Retorna lista vacía si no hay chunks o falla el embedding.
     """
-    from core.db_models import KnowledgeChunk
+    results = retrieve_chunks_scored(user_phone, query, top_k)
+    return [content for content, _ in results]
 
-    # Comprobar que hay chunks para este usuario antes de embeber la query
+
+def retrieve_chunks_scored(user_phone: str, query: str, top_k: int = 5) -> list[tuple]:
+    """
+    Devuelve lista de (content, score) donde score es la distancia coseno
+    (0 = perfecto, 1 = sin relación). Loguea métricas en RagRetrieval.
+    """
+    from core.db_models import KnowledgeChunk, RagRetrieval, db
+    from sqlalchemy import literal_column
+
     count = KnowledgeChunk.query.filter_by(user_phone=user_phone).count()
     if count == 0:
         return []
@@ -235,14 +243,31 @@ def retrieve_chunks(user_phone: str, query: str, top_k: int = 5) -> list[str]:
         return []
 
     try:
-        results = (
+        distance_col = KnowledgeChunk.embedding.cosine_distance(query_embedding)
+        rows = (
             KnowledgeChunk.query
             .filter_by(user_phone=user_phone)
-            .order_by(KnowledgeChunk.embedding.cosine_distance(query_embedding))
+            .add_columns(distance_col.label("score"))
+            .order_by(distance_col)
             .limit(top_k)
             .all()
         )
-        return [r.content for r in results]
+        pairs = [(r.KnowledgeChunk.content, round(float(r.score), 4)) for r in rows]
+
+        # Log de calidad RAG
+        try:
+            avg = sum(s for _, s in pairs) / len(pairs) if pairs else None
+            db.session.add(RagRetrieval(
+                user_phone=user_phone,
+                query_preview=query[:200],
+                chunks_returned=len(pairs),
+                avg_score=avg,
+            ))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+        return pairs
     except Exception as e:
         logger.error("Error en similarity search pgvector: %s", e)
         return []
