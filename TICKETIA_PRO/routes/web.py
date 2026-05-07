@@ -884,43 +884,52 @@ def demo_trigger(agent_name):
     if 'user_phone' not in session:
         return jsonify({"error": "Unauthorized"}), 401
     user = BusinessProfile.query.filter_by(user_phone=session['user_phone']).first()
+    if not user:
+        return jsonify({"error": "Usuario no encontrado."}), 404
     is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
     try:
         if agent_name == 'coach':
             from modules.proactive.business_health import BusinessCoachAgent
+            from core.db_models import Ticket
+            ticket_count = Ticket.query.filter_by(user_phone=user.user_phone).count()
+            if ticket_count == 0:
+                msg = "No hay tickets en la base de datos. Ejecuta primero el Paso 1 (Generar Datos de Demo)."
+                return jsonify({"error": msg}), 400 if is_ajax else (flash(msg, 'error'), redirect(url_for('web.demo_panel')))[1]
             BusinessCoachAgent().run_daily_analysis(user)
+
         elif agent_name == 'hunter':
-            # Resetear notificaciones previas para poder volver a lanzar en demo
             from core.db_models import Grant
+            from modules.proactive.grant_hunter import GrantHunterAgent
+            if Grant.query.count() == 0:
+                msg = "No hay subvenciones en la base de datos. Ejecuta primero el Paso 1 (Generar Datos de Demo)."
+                return jsonify({"error": msg}), 400 if is_ajax else (flash(msg, 'error'), redirect(url_for('web.demo_panel')))[1]
             for grant in Grant.query.all():
                 phones = list(grant.notified_phones or [])
                 if user.user_phone in phones:
                     phones.remove(user.user_phone)
                     grant.notified_phones = phones
             db.session.commit()
-            from modules.proactive.grant_hunter import GrantHunterAgent
             GrantHunterAgent().check_new_grants(user)
+
         elif agent_name == 'networker':
             from core.db_models import SynergyMatch
             from modules.proactive.networker import SynergyAgent
 
-            # Limpiar matches previos para poder relanzar en demo
             SynergyMatch.query.filter(
                 (SynergyMatch.user_a_phone == user.user_phone) |
                 (SynergyMatch.user_b_phone == user.user_phone)
             ).delete(synchronize_session=False)
             db.session.commit()
 
-            # Crear/actualizar empresa complementaria ficticia
             PARTNER_PHONE = 'demo_partner_tfm'
             partner = BusinessProfile.query.filter_by(user_phone=PARTNER_PHONE).first()
             if not partner:
                 partner = BusinessProfile(user_phone=PARTNER_PHONE)
                 db.session.add(partner)
-            partner.business_name  = 'CreativaMente Marketing'
-            partner.email          = 'demo@creativamente.es'
-            partner.password_hash  = 'demo'
-            partner.static_knowledge = {
+            partner.business_name     = 'CreativaMente Marketing'
+            partner.email             = 'demo@creativamente.es'
+            partner.password_hash     = 'demo'
+            partner.static_knowledge  = {
                 'sector':   'Marketing Digital',
                 'services': 'Campanas publicitarias, SEO, Redes sociales, Estrategia digital para startups tech',
                 'schedule': 'L-V 9:00-19:00',
@@ -928,10 +937,10 @@ def demo_trigger(agent_name):
             }
             db.session.commit()
 
-            # Lanzar el agente con perfil de gasto explícito
+            knowledge = user.static_knowledge or {}
             spending = (
-                f"{user.business_name} trabaja en {user.static_knowledge.get('sector','Servicios')}. "
-                f"Servicios: {user.static_knowledge.get('services','')}. "
+                f"{user.business_name} trabaja en {knowledge.get('sector', 'Servicios')}. "
+                f"Servicios: {knowledge.get('services', '')}. "
                 "Necesita visibilidad digital y captacion de clientes."
             )
             agent  = SynergyAgent()
@@ -941,10 +950,15 @@ def demo_trigger(agent_name):
                     result['score'] = 85
                 agent._save_match(user, partner, result)
                 agent._notify_intro(user, partner, result['reason'])
+
+        else:
+            return jsonify({"error": f"Agente '{agent_name}' no reconocido."}), 400
+
         if is_ajax:
             return jsonify({"ok": True})
-        flash(f'🚀 Agente {agent_name} ejecutado con éxito.', 'success')
+        flash(f'Agente {agent_name} ejecutado con exito.', 'success')
     except Exception as e:
+        logger.exception("Error en demo_trigger para agente '%s'", agent_name)
         if is_ajax:
             return jsonify({"error": str(e)}), 500
         flash(f'Error: {e}', 'error')
