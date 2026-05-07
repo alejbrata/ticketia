@@ -1133,12 +1133,22 @@ def agenda_events():
     events = []
     for a in appointments:
         start = f"{a.date}T{a.time}:00"
+        # end_time: si no existe, 1 hora después del inicio
+        if a.end_time:
+            end = f"{a.date}T{a.end_time}:00"
+        else:
+            from datetime import datetime, timedelta
+            end_dt = datetime.strptime(f"{a.date}T{a.time}", "%Y-%m-%dT%H:%M") + timedelta(hours=1)
+            end = end_dt.strftime("%Y-%m-%dT%H:%M:00")
         events.append({
             'id': a.id,
-            'title': a.client_name or 'Cliente',
+            'title': a.client_name or 'Cita',
             'start': start,
+            'end': end,
             'extendedProps': {
                 'client_phone': a.client_phone or '',
+                'start_time': a.time,
+                'end_time': a.end_time or end_dt.strftime("%H:%M") if not a.end_time else a.end_time,
             }
         })
     return jsonify(events)

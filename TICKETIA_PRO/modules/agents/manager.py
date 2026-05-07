@@ -150,8 +150,9 @@ class AgentExecutor:
                 tool_output = CalendarTools.book_appointment(
                     date=function_args.get("date"),
                     time=function_args.get("time"),
-                    client_name=function_args.get("client_name"),
-                    phone=function_args.get("phone"),
+                    end_time=function_args.get("end_time", ""),
+                    client_name=function_args.get("client_name", ""),
+                    phone=function_args.get("phone", ""),
                     business_phone=self.business_profile.user_phone
                 )
                 ActivityLog.log(self.phone_number, "Calendar Agent", f"Cita agendada: {function_args.get('client_name')}")

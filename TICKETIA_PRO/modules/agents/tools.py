@@ -37,7 +37,8 @@ class CalendarTools:
         return f"Huecos disponibles el {date}: {', '.join(available_slots)}"
 
     @staticmethod
-    def book_appointment(date: str, time: str, business_phone: str, client_name: str = "", phone: str = "") -> str:
+    def book_appointment(date: str, time: str, business_phone: str,
+                         client_name: str = "", phone: str = "", end_time: str = "") -> str:
         """
         Reserva una cita. Realiza doble verificación de conflictos.
         date debe venir como 'YYYY-MM-DD'.
@@ -60,6 +61,7 @@ class CalendarTools:
             business_phone=business_phone,
             date=parsed_date,
             time=time,
+            end_time=end_time or None,
             client_name=client_name,
             client_phone=phone
         )
@@ -68,7 +70,8 @@ class CalendarTools:
             db.session.add(new_appt)
             db.session.commit()
             quien = f" con {client_name}" if client_name else ""
-            return f"Cita confirmada{quien} para el {date} a las {time}."
+            rango = f" de {time} a {end_time}" if end_time else f" a las {time}"
+            return f"Cita confirmada{quien} para el {date}{rango}."
         except Exception as e:
             db.session.rollback()
             print(f"Error DB book_appointment: {e}")
@@ -100,12 +103,13 @@ TOOLS_SCHEMA = [
         "type": "function",
         "function": {
             "name": "book_appointment",
-            "description": "Reserva una cita en el calendario. Solo fecha y hora son obligatorios. Nombre y teléfono son opcionales — NO los pidas si el usuario no los ha proporcionado.",
+            "description": "Reserva una cita en el calendario. Fecha y hora de inicio son obligatorios. Si el usuario indica hora de fin, úsala. Nombre y teléfono son opcionales.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "date": {"type": "string", "description": "Fecha de la cita (YYYY-MM-DD)."},
-                    "time": {"type": "string", "description": "Hora de la cita (HH:MM)."},
+                    "time": {"type": "string", "description": "Hora de inicio (HH:MM)."},
+                    "end_time": {"type": "string", "description": "Hora de fin (HH:MM). Opcional, usar cadena vacía si el usuario no la indica."},
                     "client_name": {"type": "string", "description": "Nombre o empresa. Opcional, usar cadena vacía si no se indica."},
                     "phone": {"type": "string", "description": "Teléfono del cliente. Opcional, usar cadena vacía si no se indica."}
                 },
