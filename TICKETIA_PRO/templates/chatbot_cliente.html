@@ -148,24 +148,32 @@
 
         if (isTyping) {
             bubble.innerHTML = '<span class="flex gap-1 items-center py-0.5"><span class="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style="animation-delay:0ms"></span><span class="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style="animation-delay:150ms"></span><span class="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style="animation-delay:300ms"></span></span>';
+            div.appendChild(bubble);
         } else {
             let formatted = text.replace(/\n/g, '<br>');
             formatted = formatted.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" class="underline font-bold text-inherit">$1</a>');
             bubble.innerHTML = formatted;
 
             if (role === 'bot') {
+                // Columna: burbuja arriba, feedback abajo alineado a la derecha
+                const col = document.createElement('div');
+                col.className = 'flex flex-col items-start max-w-[85%]';
+                col.appendChild(bubble);
+
                 const feedback = document.createElement('div');
-                feedback.className = 'flex gap-2 mt-1.5 ml-1';
+                feedback.className = 'flex gap-3 mt-1.5 self-end pr-1';
                 feedback.innerHTML = `
                     <button onclick="sendFeedback(1, this, '${id}')" title="Util"
-                        class="feedback-btn text-xs text-slate-400 hover:text-emerald-600 transition-colors">&#128077;</button>
+                        class="feedback-btn text-sm text-slate-300 hover:text-emerald-500 transition-colors">&#128077;</button>
                     <button onclick="sendFeedback(-1, this, '${id}')" title="No util"
-                        class="feedback-btn text-xs text-slate-400 hover:text-red-500 transition-colors">&#128078;</button>`;
-                div.appendChild(feedback);
+                        class="feedback-btn text-sm text-slate-300 hover:text-red-400 transition-colors">&#128078;</button>`;
+                col.appendChild(feedback);
+                div.appendChild(col);
+            } else {
+                div.appendChild(bubble);
             }
         }
 
-        div.appendChild(bubble);
         container.appendChild(div);
         scrollClientToBottom();
         return id;
