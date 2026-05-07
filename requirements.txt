@@ -10,7 +10,7 @@ xlsxwriter
 flask-sqlalchemy
 flask-mail
 flask-admin
-fpdf
+fpdf2
 python-dateutil
 matplotlib
 requests

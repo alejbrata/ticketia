@@ -9,34 +9,28 @@ on:
 jobs:
   test-and-evaluate:
     runs-on: ubuntu-latest
+
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
-      TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
-      FLASK_ENV: "testing"
+      SECRET_KEY: ${{ secrets.SECRET_KEY || 'ci-secret-key-not-for-prod' }}
+      FLASK_ENV: testing
 
     steps:
-    - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-    - name: Set up Python 3.10
-      uses: actions/setup-python@v3
-      with:
-        python-version: "3.10"
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
 
-    - name: Install Dependencies
-      run: |
-        python -m pip install --upgrade pip
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-        # Ensure TICKETIA_PRO is in python path if needed, or adjust scripts
-    
-    - name: Run Unit Tests
-      working-directory: ./TICKETIA_PRO
-      run: |
-        python -m unittest discover tests
+      - name: Install dependencies
+        run: pip install -r requirements.txt
 
-    - name: Run AI Agent Evaluation (Gold Standard)
-      working-directory: ./TICKETIA_PRO
-      run: |
-        # Only run costly evals on main/dev pushes, not every PR commit maybe?
-        # For now, run always.
-        python mlops/eval_agents.py
+      - name: Run unit tests
+        working-directory: ./TICKETIA_PRO
+        run: python -m pytest tests/ -v --tb=short
+
+      - name: Run AI agent evaluations
+        working-directory: ./TICKETIA_PRO
+        run: python mlops/eval_agents.py
