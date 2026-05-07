@@ -80,6 +80,9 @@ def login():
             session['user_email'] = profile.email
             session['business_name'] = profile.business_name
             flash(f'Bienvenido, {profile.business_name}', 'success')
+            # Primera vez: redirigir al wizard si no tiene IA configurada
+            if not profile.system_prompt:
+                return redirect(url_for('web.wizard'))
             return redirect(url_for('web.dashboard'))
         else:
             flash('⚠️ Credenciales incorrectas.', 'error')
@@ -472,14 +475,15 @@ def wizard():
     user_phone = session['user_phone']
     profile = BusinessProfile.query.filter_by(user_phone=user_phone).first()
     
-    # Si no existe perfil, pasar un objeto vacío o usar valores por defecto
     if not profile:
         class MockProfile:
             business_name = ""
             static_knowledge = {}
             logo_path = None
         profile = MockProfile()
-        
+    elif not profile.static_knowledge:
+        profile.static_knowledge = {}
+
     return render_template('wizard.html', current_user=profile, current_page='wizard')
 
 @web_bp.route('/save_config', methods=['POST'])

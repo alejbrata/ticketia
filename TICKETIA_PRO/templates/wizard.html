@@ -61,14 +61,16 @@
             <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
                 <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Sector</label>
                 <select name="sector" class="w-full bg-transparent outline-none text-slate-800 font-medium text-sm">
-                    <option value="Restauración" {% if current_user.static_knowledge.get('sector')=='Restauración'
-                        %}selected{% endif %}>🍔 Restauración</option>
-                    <option value="Salud / Clínica" {% if current_user.static_knowledge.get('sector')=='Salud / Clínica'
-                        %}selected{% endif %}>🏥 Salud</option>
-                    <option value="Comercio" {% if current_user.static_knowledge.get('sector')=='Comercio' %}selected{%
-                        endif %}>🛍️ Comercio</option>
-                    <option value="Servicios" {% if current_user.static_knowledge.get('sector')=='Servicios'
-                        %}selected{% endif %}>💼 Servicios</option>
+                    {% set sel = current_user.static_knowledge.get('sector', '') %}
+                    <option value="Tecnología"      {% if sel=='Tecnología'      %}selected{% endif %}>💻 Tecnología</option>
+                    <option value="Restauración"    {% if sel=='Restauración'    %}selected{% endif %}>🍔 Restauración</option>
+                    <option value="Salud / Clínica" {% if sel=='Salud / Clínica' %}selected{% endif %}>🏥 Salud</option>
+                    <option value="Comercio"        {% if sel=='Comercio'        %}selected{% endif %}>🛍️ Comercio</option>
+                    <option value="Servicios"       {% if sel=='Servicios'       %}selected{% endif %}>💼 Servicios</option>
+                    <option value="Marketing"       {% if sel=='Marketing'       %}selected{% endif %}>📣 Marketing</option>
+                    <option value="Construcción"    {% if sel=='Construcción'    %}selected{% endif %}>🏗️ Construcción</option>
+                    <option value="Educación"       {% if sel=='Educación'       %}selected{% endif %}>📚 Educación</option>
+                    <option value="Otro"            {% if sel=='Otro'            %}selected{% endif %}>🏢 Otro</option>
                 </select>
             </div>
             <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
