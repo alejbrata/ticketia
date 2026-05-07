@@ -3,7 +3,7 @@ import json
 import logging
 import time
 import base64
-from fpdf import FPDF
+from fpdf import FPDF, XPos, YPos
 from datetime import datetime
 from core.llm_tracker import track as _track
 
@@ -243,20 +243,22 @@ class AdminAssistantAgent:
             # --- Header ---
             # Company Name (Left)
             # Match Header Company Name with clean_text
-            pdf.set_font("Arial", 'B', 20)
-            pdf.cell(100, 10, clean_text(user_context.get('business_name', 'Mi Empresa').upper()), ln=0)
-            
+            pdf.set_font("Helvetica", 'B', 20)
+            pdf.cell(100, 10, clean_text(user_context.get('business_name', 'Mi Empresa').upper()),
+                     new_x=XPos.RIGHT, new_y=YPos.TOP)
+
             # Document Title (Right)
-            pdf.set_font("Arial", 'B', 24)
-            pdf.set_text_color(100, 100, 100) # Gray
-            pdf.cell(0, 10, "PRESUPUESTO", ln=1, align='R')
-            
+            pdf.set_font("Helvetica", 'B', 24)
+            pdf.set_text_color(100, 100, 100)
+            pdf.cell(0, 10, "PRESUPUESTO", align='R',
+                     new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
             pdf.ln(5)
-            
+
             # --- Info Grid ---
             pdf.set_text_color(50, 50, 50)
-            pdf.set_font("Arial", '', 10)
-            
+            pdf.set_font("Helvetica", '', 10)
+
             # Left Column (Issuer)
             extra = user_context.get('extra_info', {})
             issuer_info = [
@@ -265,40 +267,47 @@ class AdminAssistantAgent:
                 f"NIF: {extra.get('nif', '')}",
                 f"Sede: {extra.get('address', '')}"
             ]
-            
+
             top_y = pdf.get_y()
-            pdf.set_font("Arial", 'B', 10)
-            pdf.cell(90, 5, "DE:", ln=1)
-            pdf.set_font("Arial", '', 10)
+            pdf.set_font("Helvetica", 'B', 10)
+            pdf.cell(90, 5, "DE:", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            pdf.set_font("Helvetica", '', 10)
             for line in issuer_info:
-                if line.split(": ")[1]: # Only print if value exists
-                    pdf.cell(90, 5, clean_text(line), ln=1)
-            
+                if line.split(": ")[1]:
+                    pdf.cell(90, 5, clean_text(line), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
             # Right Column (Client & Date)
             pdf.set_xy(110, top_y)
-            pdf.set_font("Arial", 'B', 10)
-            pdf.cell(0, 5, "PARA:", ln=1)
+            pdf.set_font("Helvetica", 'B', 10)
+            pdf.cell(0, 5, "PARA:", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             pdf.set_xy(110, pdf.get_y())
-            pdf.set_font("Arial", '', 10)
-            pdf.cell(0, 5, f"Cliente: {clean_text(data.get('client_name', 'Cliente Contado'))}", ln=1)
-            
+            pdf.set_font("Helvetica", '', 10)
+            pdf.cell(0, 5, f"Cliente: {clean_text(data.get('client_name', 'Cliente Contado'))}",
+                     new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
             pdf.set_xy(110, pdf.get_y() + 2)
-            pdf.cell(0, 5, f"Fecha: {clean_text(data.get('date') or datetime.now().strftime('%d/%m/%Y'))}", ln=1)
-            pdf.cell(0, 5, f"Ref: B-{int(datetime.now().timestamp())}", ln=1)
-            
+            pdf.cell(0, 5, f"Fecha: {clean_text(data.get('date') or datetime.now().strftime('%d/%m/%Y'))}",
+                     new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            pdf.cell(0, 5, f"Ref: B-{int(datetime.now().timestamp())}",
+                     new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
             pdf.ln(20)
-            
+
             # --- Table Header ---
             pdf.set_fill_color(240, 240, 240)
-            pdf.set_font("Arial", 'B', 10)
-            pdf.cell(100, 10, "DESCRIPCIÓN", 0, 0, 'L', 1)
-            pdf.cell(20, 10, "CANT", 0, 0, 'C', 1)
-            pdf.cell(30, 10, "PRECIO UNIT", 0, 0, 'R', 1)
-            pdf.cell(30, 10, "TOTAL", 0, 1, 'R', 1)
-            
+            pdf.set_font("Helvetica", 'B', 10)
+            pdf.cell(100, 10, "DESCRIPCIÓN", border=0, align='L', fill=True,
+                     new_x=XPos.RIGHT, new_y=YPos.TOP)
+            pdf.cell(20, 10, "CANT", border=0, align='C', fill=True,
+                     new_x=XPos.RIGHT, new_y=YPos.TOP)
+            pdf.cell(30, 10, "PRECIO UNIT", border=0, align='R', fill=True,
+                     new_x=XPos.RIGHT, new_y=YPos.TOP)
+            pdf.cell(30, 10, "TOTAL", border=0, align='R', fill=True,
+                     new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
             # --- Table Body ---
-            pdf.set_font("Arial", '', 10)
-            
+            pdf.set_font("Helvetica", '', 10)
+
             subtotal = 0.0
 
             for item in data.get('items', []):
@@ -306,44 +315,51 @@ class AdminAssistantAgent:
                 qty = float(item.get('qty', 1))
                 # Support both keys: 'unit_price' (Vision) and 'price' (Tools Schema)
                 price = float(item.get('unit_price') or item.get('price') or 0)
-                
-                # Recalculate line total to ensure consistency
+
                 line_total = qty * price
                 subtotal += line_total
-                
-                # Line drawing
-                pdf.cell(100, 8, clean_text(desc), "B")
-                pdf.cell(20, 8, f"{int(qty) if qty.is_integer() else qty}", "B", 0, 'C')
-                pdf.cell(30, 8, f"{price:,.2f} EUR", "B", 0, 'R')
-                pdf.cell(30, 8, f"{line_total:,.2f} EUR", "B", 1, 'R')
-                
+
+                pdf.cell(100, 8, clean_text(desc), border="B",
+                         new_x=XPos.RIGHT, new_y=YPos.TOP)
+                pdf.cell(20, 8, f"{int(qty) if qty.is_integer() else qty}", border="B", align='C',
+                         new_x=XPos.RIGHT, new_y=YPos.TOP)
+                pdf.cell(30, 8, f"{price:,.2f} EUR", border="B", align='R',
+                         new_x=XPos.RIGHT, new_y=YPos.TOP)
+                pdf.cell(30, 8, f"{line_total:,.2f} EUR", border="B", align='R',
+                         new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
             pdf.ln(5)
-            
+
             # --- Totals Calculation ---
             vat_amount = subtotal * vat_rate
             total_final = subtotal + vat_amount
-            
+
             # --- Totals Box ---
-            # Move to right
             pdf.set_x(110)
-            pdf.set_font("Arial", '', 10)
-            pdf.cell(50, 6, "Subtotal (Base Imponible):", 0, 0, 'R')
-            pdf.cell(30, 6, f"{subtotal:,.2f} EUR", 0, 1, 'R')
-            
+            pdf.set_font("Helvetica", '', 10)
+            pdf.cell(50, 6, "Subtotal (Base Imponible):", align='R',
+                     new_x=XPos.RIGHT, new_y=YPos.TOP)
+            pdf.cell(30, 6, f"{subtotal:,.2f} EUR", align='R',
+                     new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
             pdf.set_x(110)
-            pdf.cell(50, 6, f"IVA ({int(vat_rate*100)}%):", 0, 0, 'R')
-            pdf.cell(30, 6, f"{vat_amount:,.2f} EUR", 0, 1, 'R')
-            
+            pdf.cell(50, 6, f"IVA ({int(vat_rate*100)}%):", align='R',
+                     new_x=XPos.RIGHT, new_y=YPos.TOP)
+            pdf.cell(30, 6, f"{vat_amount:,.2f} EUR", align='R',
+                     new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
             pdf.set_x(110)
-            pdf.set_font("Arial", 'B', 12)
-            pdf.set_fill_color(230, 255, 230) # Light Green
-            pdf.cell(50, 10, "TOTAL A PAGAR:", 0, 0, 'R', 1)
-            pdf.cell(30, 10, f"{total_final:,.2f} EUR", 0, 1, 'R', 1)
-            
+            pdf.set_font("Helvetica", 'B', 12)
+            pdf.set_fill_color(230, 255, 230)
+            pdf.cell(50, 10, "TOTAL A PAGAR:", align='R', fill=True,
+                     new_x=XPos.RIGHT, new_y=YPos.TOP)
+            pdf.cell(30, 10, f"{total_final:,.2f} EUR", align='R', fill=True,
+                     new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
             # --- Footer ---
             pdf.ln(15)
             pdf.set_x(10)
-            pdf.set_font("Arial", 'I', 9)
+            pdf.set_font("Helvetica", 'I', 9)
             pdf.set_text_color(100, 100, 100)
             notes = data.get('notes', 'Gracias por su confianza. Presupuesto válido por 15 días.')
             pdf.multi_cell(0, 5, f"Notas: {clean_text(notes)}\nEl precio final incluye los impuestos aplicables.")
