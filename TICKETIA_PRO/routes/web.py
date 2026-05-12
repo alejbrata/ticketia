@@ -1,4 +1,5 @@
 import os
+import re
 import io
 import json
 import logging
@@ -7,6 +8,16 @@ import pandas as pd
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
+
+def _validate_password(password: str) -> tuple:
+    """Devuelve (ok: bool, msg: str). Mínimo 8 chars, 1 mayúscula, 1 número."""
+    if not password or len(password) < 8:
+        return False, 'La contraseña debe tener al menos 8 caracteres.'
+    if not re.search(r'[A-Z]', password):
+        return False, 'La contraseña debe contener al menos una letra mayúscula.'
+    if not re.search(r'[0-9]', password):
+        return False, 'La contraseña debe contener al menos un número.'
+    return True, ''
 from flask import Blueprint, request, session, jsonify, render_template, redirect, url_for, flash, send_file, current_app
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_mail import Message
@@ -37,6 +48,11 @@ def register():
 
         if not request.form.get('gdpr_consent'):
             flash('Debes aceptar la Política de Privacidad para registrarte.', 'error')
+            return redirect(url_for('web.register'))
+
+        ok, msg = _validate_password(password)
+        if not ok:
+            flash(msg, 'error')
             return redirect(url_for('web.register'))
 
         # Check duplicados
@@ -133,27 +149,37 @@ def forgot_password():
 
 @web_bp.route('/reset_password/<token>', methods=['GET', 'POST'])
 def reset_password(token):
-    user = BusinessProfile.query.filter_by(reset_token=token).first()
-    
     from datetime import timezone
-    if not user or user.reset_token_expiry < datetime.now(timezone.utc):
+    user = BusinessProfile.query.filter_by(reset_token=token).first()
+
+    # Invalidar token expirado inmediatamente para evitar reutilización
+    if not user or not user.reset_token_expiry:
         flash('El enlace es inválido o ha expirado.', 'error')
         return redirect(url_for('web.login'))
-        
-    if request.method == 'POST':
-        password = request.form.get('password', '').strip()
-        if not password:
-            flash('La contraseña no puede estar vacía.', 'error')
-            return redirect(request.url)
-            
-        user.password_hash = generate_password_hash(password)
+
+    if user.reset_token_expiry < datetime.now(timezone.utc):
         user.reset_token = None
         user.reset_token_expiry = None
         db.session.commit()
-        
+        flash('El enlace ha expirado. Solicita uno nuevo.', 'error')
+        return redirect(url_for('web.login'))
+
+    if request.method == 'POST':
+        password = request.form.get('password', '').strip()
+        ok, msg = _validate_password(password)
+        if not ok:
+            flash(msg, 'error')
+            return redirect(request.url)
+
+        # Invalidar token ANTES de cambiar la contraseña (previene reutilización)
+        user.reset_token = None
+        user.reset_token_expiry = None
+        user.password_hash = generate_password_hash(password)
+        db.session.commit()
+
         flash('¡Contraseña restablecida! Inicia sesión.', 'success')
         return redirect(url_for('web.login'))
-        
+
     return render_template('reset_token.html')
 
 @web_bp.route('/marketplace')

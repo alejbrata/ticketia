@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import logging
 import asyncio
@@ -122,12 +123,18 @@ def generate_video_from_image():
 
     except Exception as e:
         logger.error("Error iniciando generación de vídeo: %s", e)
-        return jsonify({"success": False, "error": str(e)}), 500
+        return jsonify({"success": False, "error": "Error iniciando la generación de vídeo."}), 500
 
 
 # ---------------------------------------------------------------------------
 # Chat
 # ---------------------------------------------------------------------------
+
+_OUTPUT_FILTER_PATTERN = re.compile(
+    r'(SECRET_KEY|PASSWORD_HASH|DATABASE_URL|API_KEY|OPENAI_API_KEY'
+    r'|VAPID_PRIVATE|MAIL_PASSWORD|system_prompt\s*[:=])',
+    re.IGNORECASE
+)
 
 @api_bp.route('/api/chat', methods=['POST'])
 @limiter.limit("30 per minute")
@@ -136,23 +143,34 @@ def chat_api():
         return jsonify({"error": "Unauthorized"}), 401
 
     data = request.get_json()
-    user_message = data.get('message')
+    if not isinstance(data, dict):
+        return jsonify({"error": "JSON inválido"}), 400
+
+    user_message = (data.get('message') or '').strip()
     if not user_message:
-        return jsonify({"error": "No message"}), 400
+        return jsonify({"error": "Mensaje vacío"}), 400
+    if not isinstance(user_message, str) or len(user_message) > 4000:
+        return jsonify({"error": "Mensaje demasiado largo"}), 400
 
     user_phone = session['user_phone']
     profile = BusinessProfile.query.filter_by(user_phone=user_phone).first()
-
     if not profile:
         return jsonify({"error": "Perfil no encontrado"}), 404
 
-    response_text = run_agent(
-        user_message=user_message,
-        phone_number=user_phone,
-        business_profile=profile,
-    )
-
-    return jsonify({"response": response_text})
+    try:
+        response_text = run_agent(
+            user_message=user_message,
+            phone_number=user_phone,
+            business_profile=profile,
+        )
+        # Output filtering: bloquear respuestas que puedan filtrar datos sensibles
+        if response_text and _OUTPUT_FILTER_PATTERN.search(response_text):
+            logger.warning("Output filtering activado para %s", user_phone)
+            response_text = "Lo siento, no puedo responder a esa consulta."
+        return jsonify({"response": response_text or ""})
+    except Exception as e:
+        logger.error("Error en chat_api para %s: %s", user_phone, e, exc_info=True)
+        return jsonify({"error": "Error interno. Inténtalo de nuevo."}), 500
 
 
 @api_bp.route('/api/chat/feedback', methods=['POST'])
@@ -325,8 +343,15 @@ def council_stream():
     if 'user_phone' not in session:
         return jsonify({"error": "Unauthorized"}), 401
 
-    data = request.get_json() or {}
-    topic = data.get('topic', '')
+    data = request.get_json()
+    if not isinstance(data, dict):
+        return jsonify({"error": "JSON inválido"}), 400
+
+    topic = (data.get('topic') or '').strip()
+    if not topic or len(topic) < 3:
+        return jsonify({"error": "El tema es demasiado corto"}), 400
+    if len(topic) > 500:
+        return jsonify({"error": "El tema es demasiado largo"}), 400
 
     user_phone = session.get('user_phone')
     user = BusinessProfile.query.filter_by(user_phone=user_phone).first()
@@ -337,16 +362,21 @@ def council_stream():
 
     import queue as _queue
     import threading as _threading
+    import time as _time
 
     event_queue = _queue.Queue()
     _DONE = object()
+    _SESSION_TIMEOUT = 180  # 3 minutos máximo por sesión del Consejo
+    _session_start = _time.time()
 
     def _run_async():
         async def _produce():
             from modules.council.orchestrator import CouncilManager
             manager = CouncilManager()
-            # use_mcp=False: el consejo debate con conocimiento LLM, no necesita BD
             async for event in manager.run_session(topic, user_context, use_mcp=False, owner_phone=user_phone):
+                if _time.time() - _session_start > _SESSION_TIMEOUT:
+                    logger.warning("Council session timeout para %s", user_phone)
+                    break
                 event_queue.put(event)
                 logger.debug("Council event queued: %s", event.get('type'))
 
@@ -364,7 +394,12 @@ def council_stream():
 
     def generate():
         while True:
-            event = event_queue.get()
+            try:
+                event = event_queue.get(timeout=10)  # máximo 10s entre eventos
+            except _queue.Empty:
+                if _time.time() - _session_start > _SESSION_TIMEOUT:
+                    break
+                continue
             if event is _DONE:
                 break
             data = json.dumps(event, ensure_ascii=False)

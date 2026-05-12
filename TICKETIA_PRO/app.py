@@ -168,6 +168,29 @@ app.register_blueprint(web_bp)
 app.register_blueprint(api_bp)
 app.register_blueprint(knowledge_bp)
 
+# ── Security headers ──────────────────────────────────────────────────────────
+@app.after_request
+def set_security_headers(response):
+    response.headers['X-Frame-Options']        = 'SAMEORIGIN'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-XSS-Protection']       = '1; mode=block'
+    response.headers['Referrer-Policy']        = 'strict-origin-when-cross-origin'
+    response.headers['Permissions-Policy']     = 'geolocation=(), microphone=(self), camera=()'
+    if os.environ.get('FLASK_ENV') == 'production':
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    # CSP: permite Tailwind CDN y Google Fonts usados en los templates
+    response.headers['Content-Security-Policy'] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data: blob: https:; "
+        "connect-src 'self'; "
+        "media-src 'self' blob:; "
+        "frame-ancestors 'self';"
+    )
+    return response
+
 @app.errorhandler(404)
 def page_not_found(e):
     return render_template('404.html'), 404
@@ -178,6 +201,6 @@ def internal_error(e):
     return render_template('500.html'), 500
 
 if __name__ == '__main__':
-
     port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    debug = os.environ.get('FLASK_ENV') != 'production'
+    app.run(host='0.0.0.0', port=port, debug=debug)
