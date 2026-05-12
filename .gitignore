@@ -54,3 +54,20 @@ tatus
 
 # Demo assets (generated locally, not tracked)
 demo_business_knowledge.pdf
+
+# Documentos personales TFM (solo local)
+*.docx
+ARCHITECTURE_DEFENSE.md
+PROPUESTA_TFM_TICKETIA.md
+preguntas_tribunal_tfm.md
+TEST_GUIDE.md
+TEST_REPORT.md
+
+# Scripts de generacion de documentacion personal
+generar_*.py
+generate_*.py
+zip_delivery.py
+
+# Scripts de debug temporal
+check_db.py
+debug_db.py

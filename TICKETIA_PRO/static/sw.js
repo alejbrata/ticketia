@@ -1,5 +1,5 @@
 // Service Worker for Ticketia PWA (v4 - Web Push + Cache Strategy)
-const CACHE_NAME = 'ticketia-v4-cache';
+const CACHE_NAME = 'ticketia-v5-cache';
 const STATIC_ASSETS = [
     '/static/manifest.json',
     '/static/logo_zeptai.png',
@@ -47,19 +47,17 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // API & Dynamic Pages → Network First, fallback to cache (GET only)
-    if (event.request.method === 'GET') {
-        event.respondWith(
-            fetch(event.request)
-                .then((response) => {
-                    const clone = response.clone();
-                    caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-                    return response;
-                })
-                .catch(() => caches.match(event.request))
-        );
-    } else {
+    // Páginas HTML dinámicas → siempre red, nunca caché
+    // (evita mostrar datos obsoletos si el servidor estuvo caído)
+    if (event.request.mode === 'navigate' || event.request.headers.get('accept')?.includes('text/html')) {
         event.respondWith(fetch(event.request));
+        return;
+    }
+
+    // API JSON → siempre red, sin caché
+    if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/upload')) {
+        event.respondWith(fetch(event.request));
+        return;
     }
 });
 

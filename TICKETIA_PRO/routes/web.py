@@ -616,7 +616,10 @@ def save_config():
 def agents_page():
     if 'user_phone' not in session:
         return redirect(url_for('web.login'))
-    return render_template('agents.html', current_page='agents')
+    user = BusinessProfile.query.filter_by(user_phone=session['user_phone']).first()
+    if user.active_agents is None:
+        user.active_agents = []
+    return render_template('agents.html', current_user=user, current_page='agents')
 
 @web_bp.route('/marketing')
 def marketing_page():

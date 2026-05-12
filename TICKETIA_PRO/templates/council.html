@@ -45,6 +45,15 @@
         </div>
     </div>
 
+    <!-- Topic Banner (aparece al enviar el dilema) -->
+    <div id="topic-banner" class="hidden mb-4 bg-slate-800 text-white px-4 py-3 rounded-2xl flex items-start gap-3">
+        <span class="text-lg mt-0.5">💬</span>
+        <div>
+            <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">Dilema a debate</p>
+            <p id="topic-text" class="text-sm font-semibold leading-snug"></p>
+        </div>
+    </div>
+
     <!-- Chat Area -->
     <div id="chat-container" class="flex-1 overflow-y-auto space-y-4 mb-20 p-2 scroll-smooth">
         <!-- Welcome Message -->
@@ -84,8 +93,12 @@
         const topic = retryTopic || input.value.trim();
         if (!topic) return;
 
-        // 1. Add User Message
-        if (!retryTopic) addMessage('user', topic);
+        // 1. Mostrar dilema en el banner fijo y limpiar chat anterior
+        if (!retryTopic) {
+            document.getElementById('topic-text').textContent = topic;
+            document.getElementById('topic-banner').classList.remove('hidden');
+            document.getElementById('chat-container').innerHTML = '';
+        }
         input.value = '';
         input.disabled = true;
         document.getElementById('sendBtn').disabled = true;

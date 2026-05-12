@@ -20,7 +20,8 @@ _NAV_SECTIONS = """
 - /agenda         → ver agenda, mis citas, calendario, qué tengo hoy/mañana/esta semana, reuniones
 - /transactions   → gastos, tickets, movimientos, facturas, mis compras
 - /agents         → agentes, equipo de IA, mis bots
-- /knowledge      → base de conocimiento, documentos, archivos subidos
+- /documents      → documentos, mis documentos, ver documentos, carpeta de documentos
+- /knowledge      → base de conocimiento, conocimiento, archivos subidos, pdfs
 - /marketing      → marketing, vídeos, redes sociales, publicidad, contenido
 - /metrics        → métricas, estadísticas, análisis, rendimiento
 - /chatbot-cliente→ chatbot, chat con cliente, asistente cliente, vista cliente
