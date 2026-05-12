@@ -494,21 +494,35 @@ def save_config():
         
     user_phone = session['user_phone']
     
-    # 2. Recuperar datos del formulario
+    # 2. Recuperar y sanitizar datos del formulario
+    # Los campos de texto libre se limpian para evitar prompt injection:
+    # se eliminan etiquetas HTML y se truncan a longitud razonable.
+    def _clean(value, max_len=500):
+        import re
+        if not value:
+            return ''
+        # Eliminar etiquetas HTML y caracteres de control
+        value = re.sub(r'<[^>]+>', '', str(value))
+        # Eliminar patrones comunes de prompt injection
+        value = re.sub(
+            r'(?i)(ignore|ignora|olvida|forget|disregard|override|system:|<\|im_start\|>|<\|im_end\|>)',
+            '[FILTRADO]', value
+        )
+        return value.strip()[:max_len]
+
     data = request.form
-    b_name = data.get('business_name')
-    sector = data.get('sector')
-    tone = data.get('tone')
-    schedule = data.get('schedule')
-    payment_methods = data.get('payment_methods')
-    services = data.get('services')
-    instructions = data.get('business_instructions', '')
-    # Atención al cliente y postventa
-    faq             = data.get('faq', '')
-    return_policy   = data.get('return_policy', '')
-    support_contact = data.get('support_contact', '')
-    delivery_time   = data.get('delivery_time', '')
-    warranty_info   = data.get('warranty_info', '')
+    b_name          = _clean(data.get('business_name'), 100)
+    sector          = _clean(data.get('sector'), 100)
+    tone            = _clean(data.get('tone'), 50)
+    schedule        = _clean(data.get('schedule'), 300)
+    payment_methods = _clean(data.get('payment_methods'), 200)
+    services        = _clean(data.get('services'), 500)
+    instructions    = _clean(data.get('business_instructions', ''), 1000)
+    faq             = _clean(data.get('faq', ''), 1000)
+    return_policy   = _clean(data.get('return_policy', ''), 500)
+    support_contact = _clean(data.get('support_contact', ''), 200)
+    delivery_time   = _clean(data.get('delivery_time', ''), 200)
+    warranty_info   = _clean(data.get('warranty_info', ''), 300)
 
     # 3. Lógica: Construir System Prompt
     cs_block = ""

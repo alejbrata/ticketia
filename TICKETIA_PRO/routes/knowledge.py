@@ -70,6 +70,19 @@ def knowledge_upload():
     if size_mb > MAX_FILE_MB:
         return jsonify({'success': False, 'error': f'El fichero supera los {MAX_FILE_MB} MB'}), 400
 
+    # Validar MIME real (previene ZIP bombs y ficheros maliciosos con extensión falsa)
+    _KNOWLEDGE_ALLOWED_MIME = {
+        'application/pdf', 'text/plain', 'text/markdown', 'text/x-markdown',
+    }
+    try:
+        import magic
+        mime = magic.from_buffer(file.read(2048), mime=True)
+        file.seek(0)
+        if mime not in _KNOWLEDGE_ALLOWED_MIME:
+            return jsonify({'success': False, 'error': 'El contenido del fichero no es válido'}), 400
+    except ImportError:
+        file.seek(0)
+
     user_phone = session['user_phone']
     filename = secure_filename(file.filename)
     upload_dir = os.path.join(current_app.root_path, 'static', 'uploads', 'knowledge', user_phone)

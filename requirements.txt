@@ -26,3 +26,4 @@ duckduckgo-search
 flask-limiter
 APScheduler
 pywebpush
+python-magic

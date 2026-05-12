@@ -23,9 +23,12 @@ class AdminAssistantAgent:
             logger.info("Clasificando imagen: %s...", image_url[:15])
             
             # --- PREPARAR IMAGEN (Local vs URL) ---
+            # SSRF protection: solo se permiten rutas locales del servidor.
+            # URLs externas controladas por el usuario podrían apuntar a servicios internos.
             image_content = []
             if image_url.startswith(('http://', 'https://')):
-                image_content = [{"type": "image_url", "image_url": {"url": image_url}}]
+                logger.warning("URL externa bloqueada por SSRF protection: %s", image_url[:60])
+                return 'draft'  # fallback seguro
             else:
                 # Local Path logic
                 try:

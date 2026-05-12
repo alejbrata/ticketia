@@ -46,6 +46,12 @@ Responde ÚNICAMENTE con JSON válido, sin texto adicional:
 {{"type":"navigate","route":"/agenda"}} o {{"type":"action"}}"""
 
 
+_ALLOWED_NAV_ROUTES = {
+    '/dashboard', '/agenda', '/transactions', '/agents', '/documents',
+    '/knowledge', '/marketing', '/metrics', '/chatbot-cliente',
+    '/profile', '/council', '/demo',
+}
+
 def _classify_voice_intent(text: str, openai_client) -> dict | None:
     """
     Usa GPT-4o-mini para clasificar si el comando de voz es navegación o acción.
@@ -62,6 +68,12 @@ def _classify_voice_intent(text: str, openai_client) -> dict | None:
         )
         raw = resp.choices[0].message.content.strip()
         result = json.loads(raw)
+        # Validar que la ruta devuelta por el LLM esté en la whitelist
+        # (previene XSS tipo javascript:... o redirecciones a rutas internas)
+        if result.get('type') == 'navigate':
+            if result.get('route') not in _ALLOWED_NAV_ROUTES:
+                logger.warning("Voice intent devolvió ruta no permitida: %r", result.get('route'))
+                return None
         logger.info("Voice intent clasificado: %r → %s", text[:60], result)
         return result
     except Exception as e:
@@ -163,6 +175,7 @@ def chat_feedback():
 
 
 @api_bp.route('/api/metrics/rag', methods=['GET'])
+@limiter.limit("30 per hour")
 def rag_metrics():
     if 'user_phone' not in session:
         return jsonify({"error": "Unauthorized"}), 401
@@ -220,6 +233,17 @@ def upload_web_ticket():
     file = request.files['ticket']
     if file.filename == '':
         return jsonify({'error': 'No selected file'}), 400
+
+    # Validar MIME por contenido real, no por extensión declarada
+    _TICKET_ALLOWED_MIME = {'image/jpeg', 'image/png', 'image/webp', 'application/pdf'}
+    try:
+        import magic
+        mime = magic.from_buffer(file.read(2048), mime=True)
+        file.seek(0)
+        if mime not in _TICKET_ALLOWED_MIME:
+            return jsonify({'error': 'Tipo de fichero no permitido'}), 400
+    except ImportError:
+        file.seek(0)  # python-magic no disponible, continuar sin validación MIME
 
     filename = f"web_ticket_{int(datetime.now().timestamp())}.jpg"
     upload_folder = os.path.join(current_app.root_path, 'static', 'uploads')
@@ -287,8 +311,8 @@ def upload_web_audio():
 
         return jsonify({'success': True, 'response': bot_response})
     except Exception as e:
-        logger.error("Error procesando audio web: %s", e)
-        return jsonify({'error': str(e)}), 500
+        logger.error("Error procesando audio web: %s", e, exc_info=True)
+        return jsonify({'error': 'No se pudo procesar el audio. Inténtalo de nuevo.'}), 500
 
 
 # ---------------------------------------------------------------------------
@@ -330,8 +354,8 @@ def council_stream():
         try:
             loop.run_until_complete(_produce())
         except Exception as e:
-            logger.error("Council _produce error: %s", e)
-            event_queue.put({"type": "error", "text": str(e)})
+            logger.error("Council session error: %s", e, exc_info=True)
+            event_queue.put({"type": "error", "text": "Error interno en el Consejo. Inténtalo de nuevo."})
         finally:
             loop.close()
             event_queue.put(_DONE)
@@ -410,6 +434,7 @@ def push_unsubscribe():
 # ---------------------------------------------------------------------------
 
 @api_bp.route('/api/metrics/llm', methods=['GET'])
+@limiter.limit("30 per hour")
 def llm_metrics():
     """
     Devuelve métricas agregadas de llamadas LLM para el usuario en sesión.

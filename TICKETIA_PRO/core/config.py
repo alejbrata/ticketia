@@ -18,9 +18,9 @@ class Config:
     # Session security
     SESSION_PERMANENT = True
     PERMANENT_SESSION_LIFETIME = timedelta(hours=8)
-    SESSION_COOKIE_HTTPONLY = True   # JS no puede leer la cookie de sesion
-    SESSION_COOKIE_SAMESITE = 'Lax' # Proteccion CSRF basica
-    # En produccion con HTTPS, activar: SESSION_COOKIE_SECURE = True
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    SESSION_COOKIE_SECURE = os.environ.get('FLASK_ENV') == 'production'
     
     # NUEVO: URL Pública para webhooks y medios (ngrok o dominio real)
     # Elimina la barra final si el usuario la pone
