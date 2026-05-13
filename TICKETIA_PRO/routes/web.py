@@ -1057,6 +1057,13 @@ def metrics_page():
     return render_template('metrics.html', current_page='metrics', is_admin=is_admin)
 
 
+@web_bp.route('/eval')
+def eval_page():
+    if not session.get('user_phone'):
+        return redirect(url_for('web.login'))
+    return render_template('eval.html', current_page='eval')
+
+
 @web_bp.route('/networking')
 def networking():
     if not session.get('user_phone'):

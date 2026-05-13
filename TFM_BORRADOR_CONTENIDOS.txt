@@ -170,7 +170,7 @@ de información con un LLM para generar respuestas fundamentadas en una base
 de conocimiento externa, sin necesidad de reentrenar el modelo.
 
 Arquitectura estándar RAG:
-  [Consulta usuario] → [Encoder] → [Vector Store (FAISS/Pinecone)]
+  [Consulta usuario] → [Encoder] → [Vector Store]
   → [Top-K documentos] → [LLM (contexto aumentado)] → [Respuesta]
 
 Ventajas frente a fine-tuning para casos como Zeptai:
@@ -179,26 +179,42 @@ Ventajas frente a fine-tuning para casos como Zeptai:
 - Trazabilidad de fuentes
 - Válido para conocimiento específico de empresa (catálogos, tarifas, FAQs)
 
-IMPLEMENTACIÓN EN ZEPTAI (RAG simplificado):
-Zeptai implementa una versión ligera de RAG sin vector store externo. El
-"conocimiento recuperado" es el campo `static_knowledge` (JSON libre) del
-perfil de negocio, inyectado directamente en el system prompt. El usuario
-puede actualizar este conocimiento desde la interfaz sin intervención técnica.
+IMPLEMENTACIÓN EN ZEPTAI (RAG con pgvector):
+Zeptai implementa un pipeline RAG completo sobre PostgreSQL + pgvector,
+la extensión vectorial nativa de PostgreSQL. No se requiere un servicio
+externo (Pinecone, Qdrant): el mismo contenedor de base de datos gestiona
+tanto los datos relacionales como los vectores de embeddings.
 
-Ejemplo de static_knowledge:
-{
-  "sector": "fontanería",
-  "tarifa_hora": 45,
-  "zona_cobertura": "Madrid capital",
-  "garantia": "2 años en materiales",
-  "forma_pago": "transferencia o efectivo"
-}
+Pipeline de ingesta (módulo embeddings.py):
+  [PDF / TXT subido] → [PyMuPDF extrae texto] → [Chunker recursivo]
+  → [text-embedding-3-small (OpenAI)] → [KnowledgeChunk en pgvector]
 
-Este knowledge se inyecta en el system prompt en cada conversación, dando al
-agente contexto factual específico del negocio sin alucinaciones.
+El chunker divide el documento en fragmentos de ~1.600 caracteres con un
+overlap del 25% (400 chars) para no perder contexto en los límites de chunk.
+Soporta corte por párrafo, frase o carácter (cascada de separadores).
 
-Trabajo futuro: integrar ChromaDB o FAISS para documentos largos (PDFs de
-catálogos, contratos, historial de presupuestos).
+Pipeline de recuperación (retrieve_chunks):
+  [Pregunta usuario] → [embed_text()] → [cosine similarity en pgvector]
+  → [Top-5 chunks más similares] → [inyección en system prompt del LLM]
+
+Modelo de embedding: text-embedding-3-small (OpenAI)
+  - Dimensión: 1.536 componentes
+  - Coste: ~0,000020 $/1K tokens (prácticamente gratuito)
+  - Ventaja vs. text-embedding-ada-002: mejor rendimiento en benchmarks MTEB
+    con menor coste
+
+Tablas involucradas:
+  KnowledgeChunk: almacena fragmento + vector (Vector(1536) via pgvector)
+  RagRetrieval:   log de cada consulta RAG (chunks devueltos, score medio)
+
+El sistema distingue dos tipos de fuente:
+  - 'wizard': campos del perfil de negocio (horario, servicios, tarifas)
+  - 'document': PDFs o TXT subidos por el usuario desde /knowledge
+
+Ambas fuentes se consultan conjuntamente en cada pregunta, dando al agente
+acceso a la totalidad del conocimiento del negocio en un único vector search.
+
+Ver: TICKETIA_PRO/modules/services/embeddings.py
 
 2.3 AGENTES LLM Y PATRONES DE ORQUESTACIÓN
 --------------------------------------------
@@ -246,6 +262,36 @@ Referencias teóricas:
   con memorias y roles diferenciados
 - AutoGen (Wu et al., 2023): framework de orquestación multi-agente de Microsoft
 - LangGraph (2024): gestión de estado en grafos de agentes
+
+MODEL CONTEXT PROTOCOL (MCP):
+Zeptai implementa un servidor MCP propio (mcp_server_sse.py) que expone
+herramientas del sistema a los agentes a través de Server-Sent Events (SSE),
+siguiendo el estándar abierto de Anthropic para la integración de herramientas
+con LLMs.
+
+Arquitectura MCP en Zeptai:
+  [AgentExecutor] → [MCP Client HTTP] → [ticketia_mcp (puerto 8001)]
+                                              |
+                                    ┌─────────┴──────────┐
+                                    │  6 herramientas MCP │
+                                    ├─────────────────────┤
+                                    │ get_financial_summary│
+                                    │ get_appointments     │
+                                    │ search_web (BOE...)  │
+                                    │ schedule_appointment │
+                                    │ send_email_notif.    │
+                                    │ get_business_stats   │
+                                    └─────────────────────┘
+
+Ventaja del transporte SSE frente a stdio:
+  - El proceso MCP se lanza UNA sola vez y permanece activo
+  - Latencia por herramienta: ~5 ms (HTTP local) vs. ~500 ms (fork de proceso)
+  - Permite conexiones concurrentes de múltiples workers de gunicorn
+
+El servidor MCP corre como contenedor Docker independiente (ticketia_mcp),
+arrancando antes que la app web para garantizar disponibilidad.
+
+Ver: TICKETIA_PRO/mcp_server_sse.py, TICKETIA_PRO/core/mcp_client.py
 
 AGENTES PROACTIVOS (ejecución programada):
 Además del ciclo reactivo, Zeptai implementa agentes que se ejecutan
@@ -476,14 +522,23 @@ FRONTEND:
 IA / MODELOS:
   - GPT-4o (OpenAI): modelo principal — mejor relación coste/calidad para
     razonamiento y function calling en 2024-2025
+  - GPT-4o-mini (OpenAI): clasificador de intención de navegación por voz
+    (menor latencia y coste para tareas de clasificación simples)
+  - text-embedding-3-small (OpenAI): generación de embeddings para RAG
+    (1.536 dimensiones, ~0,00002 $/1K tokens)
   - DALL·E 3 (OpenAI): generación de imágenes de alta calidad
   - Runway ML Gen-2/Gen-3: generación de vídeo (única API estable en 2024)
   - python-pptx: generación programática de presentaciones .pptx
+  - DeepEval: framework de evaluación objetiva de calidad LLM (LLM-as-a-judge)
 
 INFRAESTRUCTURA:
   - Docker + Docker Compose: reproducibilidad, aislamiento, despliegue en 1 cmd
+  - pgvector/pgvector:pg15: extensión vectorial para PostgreSQL (RAG sin
+    servicio externo)
+  - FastMCP (mcp library): servidor Model Context Protocol con transporte SSE
   - Nginx (producción): reverse proxy, SSL termination, servicio de estáticos
   - pywebpush + py-vapid: web push notifications estándar W3C
+  - Flask-Limiter: rate limiting por endpoint y por usuario
 
 COSTES API (estimación mensual por usuario activo):
   - 50 mensajes chat: ~0,30 €
@@ -524,6 +579,23 @@ TABLA GENERATEDDOCUMENT:
   file_path VARCHAR            -- ruta relativa /static/generated_docs/...
   doc_type ENUM(proposal, image, presentation, video_prompt)
   client_name VARCHAR          -- título del documento (extrae keywords del LLM)
+  created_at DATETIME
+
+TABLA KNOWLEDGECHUNK:
+  id INTEGER PK
+  user_phone VARCHAR FK → BusinessProfile
+  source_type VARCHAR          -- 'wizard' | 'document'
+  source_name VARCHAR          -- nombre del campo wizard o del fichero PDF
+  content TEXT                 -- texto del fragmento (~1.600 chars)
+  embedding Vector(1536)       -- pgvector: embedding de text-embedding-3-small
+  created_at DATETIME
+
+TABLA RAGRETRIEVAL (log de observabilidad):
+  id INTEGER PK
+  user_phone VARCHAR FK
+  query_preview VARCHAR(200)   -- primeros 200 chars de la consulta
+  chunks_returned INTEGER      -- número de chunks devueltos (top-K)
+  avg_score FLOAT              -- score medio de similitud coseno (0=perfecto)
   created_at DATETIME
 
 TABLA CHATMESSAGE:
@@ -689,9 +761,11 @@ AISLAMIENTO DE DATOS:
   - No existe endpoint que devuelva datos de otro usuario
   - Los documentos generados se guardan en rutas no adivinables (UUID en nombre)
 
-RATE LIMITING (trabajo futuro):
-  - Flask-Limiter para prevenir abuso de endpoints de chat y generación
-  - Actualmente: protección implícita por coste (el usuario paga por uso)
+RATE LIMITING:
+  - Flask-Limiter implementado en todos los endpoints sensibles
+  - Límites por endpoint: chat (30/min), generación vídeo (5/hora),
+    eval DeepEval (10/hora), council (10/hora), métricas RAG (30/hora)
+  - Respuesta 429 con mensaje claro al superar el límite
 
 LOGGING DE ACTIVIDAD:
   - ActivityLog registra todas las acciones relevantes (agente activado,
@@ -700,24 +774,33 @@ LOGGING DE ACTIVIDAD:
 
 4.5 DESPLIEGUE E INFRAESTRUCTURA
 ----------------------------------
-DOCKER COMPOSE:
+DOCKER COMPOSE (4 servicios):
   services:
+    db:
+      image: pgvector/pgvector:pg15   # PostgreSQL con extensión vectorial
+      healthcheck: pg_isready         # los demás servicios esperan al healthcheck
+      volumes: [pgdata]
+
+    mcp:
+      build: .
+      command: python mcp_server_sse.py
+      ports: ["8001:8001"]            # servidor MCP SSE
+      depends_on: [db]
+
     web:
       build: .
       ports: ["5000:5000"]
       env_file: .env
+      environment:
+        - MCP_SSE_URL=http://mcp:8001/sse
       volumes:
         - ./TICKETIA_PRO:/app/TICKETIA_PRO  # hot-reload en desarrollo
-      depends_on: [db]
+      depends_on: [db, mcp]
 
-    db:
-      image: postgres:15
-      environment:
-        POSTGRES_DB: ticketia
-        POSTGRES_USER: ticketia
-        POSTGRES_PASSWORD: [secreto]
-      volumes:
-        - pgdata:/var/lib/postgresql/data
+    scheduler:
+      build: .
+      command: python /app/run_scheduler.py
+      depends_on: [db, web]           # agentes proactivos (APScheduler)
 
 VARIABLES DE ENTORNO (fichero .env):
   OPENAI_API_KEY=sk-...
@@ -741,7 +824,38 @@ DESPLIEGUE EN PRODUCCIÓN (recomendación):
 
 5.1 MÉTRICAS DEFINIDAS
 -----------------------
-CALIDAD DE RESPUESTAS:
+CALIDAD DE RESPUESTAS (DeepEval — LLM-as-a-judge):
+Zeptai incorpora un módulo de evaluación objetiva de calidad basado en
+DeepEval, un framework open-source que usa GPT-4o como juez para puntuar
+automáticamente la calidad del pipeline RAG + Agente.
+
+Métricas evaluadas (7 casos de prueba representativos):
+  - Faithfulness (umbral ≥ 0,70): la respuesta está anclada en los chunks
+    recuperados — mide alucinaciones. Fórmula: proporción de afirmaciones
+    del output que pueden verificarse en el retrieval_context.
+  - Answer Relevancy (umbral ≥ 0,70): la respuesta es relevante para la
+    pregunta formulada, sin divagaciones.
+  - Contextual Precision (umbral ≥ 0,50): de los chunks recuperados por el
+    RAG, qué proporción son realmente necesarios para responder.
+  - Contextual Recall (umbral ≥ 0,50): qué proporción de la información
+    necesaria para responder está presente en los chunks recuperados.
+
+Casos de prueba cubiertos:
+  TC-01 Servicios, TC-02 Horario, TC-03 Pricing, TC-04 Contacto,
+  TC-05 Propuesta de valor, TC-06 Proceso, TC-07 Guardrail (pregunta trampa)
+
+El caso TC-07 ("¿Cuál es la capital de Francia?") valida el guardrail:
+el sistema debe rechazar la pregunta fuera de dominio. Un score bajo en
+Faithfulness en este caso es el resultado correcto (la respuesta no está
+en los documentos del negocio, lo que confirma que el agente no alucina).
+
+Interfaz de evaluación: endpoint SSE /api/eval/stream + página /eval con
+resultados en tiempo real (tabla por caso + barras de promedio animadas).
+Coste por evaluación completa: ~0,40 USD (GPT-4o como juez).
+
+Ver: TICKETIA_PRO/tests/test_deepeval_rag.py, TICKETIA_PRO/routes/api.py
+
+CALIDAD DE RESPUESTAS (métricas operativas):
   - Tasa de uso correcto de herramientas: % de peticiones donde el agente
     selecciona la herramienta correcta sin necesidad de aclaración
   - Coherencia del presupuesto generado: los precios estimados están en rango
@@ -901,10 +1015,15 @@ ALERTAS (trabajo futuro):
    El patrón hilo + notificación push resultó en mejor UX que polling activo
    desde el frontend.
 
-4. EL RAG SIMPLIFICADO CUBRE EL 80% DE LOS CASOS:
-   Para PYMEs con conocimiento acotado (tarifas, horarios, servicios), el
-   static_knowledge JSON es suficiente. El coste de implementar un vector
-   store completo no está justificado en el MVP.
+4. PGVECTOR ELIMINA UN SERVICIO EXTERNO SIN SACRIFICAR CAPACIDAD:
+   La decisión de usar pgvector sobre el propio PostgreSQL (en lugar de
+   Pinecone, Qdrant o ChromaDB) redujo la arquitectura sin añadir un
+   servicio más. El rendimiento de búsqueda vectorial para el volumen de
+   una PYME (cientos de chunks) es indistinguible de un vector store
+   dedicado, con la ventaja de una sola base de datos para datos
+   relacionales y vectoriales. La evaluación con DeepEval confirmó que
+   el pipeline RAG funciona correctamente: Faithfulness y Answer Relevancy
+   por encima del umbral en los casos de prueba con contenido documentado.
 
 5. DOCKER ACELERA EL CICLO DE DESARROLLO:
    El volume mount del código (sin rebuild) permitió iterar cambios en <2s.
@@ -938,7 +1057,8 @@ Los objetivos específicos se cumplieron:
   OE3 ✅ — Generación multimodal: texto, imágenes, PPT, prompts de vídeo
   OE4 ✅ — Pipeline OCR + LLM para digitalización de documentos físicos
   OE5 ✅ — Docker Compose reproducible con PostgreSQL y web push
-  OE6 ✅ — 51 pruebas automatizadas (0 bugs) + guía de pruebas manuales
+  OE6 ✅ — 51 pruebas automatizadas (0 bugs) + evaluación objetiva DeepEval
+           (4 métricas LLM-as-a-judge sobre 7 casos de prueba)
 
 La solución aporta valor cuantificable: un autónomo que usa Zeptai diariamente
 puede recuperar 3-5 horas semanales de trabajo administrativo, equivalentes
@@ -949,8 +1069,9 @@ de API inferior a 5 € en uso moderado.
 -------------------
 CORTO PLAZO (0-3 meses):
   - Integración WhatsApp Business API (webhook Twilio / Meta Cloud API)
-  - Vector store (ChromaDB) para RAG sobre documentos largos
-  - Rate limiting y presupuesto de API por usuario
+  - Generación dinámica de casos de prueba DeepEval desde conversaciones reales
+    (actualmente los 7 casos son fijos — MVP)
+  - Presupuesto de API por usuario (alerta si supera umbral mensual)
   - Política de retención de datos y botón de "borrar mi cuenta"
 
 MEDIO PLAZO (3-12 meses):
@@ -1095,7 +1216,7 @@ PROMPT DE SÍNTESIS:
 
 ================================================================================
   FIN DEL DOCUMENTO
-  Generado: 2026-04-15
+  Generado: 2026-04-15 · Actualizado: 2026-05-13
   Basado en: Orientaciones y pautas TFM MID.pdf
   Proyecto: Zeptai / Ticketia PRO
 ================================================================================

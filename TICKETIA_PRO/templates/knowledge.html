@@ -198,13 +198,15 @@
         }
     }
 
+    let _pollTimer = null;
+
     function addProvisionalRow(filename) {
         const list = document.getElementById('docList');
-        // Quitar empty state si existe
         const empty = list.querySelector('.text-center');
         if (empty) empty.remove();
 
         const div = document.createElement('div');
+        div.id = 'provisional-' + CSS.escape(filename);
         div.className = 'flex items-center gap-4 p-4 rounded-2xl border border-indigo-100 bg-indigo-50/40 animate-pulse';
         div.innerHTML = `
             <div class="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-xl flex-shrink-0">⏳</div>
@@ -213,6 +215,40 @@
                 <p class="text-xs text-indigo-500 mt-0.5">Indexando fragmentos...</p>
             </div>`;
         list.prepend(div);
+        pollUntilReady(filename);
+    }
+
+    function pollUntilReady(filename) {
+        if (_pollTimer) clearInterval(_pollTimer);
+        const deadline = Date.now() + 3 * 60 * 1000; // 3 min máximo
+
+        _pollTimer = setInterval(async () => {
+            if (Date.now() > deadline) { clearInterval(_pollTimer); return; }
+            try {
+                const res = await fetch('/knowledge/status');
+                const data = await res.json();
+                const doc = (data.documents || []).find(d => d.name === filename && d.chunks > 0);
+                if (!doc) return;
+
+                clearInterval(_pollTimer);
+                const provisional = document.getElementById('provisional-' + CSS.escape(filename));
+                if (provisional) {
+                    provisional.classList.remove('animate-pulse', 'bg-indigo-50/40', 'border-indigo-100');
+                    provisional.classList.add('border-slate-100');
+                    provisional.innerHTML = `
+                        <div class="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-xl flex-shrink-0">📄</div>
+                        <div class="flex-1 min-w-0">
+                            <p class="font-bold text-slate-700 text-sm truncate">${doc.name}</p>
+                            <p class="text-xs text-slate-400 mt-0.5">${doc.chunks} fragmentos · <span class="text-indigo-600 font-medium">Documento</span></p>
+                        </div>
+                        <button onclick="deleteDocument('${doc.name}', this)"
+                            class="w-8 h-8 rounded-full bg-slate-50 hover:bg-red-50 flex items-center justify-center text-slate-300 hover:text-red-400 transition-colors flex-shrink-0"
+                            title="Eliminar">🗑️</button>`;
+                }
+                document.getElementById('chunkCount').textContent = data.total_chunks + ' fragmentos';
+                window.showToast(`✅ "${filename}" indexado — ${doc.chunks} fragmentos`, 'success');
+            } catch (_) {}
+        }, 3000);
     }
 
     async function deleteDocument(filename, btn) {

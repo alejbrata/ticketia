@@ -419,6 +419,108 @@ def council_stream():
 
 
 # ---------------------------------------------------------------------------
+# DeepEval — evaluación de calidad LLM en tiempo real (SSE)
+# ---------------------------------------------------------------------------
+
+@api_bp.route('/api/eval/stream', methods=['POST'])
+@limiter.limit("10 per hour")
+def eval_stream():
+    """SSE stream que ejecuta DeepEval case a case y emite resultados en tiempo real."""
+    if 'user_phone' not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    import queue as _queue
+    import threading as _threading
+
+    user_phone = session['user_phone']
+    app = current_app._get_current_object()
+    eq = _queue.Queue()
+    _DONE = object()
+
+    def _run_eval():
+        import sys, os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        try:
+            from tests.test_deepeval_rag import TEST_CASES, _build_test_cases_with_rag
+            from deepeval.metrics import (
+                FaithfulnessMetric, AnswerRelevancyMetric,
+                ContextualPrecisionMetric, ContextualRecallMetric,
+            )
+            from deepeval import evaluate
+            from deepeval.evaluate.configs import AsyncConfig, DisplayConfig
+
+            eq.put({"type": "status", "msg": f"Preparando {len(TEST_CASES)} casos de prueba..."})
+
+            with app.app_context():
+                built = _build_test_cases_with_rag(user_phone, None)
+
+            for i, b in enumerate(built):
+                eq.put({"type": "progress", "idx": i, "id": b["meta"]["id"],
+                        "category": b["meta"]["categoria"],
+                        "question": b["meta"]["input"],
+                        "latency_ms": b["latency_ms"],
+                        "chunks": b["chunks_count"],
+                        "answer": (b["actual_output"] or "")[:120]})
+
+            eq.put({"type": "status", "msg": "Ejecutando métricas DeepEval (GPT como juez)..."})
+
+            metrics = [
+                FaithfulnessMetric(threshold=0.7),
+                AnswerRelevancyMetric(threshold=0.7),
+                ContextualPrecisionMetric(threshold=0.5),
+                ContextualRecallMetric(threshold=0.5),
+            ]
+            test_cases = [b["test_case"] for b in built]
+            results = evaluate(
+                test_cases, metrics,
+                async_config=AsyncConfig(run_async=True, max_concurrent=5),
+                display_config=DisplayConfig(show_indicator=False, print_results=False),
+            )
+
+            all_scores = {"faithfulness": [], "relevancy": [], "precision": [], "recall": []}
+            metric_map = {
+                "Faithfulness": "faithfulness",
+                "Answer Relevancy": "relevancy",
+                "Contextual Precision": "precision",
+                "Contextual Recall": "recall",
+            }
+
+            for b, tr in zip(built, results.test_results):
+                scores = {metric_map.get(m.name, m.name): round(m.score or 0, 3)
+                          for m in tr.metrics_data if m.name in metric_map}
+                for k, v in scores.items():
+                    all_scores[k].append(v)
+                passed = all(v >= (0.7 if k in ("faithfulness","relevancy") else 0.5)
+                             for k, v in scores.items())
+                eq.put({"type": "result", "id": b["meta"]["id"], "passed": passed, **scores})
+
+            avgs = {k: round(sum(v)/len(v), 3) if v else 0 for k, v in all_scores.items()}
+            cost = getattr(results, 'evaluation_cost', None) or getattr(results, 'cost', None) or 0
+            eq.put({"type": "summary", **avgs, "cost_usd": round(cost, 4)})
+
+        except Exception as e:
+            logger.error("DeepEval stream error: %s", e, exc_info=True)
+            eq.put({"type": "error", "msg": str(e)[:200]})
+        finally:
+            eq.put(_DONE)
+
+    _threading.Thread(target=_run_eval, daemon=True).start()
+
+    def generate():
+        while True:
+            try:
+                event = eq.get(timeout=180)
+            except _queue.Empty:
+                break
+            if event is _DONE:
+                break
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+    return Response(generate(), mimetype='text/event-stream',
+                    headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
+
+
+# ---------------------------------------------------------------------------
 # Web Push — suscripción PWA
 # ---------------------------------------------------------------------------
 

@@ -29,6 +29,9 @@ logging.getLogger("openai").setLevel(logging.WARNING)
 # Cada caso representa una pregunta típica de un cliente del negocio demo.
 # expected_output define la respuesta ideal para las métricas de recall/precision.
 
+# MVP: 7 preguntas fijas representativas del negocio demo.
+# TODO: hacer dinámico — generar casos desde conversaciones reales y ejecutar
+#       solo para el administrador de Ticketia, no para el usuario final.
 TEST_CASES = [
     {
         "id": "TC-01",
