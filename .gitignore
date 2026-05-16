@@ -49,22 +49,28 @@ test_docker/
 # Claude worktrees
 .claude/worktrees/
 
+# DeepEval cache (generado localmente por las evaluaciones)
+**/.deepeval/
+.deepeval/
+
 # Misc
 tatus
 
 # Demo assets (generated locally, not tracked)
 demo_business_knowledge.pdf
 
-# Documentos personales TFM (solo local)
+# Documentos personales TFM (solo local, excepto memoria final)
 *.docx
+!Zeptai_Memoria_TFM.docx
 ARCHITECTURE_DEFENSE.md
 PROPUESTA_TFM_TICKETIA.md
 preguntas_tribunal_tfm.md
 TEST_GUIDE.md
 TEST_REPORT.md
 
-# Scripts de generacion de documentacion personal
+# Scripts de generacion de documentacion personal (excepto el generador de memoria)
 generar_*.py
+!generar_tfm_memoria.py
 generate_*.py
 zip_delivery.py
 
