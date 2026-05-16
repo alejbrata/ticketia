@@ -437,11 +437,14 @@ def eval_stream():
     eq = _queue.Queue()
     _DONE = object()
 
+    data  = request.get_json(silent=True) or {}
+    mode  = data.get("mode", "auto")  # static | dynamic | auto
+
     def _run_eval():
         import sys, os
         sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         try:
-            from tests.test_deepeval_rag import TEST_CASES, _build_test_cases_with_rag
+            from tests.test_deepeval_rag import _build_test_cases_with_rag
             from deepeval.metrics import (
                 FaithfulnessMetric, AnswerRelevancyMetric,
                 ContextualPrecisionMetric, ContextualRecallMetric,
@@ -449,10 +452,12 @@ def eval_stream():
             from deepeval import evaluate
             from deepeval.evaluate.configs import AsyncConfig, DisplayConfig
 
-            eq.put({"type": "status", "msg": f"Preparando {len(TEST_CASES)} casos de prueba..."})
+            eq.put({"type": "status", "msg": f"Seleccionando casos (modo: {mode})..."})
 
             with app.app_context():
-                built = _build_test_cases_with_rag(user_phone, None)
+                built = _build_test_cases_with_rag(user_phone, None, mode=mode)
+
+            eq.put({"type": "status", "msg": f"Preparados {len(built)} casos de prueba..."})
 
             for i, b in enumerate(built):
                 eq.put({"type": "progress", "idx": i, "id": b["meta"]["id"],

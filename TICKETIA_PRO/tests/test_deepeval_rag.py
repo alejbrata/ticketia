@@ -7,11 +7,16 @@ Métricas evaluadas:
   - Contextual Precision:  los chunks recuperados son precisos para la pregunta
   - Contextual Recall:     los chunks recuperados contienen la información necesaria
 
+Modos de generación de casos:
+  - 'static':  7 casos fijos representativos del negocio demo (MVP).
+  - 'dynamic': genera casos desde conversaciones reales del historial chat_message.
+  - 'auto':    usa dynamic si hay >= MIN_DYNAMIC_CASES conversaciones, si no static.
+
 Requiere la app corriendo con datos de demo (seed_all.py ejecutado).
 Ejecutar desde el contenedor:
     cd /app/TICKETIA_PRO && python -m pytest tests/test_deepeval_rag.py -v
 O standalone con reporte:
-    cd /app/TICKETIA_PRO && python tests/test_deepeval_rag.py
+    cd /app/TICKETIA_PRO && python tests/test_deepeval_rag.py [phone] [static|dynamic|auto]
 """
 
 import os
@@ -25,13 +30,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("openai").setLevel(logging.WARNING)
 
-# ── Casos de prueba ────────────────────────────────────────────────────────────
-# Cada caso representa una pregunta típica de un cliente del negocio demo.
-# expected_output define la respuesta ideal para las métricas de recall/precision.
+# Mínimo de pares conversacionales reales para activar modo dynamic en 'auto'
+MIN_DYNAMIC_CASES = 5
+# Máximo de casos a extraer del historial en modo dynamic
+MAX_DYNAMIC_CASES = 10
 
-# MVP: 7 preguntas fijas representativas del negocio demo.
-# TODO: hacer dinámico — generar casos desde conversaciones reales y ejecutar
-#       solo para el administrador de Ticketia, no para el usuario final.
+# ── Casos estáticos (fallback / MVP) ──────────────────────────────────────────
+# 7 preguntas fijas representativas del negocio demo.
 TEST_CASES = [
     {
         "id": "TC-01",
@@ -103,12 +108,99 @@ TEST_CASES = [
 ]
 
 
-def _build_test_cases_with_rag(demo_phone: str, app_ctx):
+def _generate_cases_from_history(demo_phone: str, limit: int = MAX_DYNAMIC_CASES) -> list:
     """
-    Para cada pregunta:
+    Genera casos de prueba desde el historial real de chat_message.
+
+    Extrae pares (user → assistant) recientes, filtrando mensajes de herramientas
+    y respuestas de sistema. La respuesta del asistente original se usa como
+    expected_output: sirve como línea base de regresión (el sistema debería
+    seguir respondiendo con calidad similar a conversaciones pasadas validadas).
+
+    Devuelve lista de dicts con el mismo formato que TEST_CASES.
+    """
+    from core.db_models import ChatMessage
+
+    messages = (
+        ChatMessage.query
+        .filter_by(user_phone=demo_phone)
+        .filter(ChatMessage.role.in_(["user", "assistant"]))
+        .filter(ChatMessage.content.isnot(None))
+        .order_by(ChatMessage.created_at.desc())
+        .limit(limit * 4)  # margen para filtrar pares incompletos
+        .all()
+    )
+
+    # Reconstruir pares user → assistant en orden cronológico
+    messages = list(reversed(messages))
+    pairs = []
+    i = 0
+    while i < len(messages) - 1 and len(pairs) < limit:
+        if messages[i].role == "user" and messages[i + 1].role == "assistant":
+            user_msg   = (messages[i].content or "").strip()
+            asst_msg   = (messages[i + 1].content or "").strip()
+            # Filtrar mensajes muy cortos, saludos o respuestas de error
+            if (len(user_msg) > 10 and len(asst_msg) > 20
+                    and not asst_msg.startswith("[ERROR")):
+                pairs.append({
+                    "id":        f"DYN-{len(pairs) + 1:02d}",
+                    "categoria": "Historico",
+                    "input":     user_msg[:300],
+                    "expected_output": asst_msg[:600],
+                })
+            i += 2
+        else:
+            i += 1
+
+    return pairs
+
+
+def _select_cases(demo_phone: str, mode: str = "auto") -> list:
+    """
+    Selecciona los casos de prueba según el modo:
+      - 'static':  siempre los 7 casos fijos.
+    - 'dynamic': genera desde el historial real (falla si no hay suficientes).
+      - 'auto':    dynamic si hay >= MIN_DYNAMIC_CASES pares, si no static.
+    """
+    if mode == "static":
+        return TEST_CASES
+
+    try:
+        dynamic = _generate_cases_from_history(demo_phone)
+    except Exception as e:
+        print(f"  [WARN] No se pudo generar casos dinámicos: {e}. Usando estáticos.")
+        return TEST_CASES
+
+    if mode == "dynamic":
+        if not dynamic:
+            raise RuntimeError(
+                f"Modo 'dynamic' requiere historial de chat para {demo_phone}. "
+                "Ejecuta seed_all.py o interactúa con el chat primero."
+            )
+        print(f"  Modo DYNAMIC: {len(dynamic)} casos generados desde historial real.")
+        return dynamic
+
+    # modo 'auto'
+    if len(dynamic) >= MIN_DYNAMIC_CASES:
+        print(f"  Modo AUTO → DYNAMIC: {len(dynamic)} casos desde historial real.")
+        return dynamic
+    else:
+        print(
+            f"  Modo AUTO → STATIC: solo {len(dynamic)} pares en historial "
+            f"(mínimo {MIN_DYNAMIC_CASES}). Usando 7 casos fijos."
+        )
+        return TEST_CASES
+
+
+def _build_test_cases_with_rag(demo_phone: str, app_ctx, mode: str = "auto"):
+    """
+    Para cada caso seleccionado según el modo:
       1. Recupera los chunks RAG reales del sistema
-      2. Llama al agente para obtener la respuesta real
+      2. Llama al agente para obtener la respuesta actual
       3. Construye el LLMTestCase de DeepEval
+
+    En modo dynamic/auto los expected_output son las respuestas históricas reales,
+    lo que convierte la evaluación en un test de regresión de calidad.
     """
     from deepeval.test_case import LLMTestCase
     from modules.services.embeddings import retrieve_chunks
@@ -122,8 +214,11 @@ def _build_test_cases_with_rag(demo_phone: str, app_ctx):
             "Ejecuta seed_all.py primero."
         )
 
+    cases = _select_cases(demo_phone, mode=mode)
+    print(f"  Total casos a evaluar: {len(cases)}\n")
+
     built = []
-    for case in TEST_CASES:
+    for case in cases:
         question = case["input"]
         print(f"  Evaluando {case['id']}: {question[:50]}...")
 
@@ -163,8 +258,14 @@ def _build_test_cases_with_rag(demo_phone: str, app_ctx):
     return built
 
 
-def run_evaluation(demo_phone: str = "+34600000001"):
-    """Corre la evaluación completa y devuelve los resultados."""
+def run_evaluation(demo_phone: str = "+34600000001", mode: str = "auto"):
+    """
+    Corre la evaluación completa y devuelve los resultados.
+
+    Args:
+        demo_phone: teléfono del perfil de negocio a evaluar.
+        mode: 'static' | 'dynamic' | 'auto' (ver _select_cases).
+    """
     from deepeval.metrics import (
         FaithfulnessMetric,
         AnswerRelevancyMetric,
@@ -177,13 +278,13 @@ def run_evaluation(demo_phone: str = "+34600000001"):
     print("  ZEPTAI — Evaluación de calidad LLM con DeepEval")
     print("=" * 65)
     print(f"  Perfil demo: {demo_phone}")
-    print(f"  Casos de prueba: {len(TEST_CASES)}")
+    print(f"  Modo: {mode.upper()}")
     print("=" * 65 + "\n")
 
     from app import app
     with app.app_context():
-        print("Generando respuestas del agente y recuperando chunks RAG...\n")
-        built = _build_test_cases_with_rag(demo_phone, app.app_context())
+        print("Seleccionando casos y generando respuestas del agente...\n")
+        built = _build_test_cases_with_rag(demo_phone, app.app_context(), mode=mode)
 
     test_cases = [b["test_case"] for b in built]
 
@@ -311,4 +412,5 @@ except ImportError:
 # ── Standalone runner ──────────────────────────────────────────────────────────
 if __name__ == "__main__":
     demo_phone = sys.argv[1] if len(sys.argv) > 1 else "+34600000001"
-    run_evaluation(demo_phone)
+    eval_mode  = sys.argv[2] if len(sys.argv) > 2 else "auto"
+    run_evaluation(demo_phone, mode=eval_mode)
