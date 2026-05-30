@@ -113,6 +113,15 @@ class AdminAssistantAgent:
         logger.info("AdminRedactor: generando PDF desde datos texto")
         return self._generate_professional_pdf(data, user_context)
 
+    def generate_invoice_pdf(self, data, user_context):
+        """
+        Genera una factura legal en PDF a partir de datos estructurados.
+        Requiere data['invoice_number'] (e.g. 'F-2026-001').
+        Devuelve (file_path, subtotal, vat_amount, total_amount) o (None, 0, 0, 0).
+        """
+        logger.info("AdminRedactor: generando factura %s", data.get('invoice_number', '?'))
+        return self._generate_professional_pdf(data, user_context, doc_title="FACTURA")
+
     def _analyze_image_with_vision(self, image_url, extra_context={}):
         """
         Analiza una imagen usando GPT-4o Vision + Contexto Sectorial Dinámico (5 Arquetipos).
@@ -214,11 +223,11 @@ class AdminAssistantAgent:
             logger.error("Error Vision API: %s", e)
             return None
 
-    def _generate_professional_pdf(self, data, user_context):
+    def _generate_professional_pdf(self, data, user_context, doc_title="PRESUPUESTO"):
         try:
             pdf = FPDF()
             pdf.add_page()
-            
+
             # --- VAT Logic ---
             sector = user_context.get('sector', 'Servicios').lower()
 
@@ -253,7 +262,7 @@ class AdminAssistantAgent:
             # Document Title (Right)
             pdf.set_font("Helvetica", 'B', 24)
             pdf.set_text_color(100, 100, 100)
-            pdf.cell(0, 10, "PRESUPUESTO", align='R',
+            pdf.cell(0, 10, doc_title, align='R',
                      new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
             pdf.ln(5)
@@ -287,12 +296,19 @@ class AdminAssistantAgent:
             pdf.set_font("Helvetica", '', 10)
             pdf.cell(0, 5, f"Cliente: {clean_text(data.get('client_name', 'Cliente Contado'))}",
                      new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            if data.get('client_nif'):
+                pdf.set_xy(110, pdf.get_y())
+                pdf.cell(0, 5, f"NIF/CIF: {clean_text(data['client_nif'])}",
+                         new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
             pdf.set_xy(110, pdf.get_y() + 2)
             pdf.cell(0, 5, f"Fecha: {clean_text(data.get('date') or datetime.now().strftime('%d/%m/%Y'))}",
                      new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-            pdf.cell(0, 5, f"Ref: B-{int(datetime.now().timestamp())}",
-                     new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            if doc_title == "FACTURA":
+                ref_label = f"Num. Factura: {clean_text(data.get('invoice_number', ''))}"
+            else:
+                ref_label = f"Ref: B-{int(datetime.now().timestamp())}"
+            pdf.cell(0, 5, ref_label, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
             pdf.ln(20)
 
@@ -364,19 +380,32 @@ class AdminAssistantAgent:
             pdf.set_x(10)
             pdf.set_font("Helvetica", 'I', 9)
             pdf.set_text_color(100, 100, 100)
-            notes = data.get('notes', 'Gracias por su confianza. Presupuesto válido por 15 días.')
+            if doc_title == "FACTURA":
+                default_notes = "Factura emitida de acuerdo con la normativa española de facturación (RD 1619/2012)."
+            else:
+                default_notes = "Gracias por su confianza. Presupuesto válido por 15 días."
+            notes = data.get('notes', default_notes)
             pdf.multi_cell(0, 5, f"Notas: {clean_text(notes)}\nEl precio final incluye los impuestos aplicables.")
-            
+
             # Save
-            filename = f"budget_{int(datetime.now().timestamp())}.pdf"
+            if doc_title == "FACTURA":
+                inv_slug = str(data.get('invoice_number', 'inv')).replace('/', '-')
+                filename = f"invoice_{inv_slug}_{int(datetime.now().timestamp())}.pdf"
+            else:
+                filename = f"budget_{int(datetime.now().timestamp())}.pdf"
             save_dir = os.path.join("static", "generated_docs")
             os.makedirs(save_dir, exist_ok=True)
             full_path = os.path.join(save_dir, filename)
-            
+
             pdf.output(full_path)
             logger.info("PDF generado: %s", full_path)
-            return f"/static/generated_docs/{filename}"
+            file_url = f"/static/generated_docs/{filename}"
+            if doc_title == "FACTURA":
+                return file_url, round(subtotal, 2), round(vat_amount, 2), round(total_final, 2)
+            return file_url
 
         except Exception as e:
             logger.error("Error generando PDF: %s", e)
+            if doc_title == "FACTURA":
+                return None, 0, 0, 0
             return None

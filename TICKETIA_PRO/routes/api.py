@@ -3,7 +3,11 @@ import re
 import json
 import logging
 import asyncio
+import queue as _queue
+import threading as _threading
+import time as _time
 from datetime import datetime, timezone
+from functools import wraps
 from flask import Blueprint, request, session, jsonify, Response, stream_with_context, current_app
 
 logger = logging.getLogger(__name__)
@@ -13,8 +17,62 @@ from modules.agents.background_tasks import run_marketing_thread
 from modules.tickets.logic import process_ticket_image
 from modules.agents.manager import run_agent
 from core.limiter import limiter
+from flask_limiter.util import get_remote_address
 
 api_bp = Blueprint('api', __name__)
+
+def _chat_rate_key():
+    """Clave de rate limiting por user_phone (sesión) o IP como fallback."""
+    return session.get('user_phone') or get_remote_address()
+
+
+def _login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'user_phone' not in session:
+            return jsonify({"error": "Unauthorized"}), 401
+        return f(*args, **kwargs)
+    return decorated
+
+
+def _sse_stream(worker_fn, event_timeout: int = 180, session_timeout: int | None = None):
+    """Lanza worker_fn(queue) en un hilo daemon y devuelve un Response SSE."""
+    eq = _queue.Queue()
+    _DONE = object()
+    _start = _time.time()
+
+    def _target():
+        try:
+            worker_fn(eq)
+        except Exception as e:
+            logger.error("SSE worker error no capturado: %s", e)
+            eq.put({"type": "error", "msg": "Error interno del servidor"})
+        finally:
+            eq.put(_DONE)
+
+    _threading.Thread(target=_target, daemon=True).start()
+
+    def generate():
+        while True:
+            try:
+                event = eq.get(timeout=event_timeout)
+            except _queue.Empty:
+                if session_timeout and _time.time() - _start < session_timeout:
+                    continue
+                break
+            if event is _DONE:
+                break
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+    return Response(
+        generate(), mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',
+            'Connection': 'keep-alive',
+            'X-Content-Type-Options': 'nosniff',
+        }
+    )
 
 _NAV_SECTIONS = """
 - /dashboard      → inicio, home, pantalla principal, volver al inicio
@@ -87,10 +145,8 @@ def _classify_voice_intent(text: str, openai_client) -> dict | None:
 
 @api_bp.route('/generate_video_from_image', methods=['POST'])
 @limiter.limit("5 per hour")
+@_login_required
 def generate_video_from_image():
-    if 'user_phone' not in session:
-        return jsonify({"success": False, "error": "Unauthorized"}), 401
-
     user_phone = session['user_phone']
     profile = BusinessProfile.query.filter_by(user_phone=user_phone).first()
 
@@ -137,11 +193,9 @@ _OUTPUT_FILTER_PATTERN = re.compile(
 )
 
 @api_bp.route('/api/chat', methods=['POST'])
-@limiter.limit("30 per minute")
+@limiter.limit("30 per minute", key_func=_chat_rate_key)
+@_login_required
 def chat_api():
-    if 'user_phone' not in session:
-        return jsonify({"error": "Unauthorized"}), 401
-
     data = request.get_json()
     if not isinstance(data, dict):
         return jsonify({"error": "JSON inválido"}), 400
@@ -175,9 +229,8 @@ def chat_api():
 
 @api_bp.route('/api/chat/feedback', methods=['POST'])
 @limiter.limit("60 per minute")
+@_login_required
 def chat_feedback():
-    if 'user_phone' not in session:
-        return jsonify({"error": "Unauthorized"}), 401
     data = request.get_json() or {}
     rating = data.get('rating')
     if rating not in (1, -1):
@@ -194,10 +247,8 @@ def chat_feedback():
 
 @api_bp.route('/api/metrics/rag', methods=['GET'])
 @limiter.limit("30 per hour")
+@_login_required
 def rag_metrics():
-    if 'user_phone' not in session:
-        return jsonify({"error": "Unauthorized"}), 401
-
     from sqlalchemy import func
     phone = session['user_phone']
 
@@ -241,10 +292,8 @@ def rag_metrics():
 
 @api_bp.route('/upload_web_ticket', methods=['POST'])
 @limiter.limit("20 per hour")
+@_login_required
 def upload_web_ticket():
-    if 'user_phone' not in session:
-        return jsonify({'error': 'No logueado'}), 401
-
     if 'ticket' not in request.files:
         return jsonify({'error': 'No file'}), 400
 
@@ -282,10 +331,8 @@ def upload_web_ticket():
 
 @api_bp.route('/upload_web_audio', methods=['POST'])
 @limiter.limit("20 per hour")
+@_login_required
 def upload_web_audio():
-    if 'user_phone' not in session:
-        return jsonify({'error': 'No logueado'}), 401
-
     if 'audio' not in request.files:
         return jsonify({'error': 'No audio'}), 400
 
@@ -339,10 +386,8 @@ def upload_web_audio():
 
 @api_bp.route('/api/council/stream', methods=['POST'])
 @limiter.limit("10 per hour")
+@_login_required
 def council_stream():
-    if 'user_phone' not in session:
-        return jsonify({"error": "Unauthorized"}), 401
-
     data = request.get_json()
     if not isinstance(data, dict):
         return jsonify({"error": "JSON inválido"}), 400
@@ -353,31 +398,25 @@ def council_stream():
     if len(topic) > 500:
         return jsonify({"error": "El tema es demasiado largo"}), 400
 
-    user_phone = session.get('user_phone')
+    user_phone = session['user_phone']
     user = BusinessProfile.query.filter_by(user_phone=user_phone).first()
     user_context = (
-        f"Negocio: {user.business_name}, Sector: {(user.static_knowledge or {}).get('sector', 'General')}"
+        f"Negocio: {user.business_name}, Sector: {user.static_knowledge_dict.get('sector', 'General')}"
         if user else "Negocio Genérico"
     )
+    _SESSION_TIMEOUT = 180
 
-    import queue as _queue
-    import threading as _threading
-    import time as _time
+    def _worker(eq):
+        _start = _time.time()
 
-    event_queue = _queue.Queue()
-    _DONE = object()
-    _SESSION_TIMEOUT = 180  # 3 minutos máximo por sesión del Consejo
-    _session_start = _time.time()
-
-    def _run_async():
         async def _produce():
             from modules.council.orchestrator import CouncilManager
             manager = CouncilManager()
             async for event in manager.run_session(topic, user_context, use_mcp=False, owner_phone=user_phone):
-                if _time.time() - _session_start > _SESSION_TIMEOUT:
+                if _time.time() - _start > _SESSION_TIMEOUT:
                     logger.warning("Council session timeout para %s", user_phone)
                     break
-                event_queue.put(event)
+                eq.put(event)
                 logger.debug("Council event queued: %s", event.get('type'))
 
         loop = asyncio.new_event_loop()
@@ -385,37 +424,11 @@ def council_stream():
             loop.run_until_complete(_produce())
         except Exception as e:
             logger.error("Council session error: %s", e, exc_info=True)
-            event_queue.put({"type": "error", "text": "Error interno en el Consejo. Inténtalo de nuevo."})
+            eq.put({"type": "error", "text": "Error interno en el Consejo. Inténtalo de nuevo."})
         finally:
             loop.close()
-            event_queue.put(_DONE)
 
-    _threading.Thread(target=_run_async, daemon=True).start()
-
-    def generate():
-        while True:
-            try:
-                event = event_queue.get(timeout=10)  # máximo 10s entre eventos
-            except _queue.Empty:
-                if _time.time() - _session_start > _SESSION_TIMEOUT:
-                    break
-                continue
-            if event is _DONE:
-                break
-            data = json.dumps(event, ensure_ascii=False)
-            logger.debug("Council SSE send: %s", event.get('type'))
-            yield f"data: {data}\n\n"
-
-    return Response(
-        generate(),
-        mimetype='text/event-stream',
-        headers={
-            'Cache-Control': 'no-cache',
-            'X-Accel-Buffering': 'no',
-            'Connection': 'keep-alive',
-            'X-Content-Type-Options': 'nosniff',
-        }
-    )
+    return _sse_stream(_worker, event_timeout=10, session_timeout=_SESSION_TIMEOUT)
 
 
 # ---------------------------------------------------------------------------
@@ -424,23 +437,15 @@ def council_stream():
 
 @api_bp.route('/api/eval/stream', methods=['POST'])
 @limiter.limit("10 per hour")
+@_login_required
 def eval_stream():
     """SSE stream que ejecuta DeepEval case a case y emite resultados en tiempo real."""
-    if 'user_phone' not in session:
-        return jsonify({"error": "Unauthorized"}), 401
-
-    import queue as _queue
-    import threading as _threading
-
     user_phone = session['user_phone']
     app = current_app._get_current_object()
-    eq = _queue.Queue()
-    _DONE = object()
+    req_data = request.get_json(silent=True) or {}
+    mode = req_data.get("mode", "auto")
 
-    data  = request.get_json(silent=True) or {}
-    mode  = data.get("mode", "auto")  # static | dynamic | auto
-
-    def _run_eval():
+    def _worker(eq):
         import sys, os
         sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         try:
@@ -453,10 +458,8 @@ def eval_stream():
             from deepeval.evaluate.configs import AsyncConfig, DisplayConfig
 
             eq.put({"type": "status", "msg": f"Seleccionando casos (modo: {mode})..."})
-
             with app.app_context():
                 built = _build_test_cases_with_rag(user_phone, None, mode=mode)
-
             eq.put({"type": "status", "msg": f"Preparados {len(built)} casos de prueba..."})
 
             for i, b in enumerate(built):
@@ -468,61 +471,41 @@ def eval_stream():
                         "answer": (b["actual_output"] or "")[:120]})
 
             eq.put({"type": "status", "msg": "Ejecutando métricas DeepEval (GPT como juez)..."})
-
             metrics = [
                 FaithfulnessMetric(threshold=0.7),
                 AnswerRelevancyMetric(threshold=0.7),
                 ContextualPrecisionMetric(threshold=0.5),
                 ContextualRecallMetric(threshold=0.5),
             ]
-            test_cases = [b["test_case"] for b in built]
             results = evaluate(
-                test_cases, metrics,
+                [b["test_case"] for b in built], metrics,
                 async_config=AsyncConfig(run_async=True, max_concurrent=5),
                 display_config=DisplayConfig(show_indicator=False, print_results=False),
             )
 
             all_scores = {"faithfulness": [], "relevancy": [], "precision": [], "recall": []}
             metric_map = {
-                "Faithfulness": "faithfulness",
-                "Answer Relevancy": "relevancy",
-                "Contextual Precision": "precision",
-                "Contextual Recall": "recall",
+                "Faithfulness": "faithfulness", "Answer Relevancy": "relevancy",
+                "Contextual Precision": "precision", "Contextual Recall": "recall",
             }
-
             for b, tr in zip(built, results.test_results):
                 scores = {metric_map.get(m.name, m.name): round(m.score or 0, 3)
                           for m in tr.metrics_data if m.name in metric_map}
                 for k, v in scores.items():
                     all_scores[k].append(v)
-                passed = all(v >= (0.7 if k in ("faithfulness","relevancy") else 0.5)
+                passed = all(v >= (0.7 if k in ("faithfulness", "relevancy") else 0.5)
                              for k, v in scores.items())
                 eq.put({"type": "result", "id": b["meta"]["id"], "passed": passed, **scores})
 
-            avgs = {k: round(sum(v)/len(v), 3) if v else 0 for k, v in all_scores.items()}
+            avgs = {k: round(sum(v) / len(v), 3) if v else 0 for k, v in all_scores.items()}
             cost = getattr(results, 'evaluation_cost', None) or getattr(results, 'cost', None) or 0
             eq.put({"type": "summary", **avgs, "cost_usd": round(cost, 4)})
 
         except Exception as e:
             logger.error("DeepEval stream error: %s", e, exc_info=True)
             eq.put({"type": "error", "msg": str(e)[:200]})
-        finally:
-            eq.put(_DONE)
 
-    _threading.Thread(target=_run_eval, daemon=True).start()
-
-    def generate():
-        while True:
-            try:
-                event = eq.get(timeout=180)
-            except _queue.Empty:
-                break
-            if event is _DONE:
-                break
-            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
-
-    return Response(generate(), mimetype='text/event-stream',
-                    headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
+    return _sse_stream(_worker)
 
 
 # ---------------------------------------------------------------------------
@@ -537,11 +520,9 @@ def push_vapid_key():
 
 
 @api_bp.route('/api/push/subscribe', methods=['POST'])
+@_login_required
 def push_subscribe():
     """Guarda la PushSubscription del navegador en el perfil del usuario."""
-    if 'user_phone' not in session:
-        return jsonify({"error": "Unauthorized"}), 401
-
     subscription = request.get_json()
     if not subscription or 'endpoint' not in subscription:
         return jsonify({"error": "Invalid subscription object"}), 400
@@ -558,11 +539,9 @@ def push_subscribe():
 
 
 @api_bp.route('/api/push/unsubscribe', methods=['POST'])
+@_login_required
 def push_unsubscribe():
     """Elimina la suscripción push del usuario."""
-    if 'user_phone' not in session:
-        return jsonify({"error": "Unauthorized"}), 401
-
     user = BusinessProfile.query.filter_by(user_phone=session['user_phone']).first()
     if user:
         user.push_subscription = None
@@ -577,14 +556,12 @@ def push_unsubscribe():
 
 @api_bp.route('/api/metrics/llm', methods=['GET'])
 @limiter.limit("30 per hour")
+@_login_required
 def llm_metrics():
     """
     Devuelve métricas agregadas de llamadas LLM para el usuario en sesión.
     Si es admin (user_email == 'admin@ticketia.com') devuelve datos globales.
     """
-    if 'user_phone' not in session:
-        return jsonify({"error": "Unauthorized"}), 401
-
     from sqlalchemy import func as sqlfunc
     from datetime import timedelta
 
@@ -655,3 +632,175 @@ def llm_metrics():
         "by_stage": by_stage,
         "daily": daily,
     })
+
+
+# ---------------------------------------------------------------------------
+# Ciclo de vida de facturas
+# ---------------------------------------------------------------------------
+
+_VALID_STATUS_TRANSITIONS = {
+    'draft': {'sent', 'paid'},
+    'sent':  {'paid'},
+    'paid':  set(),
+}
+
+@api_bp.route('/api/documents/<int:doc_id>/to-invoice', methods=['POST'])
+@limiter.limit("20 per hour")
+@_login_required
+def convert_to_invoice(doc_id):
+    """Convierte un presupuesto (proposal) en factura numerada."""
+    user_phone = session['user_phone']
+    doc = db.session.get(GeneratedDocument, doc_id)
+    if not doc:
+        return jsonify({"error": "Documento no encontrado"}), 404
+    if doc.user_phone != user_phone:
+        return jsonify({"error": "Forbidden"}), 403
+    if doc.doc_type != 'proposal':
+        return jsonify({"error": "Solo se pueden convertir presupuestos"}), 400
+    if not doc.doc_data:
+        return jsonify({"error": "Este presupuesto no tiene datos estructurados para generar factura"}), 400
+
+    body = request.get_json(silent=True) or {}
+    client_nif = (body.get('client_nif') or '').strip()[:20]
+
+    year = datetime.now().year
+    invoice_number = GeneratedDocument.next_invoice_number(user_phone, year)
+
+    profile = BusinessProfile.query.filter_by(user_phone=user_phone).first()
+    user_context = profile.to_agent_context() if profile else {
+        "business_name": "", "phone": user_phone, "email": "", "sector": "Servicios", "extra_info": {}
+    }
+
+    invoice_data = dict(doc.doc_data)
+    invoice_data['invoice_number'] = invoice_number
+    if client_nif:
+        invoice_data['client_nif'] = client_nif
+
+    from modules.proactive.admin_redactor import AdminAssistantAgent
+    file_path, subtotal, vat_amount, total_amount = AdminAssistantAgent().generate_invoice_pdf(
+        invoice_data, user_context
+    )
+    if not file_path:
+        return jsonify({"error": "Error generando el PDF de factura"}), 500
+
+    try:
+        new_inv = GeneratedDocument(
+            user_phone=user_phone,
+            file_path=file_path,
+            doc_type='invoice',
+            client_name=doc.doc_data.get('client_name') or doc.client_name,
+            invoice_number=invoice_number,
+            client_nif=client_nif or None,
+            subtotal=subtotal,
+            vat_amount=vat_amount,
+            total_amount=total_amount,
+            invoice_status='draft',
+            doc_data=doc.doc_data,
+        )
+        db.session.add(new_inv)
+        db.session.commit()
+        from core.db_models import ActivityLog
+        ActivityLog.log(user_phone, "Facturación", f"Factura generada: {invoice_number}")
+        return jsonify({
+            "invoice_id":     new_inv.id,
+            "invoice_number": invoice_number,
+            "file_path":      file_path,
+        })
+    except Exception as e:
+        db.session.rollback()
+        logger.error("Error guardando factura: %s", e)
+        return jsonify({"error": "Error guardando la factura"}), 500
+
+
+@api_bp.route('/api/invoices/<int:doc_id>/status', methods=['PATCH'])
+@limiter.limit("60 per hour")
+@_login_required
+def update_invoice_status(doc_id):
+    """Actualiza el estado de una factura: draft → sent → paid."""
+    user_phone = session['user_phone']
+    doc = db.session.get(GeneratedDocument, doc_id)
+    if not doc:
+        return jsonify({"error": "Factura no encontrada"}), 404
+    if doc.user_phone != user_phone:
+        return jsonify({"error": "Forbidden"}), 403
+    if doc.doc_type != 'invoice':
+        return jsonify({"error": "No es una factura"}), 400
+
+    body = request.get_json(silent=True) or {}
+    new_status = (body.get('status') or '').strip()
+    current = doc.invoice_status or 'draft'
+    allowed = _VALID_STATUS_TRANSITIONS.get(current, set())
+
+    if new_status not in allowed:
+        return jsonify({"error": f"Transición no válida: {current} → {new_status}"}), 400
+
+    from core.db_models import ActivityLog
+    try:
+        doc.invoice_status = new_status
+        db.session.commit()
+        ActivityLog.log(user_phone, "Facturación", f"{doc.invoice_number}: estado → {new_status}")
+        return jsonify({"success": True, "status": new_status})
+    except Exception as e:
+        db.session.rollback()
+        logger.error("Error actualizando estado factura: %s", e)
+        return jsonify({"error": "Error actualizando estado"}), 500
+
+
+# ---------------------------------------------------------------------------
+# Notificaciones
+# ---------------------------------------------------------------------------
+
+@api_bp.route('/api/notifications')
+@limiter.limit("120 per minute", key_func=_chat_rate_key)
+def get_notifications():
+    if 'user_phone' not in session:
+        return jsonify([]), 401
+    notifs = (Notification.query
+              .filter_by(user_phone=session['user_phone'])
+              .order_by(Notification.created_at.desc())
+              .limit(20).all())
+    return jsonify([{
+        "id": n.id,
+        "title": n.title,
+        "message": n.message,
+        "type": n.type,
+        "link": n.link,
+        "is_read": n.is_read,
+        "date": n.created_at.strftime('%d/%m %H:%M'),
+    } for n in notifs])
+
+
+@api_bp.route('/api/notifications/mark_read/<int:notif_id>', methods=['POST'])
+@limiter.limit("60 per minute", key_func=_chat_rate_key)
+def mark_notification_read(notif_id):
+    if 'user_phone' not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+    n = db.session.get(Notification, notif_id)
+    if n and n.user_phone == session['user_phone']:
+        n.is_read = True
+        db.session.commit()
+        return jsonify({"success": True})
+    return jsonify({"error": "Not found"}), 404
+
+
+@api_bp.route('/api/notifications/mark_all_read', methods=['POST'])
+@limiter.limit("30 per minute", key_func=_chat_rate_key)
+def mark_all_notifications_read():
+    if 'user_phone' not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+    Notification.query.filter_by(
+        user_phone=session['user_phone'], is_read=False
+    ).update({Notification.is_read: True})
+    db.session.commit()
+    return jsonify({"success": True})
+
+
+@api_bp.route('/api/notifications/unread_count')
+@limiter.limit("120 per minute", key_func=_chat_rate_key)
+def notifications_unread_count():
+    if 'user_phone' not in session:
+        return jsonify({"count": 0}), 401
+    count = Notification.query.filter_by(
+        user_phone=session['user_phone'], is_read=False
+    ).count()
+    return jsonify({"count": count})

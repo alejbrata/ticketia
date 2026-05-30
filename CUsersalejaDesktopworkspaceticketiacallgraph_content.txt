@@ -1,0 +1,427 @@
+[1] 'Normal': Leyenda de colores:  Endpoint HTTP  |  Funcion/metodo propio  |  Metodo de clase  |  Base de datos  |  API externa  |  Fichero  
+[3] 'Normal': 1. Flujo de chat con RAG â€” el mas complejo del sistema
+[4] 'Normal': â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+[5] 'Normal': Cuando el usuario escribe un mensaje en el chat y pulsa enviar, esto es exactamente lo que ocurre:
+[6] 'Normal': POST /api/chat
+[7] 'Normal': [routes/api.py : linea ~120]
+[8] 'Normal': -> valida session[user_phone]
+[9] 'Normal': -> lee profile = BusinessProfile.query.filter_by(user_phone).first()
+[10] 'Normal': -> run_agent(user_phone, message, media_url=None)
+[11] 'Normal':    [modules/agents/manager.py : run_agent()]
+[12] 'Normal': -> crea AgentExecutor(message, phone, profile, media_url, mail_service)
+[13] 'Normal': -> llama AgentExecutor.execute()
+[14] 'Normal':    [manager.py : execute(), linea ~60]
+[16] 'Normal': -- PASO 1: guardar mensaje del usuario --
+[17] 'Normal': -> HistoryService.save_interaction(phone, role="user", content=message)
+[18] 'Normal':    [modules/agents/history.py : save_interaction()]
+[19] 'Normal': -> ChatMessage(user_phone, role="user", content=message)
+[20] 'Normal': -> db.session.add(new_msg)
+[21] 'Normal': -> if count > MAX_HISTORY(50):
+[22] 'Normal': -> borra los (count - KEEP_COUNT(40)) mensajes mas antiguos
+[23] 'Normal': -> db.session.commit()
+[25] 'Normal': -- PASO 2: recuperar historial para contexto --
+[26] 'Normal': -> HistoryService.get_recent_history(phone, limit=20)
+[27] 'Normal': -> ChatMessage.query.filter_by(phone).order_by(created_at.asc()).limit(20)
+[28] 'Normal': -> formatea mensajes al formato OpenAI
+[29] 'Normal':    (role, content, tool_call_id, name segun tipo)
+[31] 'Normal': -- PASO 3: enriquecer prompt con RAG --
+[32] 'Normal': -> self._build_rag_system_prompt(message)
+[33] 'Normal':    [manager.py : _build_rag_system_prompt()]
+[34] 'Normal': -> retrieve_chunks(user_phone, query=message, top_k=5)
+[35] 'Normal':    [modules/services/embeddings.py : retrieve_chunks()]
+[36] 'Normal': -> embed_text(query)
+[37] 'Normal':    [embeddings.py : embed_text()]
+[38] 'Normal': -> get_openai_client()  [core/clients.py]
+[39] 'Normal': -> openai_client.embeddings.create(
+[40] 'Normal':      model="text-embedding-3-small",
+[41] 'Normal':      input=query
+[42] 'Normal':    )
+[43] 'Normal': -> devuelve vector de 1536 floats
+[44] 'Normal': -> KnowledgeChunk.query
+[45] 'Normal':      .filter_by(user_phone=phone)
+[46] 'Normal':      .order_by(embedding.cosine_distance(query_vector))
+[47] 'Normal':      .limit(5).all()
+[48] 'Normal': -> combina system_prompt del usuario + textos de los 5 chunks
+[49] 'Normal': -> devuelve system_prompt enriquecido con contexto RAG
+[51] 'Normal': -- PASO 4: primera llamada a GPT-4o --
+[52] 'Normal': -> openai_client.chat.completions.create(
+[53] 'Normal':      model="gpt-4o",
+[54] 'Normal':      messages=[system_prompt] + historial + [mensaje_usuario],
+[55] 'Normal':      tools=TOOLS_SCHEMA,  [tools.py]
+[56] 'Normal':      tool_choice="auto"
+[57] 'Normal':    )
+[58] 'Normal':    GPT decide: responde directamente O usa una herramienta
+[60] 'Normal': -- PASO 5: si GPT quiere usar herramienta --
+[61] 'Normal': -> self._process_tool_calls(tool_calls)
+[62] 'Normal':    [manager.py : _process_tool_calls()]
+[64] 'Normal': HERRAMIENTA: check_availability(date)
+[65] 'Normal': -> CalendarTools.check_availability(date)
+[66] 'Normal':    [modules/agents/tools.py]
+[67] 'Normal': -> Appointment.query.filter_by(business_phone=phone, date=date)
+[68] 'Normal': -> calcula huecos libres comparando con ALL_SLOTS
+[69] 'Normal': -> devuelve lista de horas disponibles
+[71] 'Normal': HERRAMIENTA: book_appointment(date, time, client_name, phone, end_time)
+[72] 'Normal': -> CalendarTools.book_appointment(...)
+[73] 'Normal':    [tools.py]
+[74] 'Normal': -> verifica que no hay conflicto en ese horario
+[75] 'Normal': -> Appointment(business_phone, date, time, client_name, client_phone)
+[76] 'Normal': -> db.session.add() -> db.session.commit()
+[77] 'Normal': -> ActivityLog.log(phone, "calendario", "Cita agendada...")
+[79] 'Normal': HERRAMIENTA: create_proposal_from_last_image
+[80] 'Normal': -> self._tool_create_proposal_from_last_image()
+[81] 'Normal': -> Ticket.query.filter_by(phone).order_by(id.desc()).first()
+[82] 'Normal': -> AdminAssistantAgent.process_image_request(ticket.image_path)
+[83] 'Normal':    [modules/proactive/admin_redactor.py]
+[84] 'Normal': -> lee imagen, encode base64
+[85] 'Normal': -> openai_client.chat.completions.create(gpt-4o vision)
+[86] 'Normal': -> extrae datos del presupuesto
+[87] 'Normal': -> FPDF() genera PDF
+[88] 'Normal': -> guarda en static/generated_docs/
+[89] 'Normal': -> DocumentService.save_generated_document(...)
+[90] 'Normal': -> GeneratedDocument() -> db.session.commit()
+[91] 'Normal': -> ActivityLog.log()
+[93] 'Normal': HERRAMIENTA: generate_marketing_material(type, prompt)
+[94] 'Normal': -> run_marketing_thread(phone, type, prompt, media_url)
+[95] 'Normal':    [modules/agents/background_tasks.py]
+[96] 'Normal': -> threading.Thread(target=perform_async_marketing_generation).start()
+[97] 'Normal':    El hilo corre en background, el agente responde al usuario ya
+[98] 'Normal': -> perform_async_marketing_generation():
+[99] 'Normal': -> MarketingAgent.generate_marketing_content(type, prompt)
+[100] 'Normal':    [modules/proactive/marketing_agent.py]
+[101] 'Normal': Si type="image":
+[102] 'Normal': -> openai_client.chat.completions.create() refina prompt
+[103] 'Normal': -> openai_client.images.generate(model="dall-e-3")
+[104] 'Normal': -> urllib.request.urlretrieve(url, local_path)
+[105] 'Normal': -> PIL.Image + logo del negocio -> guarda PNG
+[106] 'Normal': Si type="video":
+[107] 'Normal': -> get_runway_client()  [core/clients.py]
+[108] 'Normal': -> runway.image_to_video.create(prompt, init_image)
+[109] 'Normal': -> polling hasta que task.status == "SUCCEEDED"
+[110] 'Normal': -> descarga MP4 a static/generated_docs/
+[111] 'Normal': -> DocumentService.save_generated_document()
+[112] 'Normal': -> NotificationService.send_in_app() + send_push()
+[113] 'Normal':    [modules/services/notification.py]
+[115] 'Normal': -- PASO 6: segunda llamada GPT con resultados de herramientas --
+[116] 'Normal': -> openai_client.chat.completions.create(
+[117] 'Normal':      messages=historial + tool_results,  (sin tools esta vez)
+[118] 'Normal':    )
+[119] 'Normal':    GPT genera la respuesta final en lenguaje natural
+[121] 'Normal': -- PASO 7: guardar respuesta y registrar metricas --
+[122] 'Normal': -> HistoryService.save_interaction(phone, role="assistant", content=respuesta)
+[123] 'Normal': -> track(phone, "gpt-4o", "agent_main", response, latency_ms)
+[124] 'Normal':    [core/llm_tracker.py : track()]
+[125] 'Normal': -> calcula coste: tokens * precio_por_modelo
+[126] 'Normal': -> LLMCall(phone, model, stage, tokens, latency, cost)
+[127] 'Normal': -> db.session.add() -> db.session.commit()
+[128] 'Normal': -> devuelve {success: True, response: texto_respuesta}
+[129] 'Normal': -> jsonify({success, response}) -> HTTP 200
+[131] 'Normal': 2. Flujo de escaneo de ticket con Vision API
+[132] 'Normal': â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+[133] 'Normal': POST /upload_web_ticket (multipart/form-data)
+[134] 'Normal': [routes/api.py : linea ~211]
+[135] 'Normal': -> valida session[user_phone]
+[136] 'Normal': -> lee file = request.files["ticket"]
+[137] 'Normal': -> genera nombre unico: uuid4() + extension original
+[138] 'Normal': -> file.save(static/uploads/temp/<uuid>.jpg)
+[139] 'Normal': -> process_ticket_image(file_path, user_phone)
+[140] 'Normal':    [modules/tickets/logic.py : process_ticket_image()]
+[141] 'Normal': -> abre el fichero en modo binario: open(path, "rb").read()
+[142] 'Normal': -> detecta tipo MIME por magic bytes (primeros 4 bytes):
+[143] 'Normal':      FF D8 FF -> image/jpeg
+[144] 'Normal':      89 50 4E 47 -> image/png
+[145] 'Normal':      25 50 44 46 -> application/pdf
+[146] 'Normal': -> base64.b64encode(bytes).decode() -> data URL
+[147] 'Normal': -> get_openai_client()  [core/clients.py]
+[148] 'Normal': -> openai_client.chat.completions.create(
+[149] 'Normal':      model="gpt-4o",
+[150] 'Normal':      messages=[{
+[151] 'Normal':        role: "user",
+[152] 'Normal':        content: [
+[153] 'Normal':          {type: "text", text: "Extrae datos fiscales..."},
+[154] 'Normal':          {type: "image_url", image_url: {url: data_url}}
+[155] 'Normal':        ]
+[156] 'Normal':      }],
+[157] 'Normal':      max_tokens=300
+[158] 'Normal':    )
+[159] 'Normal': -> json.loads(response.choices[0].message.content)
+[160] 'Normal':    extrae: fecha, nif, proveedor, base_imponible, iva, total
+[161] 'Normal': -> _parse_ticket_date(fecha_string)
+[162] 'Normal':    intenta datetime.strptime con DD/MM/YYYY, YYYY-MM-DD, DD-MM-YYYY
+[163] 'Normal': -> Ticket(
+[164] 'Normal':      user_phone, image_path="/static/uploads/...",
+[165] 'Normal':      status="processed", concept, total, nif, provider, date
+[166] 'Normal':    )
+[167] 'Normal': -> db.session.add(ticket) -> db.session.commit()
+[168] 'Normal': -> devuelve mensaje de confirmacion con los datos extraidos
+[169] 'Normal': -> jsonify({success, message, data}) -> HTTP 200
+[171] 'Normal': 3. Flujo de audio y navegacion por voz
+[172] 'Normal': â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+[173] 'Normal': POST /upload_web_audio (multipart/form-data)
+[174] 'Normal': [routes/api.py : linea ~241]
+[175] 'Normal': -> valida session[user_phone]
+[176] 'Normal': -> lee audio = request.files["audio"]
+[177] 'Normal': -> guarda en static/uploads/temp/<uuid>.webm
+[179] 'Normal': -- TRANSCRIPCION CON WHISPER --
+[180] 'Normal': -> client = get_openai_client()  [core/clients.py]
+[181] 'Normal': -> with open(audio_path, "rb") as f:
+[182] 'Normal': -> client.audio.transcriptions.create(
+[183] 'Normal':      model="whisper-1",
+[184] 'Normal':      file=f,
+[185] 'Normal':      language="es"
+[186] 'Normal':    )
+[187] 'Normal': -> devuelve user_text = transcripcion en texto plano
+[189] 'Normal': -- CLASIFICACION DE INTENCION --
+[190] 'Normal': -> _classify_voice_intent(user_text, client)
+[191] 'Normal':    [routes/api.py : _classify_voice_intent(), linea ~49]
+[192] 'Normal': -> construye prompt con _INTENT_PROMPT.format(
+[193] 'Normal':      sections=_NAV_SECTIONS,  (lista de rutas disponibles)
+[194] 'Normal':      text=user_text
+[195] 'Normal':    )
+[196] 'Normal': -> client.chat.completions.create(
+[197] 'Normal':      model="gpt-4o-mini",  (mas barato para clasificacion)
+[198] 'Normal':      messages=[{role:"user", content:prompt}],
+[199] 'Normal':      max_tokens=30,
+[200] 'Normal':      temperature=0  (maximo determinismo)
+[201] 'Normal':    )
+[202] 'Normal': -> json.loads(response) -> {type: "navigate", route: "/agenda"}
+[203] 'Normal':    o                    -> {type: "action"}
+[205] 'Normal': -- DECISION SEGUN INTENCION --
+[206] 'Normal': Si intent.type == "navigate":
+[207] 'Normal': -> return jsonify({success:True, navigate: "/agenda"})
+[208] 'Normal':    El JavaScript del frontend ejecuta:
+[209] 'Normal':    window.location.href = data.navigate
+[211] 'Normal': Si intent.type == "action":
+[212] 'Normal': -> run_agent(user_phone, user_text)  (flujo identico al chat)
+[213] 'Normal':    [ver Flujo 1 completo]
+[214] 'Normal': -> return jsonify({success:True, response: respuesta_agente})
+[215] 'Normal':    El JS lo muestra en el chat como si el usuario hubiera escrito el texto
+[217] 'Normal': 4. Flujo de ingestiÃ³n de documento en RAG
+[218] 'Normal': â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+[219] 'Normal': POST /knowledge/upload (multipart/form-data)
+[220] 'Normal': [routes/knowledge.py : linea ~51]
+[221] 'Normal': -> valida session[user_phone]
+[222] 'Normal': -> lee file = request.files["file"]
+[223] 'Normal': -> _allowed(filename) [knowledge.py]
+[224] 'Normal': -> extension in {"pdf", "txt", "md"} -> True/False
+[225] 'Normal': -> verifica tamano: len(file.read()) <= 20MB
+[226] 'Normal': -> crea directorio: static/uploads/knowledge/<user_phone>/
+[227] 'Normal': -> file.save(upload_path)
+[229] 'Normal': -- INGESTIÃ“N EN BACKGROUND --
+[230] 'Normal': -> threading.Thread(target=_ingest, args=(phone,path,name)).start()
+[231] 'Normal': -> return jsonify({success:True})  (respuesta inmediata al usuario)
+[233] 'Normal': Hilo _ingest() ejecuta en background:
+[234] 'Normal': [routes/knowledge.py : _ingest()]
+[235] 'Normal': -> ingest_document(phone, filepath, filename)
+[236] 'Normal':    [modules/services/embeddings.py : ingest_document()]
+[237] 'Normal': -- extraccion de texto --
+[238] 'Normal': Si PDF:
+[239] 'Normal': -> pdfplumber.open(filepath)
+[240] 'Normal': -> page.extract_text() para cada pagina
+[241] 'Normal': -> concatena todo el texto
+[242] 'Normal': Si TXT/MD:
+[243] 'Normal': -> open(filepath, "r", encoding="utf-8").read()
+[245] 'Normal': -- chunking con solapamiento --
+[246] 'Normal': -> chunk_size = 1600 chars, chunk_overlap = 400 chars
+[247] 'Normal': -> for i in range(0, len(texto), chunk_size - overlap):
+[248] 'Normal': -> chunk = texto[i : i + chunk_size]
+[250] 'Normal': -- embedding de cada chunk --
+[251] 'Normal': -> embed_text(chunk)  [embeddings.py]
+[252] 'Normal': -> get_openai_client()
+[253] 'Normal': -> openai_client.embeddings.create(
+[254] 'Normal':      model="text-embedding-3-small",
+[255] 'Normal':      input=chunk
+[256] 'Normal':    ).data[0].embedding
+[257] 'Normal': -> devuelve lista de 1536 floats
+[259] 'Normal': -- guardar en BD --
+[260] 'Normal': -> borra chunks previos del mismo documento:
+[261] 'Normal':    KnowledgeChunk.query.filter_by(phone, source_name).delete()
+[262] 'Normal': -> KnowledgeChunk(
+[263] 'Normal':      user_phone=phone,
+[264] 'Normal':      source_type="document",
+[265] 'Normal':      source_name=filename,
+[266] 'Normal':      content=chunk,
+[267] 'Normal':      embedding=vector_1536d
+[268] 'Normal':    )
+[269] 'Normal': -> db.session.add(kc)
+[270] 'Normal': -> db.session.commit()  (commit unico al final de todos los chunks)
+[272] 'Normal': -- notificacion al usuario --
+[273] 'Normal': -> NotificationService.send_in_app(phone, "Documento listo", ...)
+[274] 'Normal':    [modules/services/notification.py]
+[275] 'Normal': -> Notification(user_phone, title, message, type="success")
+[276] 'Normal': -> db.session.add() -> db.session.commit()
+[278] 'Normal': 5. Flujo del Consejo Pyme con SSE streaming
+[279] 'Normal': â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+[280] 'Normal': POST /api/council/stream
+[281] 'Normal': [routes/api.py : linea ~298]
+[282] 'Normal': -> valida session, lee topic del JSON body
+[283] 'Normal': -> lee profile = BusinessProfile.query... para user_context
+[284] 'Normal': -> crea CouncilManager()
+[285] 'Normal':    [modules/council/orchestrator.py]
+[286] 'Normal': -> self.client = AsyncOpenAI()
+[287] 'Normal': -> Response(stream_with_context(generate()), mimetype="text/event-stream")
+[288] 'Normal':    Abre un stream HTTP. El navegador lo lee con ReadableStream
+[290] 'Normal': generate() es un generador que llama a run_session():
+[291] 'Normal': -> CouncilManager.run_session(topic, user_context)  [orchestrator.py]
+[293] 'Normal': -- RONDA 1: opiniones iniciales --
+[294] 'Normal': Para cada persona (socio, gestor, coach):
+[295] 'Normal': -> yield {type:"typing", agent:key, name, emoji}
+[296] 'Normal':    Frontend muestra "escribiendo..." con los tres puntos animados
+[297] 'Normal': -> await self._get_agent_opinion(persona, topic, user_context, transcript)
+[298] 'Normal':    [orchestrator.py : _get_agent_opinion()]
+[299] 'Normal': -> construye prompt con personalidad de la persona,
+[300] 'Normal':    contexto del negocio, dilema y debate previo
+[301] 'Normal': -> await self.client.chat.completions.create(
+[302] 'Normal':      model="gpt-4o",
+[303] 'Normal':      messages=[{role:"user", content:prompt}],
+[304] 'Normal':      max_tokens=250,
+[305] 'Normal':      temperature=0.9  (alta para variedad y caracter)
+[306] 'Normal':    )
+[307] 'Normal': -> self._track("gpt-4o", "council_opinion", resp, latency)
+[308] 'Normal':    [llm_tracker.py] -> LLMCall -> db.session.commit()
+[309] 'Normal': -> transcript.append({agent, name, emoji, text})
+[310] 'Normal': -> yield {type:"message", agent, text, round:1}
+[311] 'Normal':    Frontend renderiza la burbuja del asesor
+[312] 'Normal': -> await asyncio.sleep(0.8)  pausa para legibilidad
+[314] 'Normal': -- SEPARADOR --
+[315] 'Normal': -> yield {type:"divider", text:"Debate â€” replicas"}
+[317] 'Normal': -- RONDA 2: replicas --
+[318] 'Normal': Para cada persona:
+[319] 'Normal': -> await self._get_agent_rebuttal(persona, topic, transcript)
+[320] 'Normal': -> construye prompt con instruccion de citar a companero por nombre
+[321] 'Normal':    y discrepar si algo choca con sus principios
+[322] 'Normal': -> await self.client.chat.completions.create(
+[323] 'Normal':      model="gpt-4o",
+[324] 'Normal':      max_tokens=150,
+[325] 'Normal':      temperature=0.95  (aun mas alta para conflicto real)
+[326] 'Normal':    )
+[327] 'Normal': -> yield {type:"message", agent, text, round:2}
+[329] 'Normal': -- RONDA 3: sintesis --
+[330] 'Normal': -> yield {type:"divider", text:"Conclusion del Consejo"}
+[331] 'Normal': -> yield {type:"typing", agent:"system"}
+[332] 'Normal': -> await self._generate_synthesis(topic, transcript)
+[333] 'Normal': -> prompt con estructura fija: Veredicto, Por que, 3 pasos, Riesgo
+[334] 'Normal': -> await self.client.chat.completions.create(
+[335] 'Normal':      model="gpt-4o", max_tokens=500
+[336] 'Normal':    )
+[337] 'Normal': -> yield {type:"plan", text:markdown_plan}
+[338] 'Normal':    Frontend parsea el Markdown y renderiza el plan de accion
+[340] 'Normal': 6. Flujo de agentes proactivos (scheduler diario)
+[341] 'Normal': â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+[342] 'Normal': APScheduler ejecuta run_daily_tasks() una vez al dia
+[343] 'Normal': [modules/proactive/scheduler.py : run_daily_tasks()]
+[344] 'Normal': -> BusinessProfile.query.all()  (itera TODOS los usuarios)
+[345] 'Normal': -> para cada usuario:
+[346] 'Normal': -> active_agents = profile.active_agents  (lista JSON de la BD)
+[348] 'Normal': Si "grant_hunter" in active_agents:
+[349] 'Normal': -> GrantHunterAgent.check_new_grants(phone, profile)
+[350] 'Normal':    [modules/proactive/grant_hunter.py]
+[351] 'Normal': -> Grant.query.all()  (todas las subvenciones)
+[352] 'Normal': -> para cada subvencion:
+[353] 'Normal': -> if phone in grant.notified_phones: skip  (ya notificado)
+[354] 'Normal': -> self._ai_match(grant, profile)
+[355] 'Normal': -> prompt: "el negocio X del sector Y, es relevante esta subvencion?"
+[356] 'Normal': -> openai_client.chat.completions.create(gpt-4o-mini)
+[357] 'Normal': -> respuesta SI/NO
+[358] 'Normal': Si match:
+[359] 'Normal': -> self._notify_grant(phone, grant)
+[360] 'Normal': -> genera pitch persuasivo con GPT
+[361] 'Normal': -> NotificationService.send_in_app()
+[362] 'Normal': -> NotificationService.send_push()
+[363] 'Normal': -> grant.notified_phones.append(phone)
+[364] 'Normal': -> db.session.commit()
+[366] 'Normal': Si "business_health" in active_agents:
+[367] 'Normal': -> BusinessCoachAgent.run_daily_analysis(phone, profile)
+[368] 'Normal':    [modules/proactive/business_health.py]
+[369] 'Normal': -> self._get_financial_stats(phone)
+[370] 'Normal': -> db.session.query(func.sum(Ticket.total))
+[371] 'Normal':    .filter(Ticket.user_phone==phone, created_at>=mes_actual)
+[372] 'Normal': -> calcula proyeccion lineal al fin de mes
+[373] 'Normal': -> calcula % vs mes anterior
+[374] 'Normal': -> self._generate_insight(stats)
+[375] 'Normal': -> openai_client.chat.completions.create(gpt-4o-mini)
+[376] 'Normal':    prompt con cifras reales, pide comentario de 2 frases
+[377] 'Normal': -> NotificationService.send_in_app(phone, insight)
+[379] 'Normal': Si "networker" in active_agents:
+[380] 'Normal': -> SynergyAgent.run_daily_networking(phone, profile)
+[381] 'Normal':    [modules/proactive/networker.py]
+[382] 'Normal': -> BusinessProfile.query.filter(phone != current).all()
+[383] 'Normal': -> para cada candidato:
+[384] 'Normal': -> SynergyMatch.query.filter(a==phone OR b==phone).first()
+[385] 'Normal':    si ya existe match: skip
+[386] 'Normal': -> self._analyze_synergy_deep(profile_A, profile_B)
+[387] 'Normal': -> openai_client.chat.completions.create(gpt-4o)
+[388] 'Normal':    analiza sectores, proveedores, clientes potenciales comunes
+[389] 'Normal': -> devuelve score (0-100) y razon
+[390] 'Normal': Si score >= 80:
+[391] 'Normal': -> SynergyMatch(user_a, user_b, score, reason) -> db.commit()
+[392] 'Normal': -> NotificationService.send_in_app() a ambos usuarios
+[394] 'Normal': 7. Flujo de configuracion del negocio (Wizard) y generacion de RAG
+[395] 'Normal': â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+[396] 'Normal': POST /save_config
+[397] 'Normal': [routes/web.py : linea ~489]
+[398] 'Normal': -> valida session[user_phone]
+[399] 'Normal': -> lee todos los campos del formulario:
+[400] 'Normal':    sector, business_type, description, services, schedule,
+[401] 'Normal':    faq, return_policy, contact_info, etc.
+[403] 'Normal': -- GENERA SYSTEM PROMPT DINAMICO --
+[404] 'Normal': -> construye system_prompt como string largo:
+[405] 'Normal': "Eres el asistente de {business_name}."
+[406] 'Normal': "Sector: {sector}. Servicios: {services}."
+[407] 'Normal': "Horario: {schedule}."
+[408] 'Normal': "Politica de devoluciones: {return_policy}."
+[409] 'Normal': "FAQ: {faq}"  ... etc
+[411] 'Normal': -- GUARDA EN BD --
+[412] 'Normal': -> profile.system_prompt = system_prompt
+[413] 'Normal': -> profile.static_knowledge = {sector, services, ...}  (JSON)
+[414] 'Normal': -> db.session.commit()
+[416] 'Normal': -- INGESTA EN VECTORES (RAG) --
+[417] 'Normal': -> ingest_wizard_chunks(user_phone, static_knowledge)
+[418] 'Normal':    [modules/services/embeddings.py : ingest_wizard_chunks()]
+[419] 'Normal': -> borra chunks previos del wizard de este usuario:
+[420] 'Normal':    KnowledgeChunk.query.filter_by(phone, source_type="wizard").delete()
+[422] 'Normal': Para cada campo (sector, servicios, horario, FAQ, politica...):
+[423] 'Normal': -> texto = f"{campo_nombre}: {valor_campo}"
+[424] 'Normal': -> embed_text(texto)
+[425] 'Normal': -> openai_client.embeddings.create(model="text-embedding-3-small")
+[426] 'Normal': -> KnowledgeChunk(
+[427] 'Normal':      user_phone, source_type="wizard",
+[428] 'Normal':      source_name="wizard_config",
+[429] 'Normal':      content=texto, embedding=vector
+[430] 'Normal':    )
+[431] 'Normal': -> db.session.add(kc)
+[432] 'Normal': -> db.session.commit()
+[433] 'Normal': -> flash("Configuracion guardada") -> redirect("/dashboard")
+[435] 'Normal': 8. Flujo de autenticacion (login y sesion Flask)
+[436] 'Normal': â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+[437] 'Normal': POST /login
+[438] 'Normal': [routes/web.py : linea ~66]
+[439] 'Normal': -> @limiter.limit("5 per minute", methods=["POST"])
+[440] 'Normal':    Flask-Limiter bloquea si hay mas de 5 intentos/minuto
+[441] 'Normal': -> email = request.form["email"]
+[442] 'Normal': -> password = request.form["password"]
+[443] 'Normal': -> profile = BusinessProfile.query.filter_by(email=email).first()
+[444] 'Normal': -> check_password_hash(profile.password_hash, password)
+[445] 'Normal':    werkzeug.security verifica PBKDF2-SHA256 con el salt almacenado
+[446] 'Normal': Si correcto:
+[447] 'Normal': -> session["user_phone"] = profile.user_phone
+[448] 'Normal': -> session["user_email"] = profile.email
+[449] 'Normal': -> session["business_name"] = profile.business_name
+[450] 'Normal':    Flask firma la sesion con SECRET_KEY usando itsdangerous
+[451] 'Normal':    Se envia como cookie HttpOnly + SameSite=Lax
+[452] 'Normal': -> redirect("/dashboard")
+[453] 'Normal': Si incorrecto:
+[454] 'Normal': -> flash("Credenciales incorrectas") -> render login.html
+[456] 'Normal': Proteccion de rutas en cada endpoint privado:
+[457] 'Normal': -> if "user_phone" not in session:
+[458] 'Normal': ->     return redirect(url_for("web.login"))
+[460] 'Normal': POST /register
+[461] 'Normal': -> valida que email no existe ya en BD
+[462] 'Normal': -> generate_password_hash(password)
+[463] 'Normal':    werkzeug genera salt aleatorio + PBKDF2-SHA256
+[464] 'Normal': -> BusinessProfile(email, user_phone, business_name, password_hash)
+[465] 'Normal': -> db.session.add() -> db.session.commit()
+[466] 'Normal': -> redirect("/login")
+[468] 'Normal': 9. Mapa de dependencias entre modulos
+[469] 'Normal': â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+[470] 'Normal': Que importa cada modulo de quien â€” para entender el grafo de dependencias del proyecto:
+[472] 'Normal': Zeptai  |  Call Graph completo  |  Alejandro Bravo Talavante  |  TFM EBIS 2026
