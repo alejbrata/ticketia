@@ -23,28 +23,27 @@ class AdminAssistantAgent:
             logger.info("Clasificando imagen: %s...", image_url[:15])
             
             # --- PREPARAR IMAGEN (Local vs URL) ---
-            # SSRF protection: solo se permiten rutas locales del servidor.
-            # URLs externas controladas por el usuario podrían apuntar a servicios internos.
+            # URLs externas se pasan directamente a la Vision API de OpenAI (OpenAI
+            # hace el fetch desde sus servidores, no el nuestro — sin riesgo SSRF).
+            # Rutas locales se convierten a base64 para evitar exponer paths internos.
             image_content = []
             if image_url.startswith(('http://', 'https://')):
-                logger.warning("URL externa bloqueada por SSRF protection: %s", image_url[:60])
-                return 'draft'  # fallback seguro
+                image_content = [{"type": "image_url", "image_url": {"url": image_url}}]
             else:
-                # Local Path logic
+                # Local Path → base64
                 try:
                     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                    rel_path = image_url.lstrip('/') 
+                    rel_path = image_url.lstrip('/')
                     local_path = os.path.join(base_dir, rel_path)
-                    
+
                     with open(local_path, "rb") as image_file:
                         base64_image = base64.b64encode(image_file.read()).decode('utf-8')
                         image_content = [{
-                            "type": "image_url", 
+                            "type": "image_url",
                             "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
                         }]
                 except Exception as e:
                     logger.warning("Error cargando imagen local para clasificación: %s", e)
-                    # Fallback tentativo, aunque probablemente falle si es local path
                     image_content = [{"type": "image_url", "image_url": {"url": image_url}}]
 
             prompt = f"""

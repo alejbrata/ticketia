@@ -10,7 +10,7 @@ xlsxwriter
 flask-sqlalchemy
 flask-mail
 flask-admin
-fpdf2
+fpdf2>=2.7.4
 python-dateutil
 matplotlib
 requests
@@ -22,8 +22,9 @@ gevent
 pytest
 deepeval
 mcp[cli]
-duckduckgo-search
+duckduckgo-search>=6.2,<8.0
 flask-limiter
 APScheduler
+schedule
 pywebpush
 python-magic

@@ -16,7 +16,13 @@ Tools disponibles:
 
 import logging
 from datetime import datetime, date as date_type
-from duckduckgo_search import DDGS
+
+try:
+    from duckduckgo_search import DDGS
+    _DDGS_AVAILABLE = True
+except ImportError:
+    DDGS = None
+    _DDGS_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +124,8 @@ def tool_search_web(query: str, max_results: int = 5) -> str:
         query: La consulta de búsqueda.
         max_results: Número máximo de resultados (por defecto 5).
     """
+    if DDGS is None:
+        return "Búsqueda web no disponible: duckduckgo-search no está instalado."
     try:
         with DDGS() as ddgs:
             search_results = list(ddgs.text(query, max_results=max_results))
