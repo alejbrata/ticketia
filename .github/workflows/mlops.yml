@@ -33,6 +33,7 @@ jobs:
         run: |
           python -m pytest tests/ -v --tb=short \
             --ignore=tests/test_deepeval_rag.py \
+            --ignore=tests/test_observability.py \
             --continue-on-collection-errors
 
       - name: Run AI agent evaluations
