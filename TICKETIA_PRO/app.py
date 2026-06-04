@@ -12,6 +12,7 @@ from core.db_models import db, BusinessProfile, Ticket, ChatMessage, Grant, Appo
 from flask_admin import Admin
 from flask_admin.contrib.sqla import ModelView
 from core.logging_config import setup_logging
+from core.telemetry import init_tracing, init_sqlalchemy_tracing
 
 setup_logging()
 
@@ -24,6 +25,9 @@ mail = Mail(app)
 
 # Rate limiting
 limiter.init_app(app)
+
+# OpenTelemetry tracing (no-op si OTEL_EXPORTER_OTLP_ENDPOINT no está definido)
+init_tracing(app)
 
 # --- GLOBAL CONTEXT PROCESSOR (NOTIFICACIONES) ---
 @app.context_processor
@@ -87,6 +91,7 @@ with app.app_context():
             conn.commit()
 
     db.create_all()
+    init_sqlalchemy_tracing()
 
     # Migración automática: añadir end_time si no existe (sin perder datos)
     try:
@@ -125,7 +130,10 @@ def set_security_headers(response):
     response.headers['Permissions-Policy']     = 'geolocation=(), microphone=(self), camera=()'
     if os.environ.get('FLASK_ENV') == 'production':
         response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
-    # CSP: permite Tailwind CDN y Google Fonts usados en los templates
+    # CSP: permite Tailwind CDN, Google Fonts y embeds de observabilidad (Grafana/Jaeger)
+    grafana_url    = os.environ.get('GRAFANA_URL',    'http://localhost:3000')
+    jaeger_url     = os.environ.get('JAEGER_URL',     'http://localhost:16686')
+    prometheus_url = os.environ.get('PROMETHEUS_URL', 'http://localhost:9090')
     response.headers['Content-Security-Policy'] = (
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; "
@@ -134,6 +142,7 @@ def set_security_headers(response):
         "img-src 'self' data: blob: https:; "
         "connect-src 'self'; "
         "media-src 'self' blob:; "
+        f"frame-src {grafana_url} {jaeger_url} {prometheus_url}; "
         "frame-ancestors 'self';"
     )
     return response

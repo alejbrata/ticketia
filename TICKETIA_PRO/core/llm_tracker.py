@@ -122,6 +122,21 @@ def track(
         except Exception:
             pass
 
+    # Emitir métricas Prometheus en paralelo (no bloquea si falla)
+    try:
+        from core.telemetry import record_llm
+        record_llm(
+            model=model,
+            stage=stage,
+            success=success,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            latency_ms=latency_ms,
+            cost_usd=cost,
+        )
+    except Exception:
+        pass
+
 
 @contextmanager
 def timed_track(user_phone: str | None, model: str, stage: str, extra: dict | None = None):

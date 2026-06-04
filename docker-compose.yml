@@ -59,6 +59,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://postgres:password@db:5432/ticketia_db
       - MCP_SSE_PORT=8001
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     volumes:
       # Hot-reload del codigo en desarrollo: cambios en TICKETIA_PRO se
       # reflejan sin rebuild de la imagen.
@@ -86,8 +87,11 @@ services:
     environment:
       - PORT=5000
       - DATABASE_URL=postgresql://postgres:password@db:5432/ticketia_db
-      # Apunta al servidor MCP SSE para eliminar el overhead del subprocess stdio
       - MCP_SSE_URL=http://mcp:8001/sse
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
+      - GRAFANA_URL=http://localhost:3000
+      - JAEGER_URL=http://localhost:16686
+      - PROMETHEUS_URL=http://localhost:9090
     volumes:
       - ./TICKETIA_PRO:/app/TICKETIA_PRO
       # Persistir uploads y documentos generados fuera del contenedor
@@ -124,7 +128,55 @@ services:
       web:
         condition: service_started
 
+  # ── Jaeger — trazas distribuidas (OpenTelemetry) ─────────────────────────────
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    container_name: ticketia_jaeger
+    ports:
+      - "16686:16686"   # UI de Jaeger
+      - "4318:4318"     # OTLP HTTP (receptor de trazas)
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    restart: unless-stopped
+
+  # ── Prometheus — scraping de métricas ────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: ticketia_prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_started
+
+  # ── Grafana — dashboards de observabilidad ────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.3
+    container_name: ticketia_grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=ticketia
+      - GF_SECURITY_ALLOW_EMBEDDING=true
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+
 volumes:
   pgdata:
   uploads_data:
   generated_docs:
+  grafana_data:

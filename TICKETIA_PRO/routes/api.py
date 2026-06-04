@@ -634,6 +634,27 @@ def llm_metrics():
     })
 
 
+@api_bp.route('/api/prometheus')
+@limiter.exempt
+def prometheus_metrics():
+    """
+    Endpoint de scraping para Prometheus.
+    Acceso permitido a: admin autenticado + IPs internas Docker (172.x, 10.x, 127.x).
+    """
+    remote = request.remote_addr or ''
+    is_admin = session.get('user_email') == 'admin@ticketia.com'
+    is_internal = (
+        remote.startswith('172.')
+        or remote.startswith('10.')
+        or remote in ('127.0.0.1', '::1', 'localhost')
+    )
+    if not is_admin and not is_internal:
+        return jsonify({"error": "Forbidden"}), 403
+
+    from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+    return generate_latest(), 200, {'Content-Type': CONTENT_TYPE_LATEST}
+
+
 # ---------------------------------------------------------------------------
 # Ciclo de vida de facturas
 # ---------------------------------------------------------------------------

@@ -122,6 +122,9 @@
                 <span class="text-lg">👤</span><span>Mi Perfil</span>
             </a>
             {% if session.get('user_email') == 'admin@ticketia.com' %}
+            <a href="{{ url_for('web.observabilidad_page') }}" onclick="toggleNavMenu()" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-colors {{ nav_active_drawer if current_page == 'observabilidad' else nav_idle_drawer }}">
+                <span class="text-lg">🔭</span><span>Observabilidad</span>
+            </a>
             <a href="/admin" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-colors text-slate-600 hover:bg-slate-50">
                 <span class="text-lg">🛡️</span><span>Admin</span>
             </a>

@@ -1076,6 +1076,24 @@ def eval_page():
     return render_template('eval.html', current_page='eval')
 
 
+@web_bp.route('/observabilidad')
+@_web_login_required
+def observabilidad_page():
+    if session.get('user_email') != 'admin@ticketia.com':
+        flash('Acceso restringido a administradores.', 'error')
+        return redirect(url_for('web.dashboard'))
+    grafana_url    = os.environ.get('GRAFANA_URL',    'http://localhost:3000')
+    jaeger_url     = os.environ.get('JAEGER_URL',     'http://localhost:16686')
+    prometheus_url = os.environ.get('PROMETHEUS_URL', 'http://localhost:9090')
+    return render_template(
+        'observabilidad.html',
+        current_page='observabilidad',
+        grafana_url=grafana_url,
+        jaeger_url=jaeger_url,
+        prometheus_url=prometheus_url,
+    )
+
+
 @web_bp.route('/networking')
 @_web_login_required
 def networking():
