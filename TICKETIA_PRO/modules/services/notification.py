@@ -34,7 +34,7 @@ class NotificationService:
         try:
             msg = Message(
                 subject=subject,
-                sender=os.environ.get('MAIL_DEFAULT_SENDER', 'no-reply@ticketia.com'),
+                sender=os.environ.get('MAIL_DEFAULT_SENDER', 'no-reply@zeptai.com'),
                 recipients=recipients
             )
             if body:
@@ -72,7 +72,7 @@ class NotificationService:
 
         vapid_private = os.environ.get('VAPID_PRIVATE_KEY')
         vapid_public = os.environ.get('VAPID_PUBLIC_KEY')
-        vapid_email = os.environ.get('VAPID_CLAIM_EMAIL', 'mailto:admin@ticketia.com')
+        vapid_email = os.environ.get('VAPID_CLAIM_EMAIL', 'mailto:admin@zeptai.com')
 
         if not vapid_private or not vapid_public:
             logger.warning("VAPID keys no configuradas. Omitiendo Web Push.")

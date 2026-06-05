@@ -25,7 +25,7 @@ from datetime import datetime, timedelta
 
 os.environ.setdefault('OPENAI_API_KEY', 'sk-fake-key-for-testing')
 os.environ.setdefault('SECRET_KEY', 'test-secret-key-very-long-and-random')
-os.environ.setdefault('MAIL_DEFAULT_SENDER', 'test@ticketia.com')
+os.environ.setdefault('MAIL_DEFAULT_SENDER', 'test@zeptai.com')
 os.environ.setdefault('RUNWAY_API_KEY', 'rw-fake-key-for-testing')
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))

@@ -1,6 +1,6 @@
 # 🎓 Guía de Ejecución para Defensa TFM
 
-Sigue estos pasos para levantar el entorno completo de Ticketia (Zeptai) durante la demostración en vivo.
+Sigue estos pasos para levantar el entorno completo de Zeptai (Zeptai) durante la demostración en vivo.
 
 ## 1. Terminal Principal: La Aplicación Web
 Esta terminal levanta el servidor Flask, la interfaz web y los agentes inteligentes (incluido "El Consejo").

@@ -16,7 +16,7 @@ from modules.proactive.networker import SynergyAgent
 from modules.proactive.business_health import BusinessCoachAgent
 from modules.proactive.post_sales import PostSalesAgent
 
-class TestTicketiaProactiveAgents(unittest.TestCase):
+class TestZeptaiProactiveAgents(unittest.TestCase):
     def setUp(self):
         app.config['TESTING'] = True
         app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:' # In-memory DB
@@ -28,7 +28,7 @@ class TestTicketiaProactiveAgents(unittest.TestCase):
             # Create Dummy User
             self.user = BusinessProfile(
                 user_phone="123456789",
-                email="test@ticketia.com",
+                email="test@zeptai.com",
                 business_name="Panadería Pepe",
                 static_knowledge={"sector": "Panadería", "location": "Madrid"}
             )

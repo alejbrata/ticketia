@@ -1,0 +1,337 @@
+[1] 'Normal': Este documento explica linea a linea que hace cada modulo, como y por que.
+[3] 'Normal': 0. Vision general del sistema
+[4] 'Normal': ________________________________________________________________________________
+[5] 'Normal': Zeptai es una plataforma SaaS multi-agente de IA Generativa para PYMEs desplegada en Docker. El stack tecnologico es: Python + Flask (backend), PostgreSQL + pgvector (base de datos vectorial), OpenAI API (GPT-4o, Whisper, DALL-E 3, embeddings), RunwayML (video), y una PWA en Jinja2 + Tailwind CSS.
+[6] 'Normal': La arquitectura se organiza en 4 capas:
+[7] 'Normal': • Capa de entrada: app.py inicializa Flask, registra blueprints y migra la BD al arrancar
+[8] 'Normal': • Capa de datos: core/db_models.py define 14 modelos SQLAlchemy sobre PostgreSQL
+[9] 'Normal': • Capa de rutas: routes/ con 3 blueprints: web (HTML), api (JSON), knowledge (RAG)
+[10] 'Normal': • Capa de logica: modules/ contiene agentes, servicios y orquestadores
+[11] 'Normal': El despliegue usa Docker Compose con 4 contenedores independientes:
+[12] 'Normal': • zeptai_app: aplicacion Flask principal, puerto 5000
+[13] 'Normal': • zeptai_mcp: servidor MCP con herramientas externas, puerto 8001
+[14] 'Normal': • zeptai_scheduler: APScheduler para tareas proactivas diarias
+[15] 'Normal': • zeptai_db: PostgreSQL 15 con extension pgvector para embeddings
+[16] 'Normal': 1. app.py — Punto de entrada
+[17] 'Normal': ________________________________________________________________________________
+[18] 'Normal': Es el fichero que Python ejecuta al arrancar. Hace cuatro cosas en orden: carga variables de entorno, inicializa Flask con su configuracion, prepara la base de datos y registra los tres blueprints de rutas.
+[19] 'Normal': 1.1 Carga de entorno
+[20] 'Normal': load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
+[21] 'Normal': Carga el archivo .env que esta en la raiz del proyecto (un nivel por encima de TICKETIA_PRO/). Asi las API keys nunca estan hardcodeadas en el codigo. load_dotenv lee el fichero y mete cada variable como variable de entorno del proceso.
+[22] 'Normal': 1.2 Inicializacion de Flask
+[23] 'Normal': app = Flask(__name__)
+[24] 'Normal': Crea la aplicacion Flask. __name__ le dice a Flask donde esta el paquete para poder encontrar templates y archivos estaticos. A continuacion se carga la configuracion:
+[25] 'Normal': app.config.from_object(Config)
+[26] 'Normal': Config es una clase en core/config.py que lee todas las variables de entorno (SECRET_KEY, DATABASE_URL, OPENAI_API_KEY, etc.) y las expone como atributos.
+[27] 'Normal': 1.3 Migracion automatica de la BD
+[28] 'Normal': with app.app_context():
+    db.create_all()
+[29] 'Normal': db.create_all() lee todos los modelos de core/db_models.py y crea las tablas que no existan. No borra datos existentes. Tambien ejecuta un ALTER TABLE para anadir columnas nuevas si faltan (migracion manual sin Alembic).
+[30] 'Normal': Si la URI es PostgreSQL, antes activa la extension pgvector:
+[31] 'Normal': conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+[32] 'Normal': Sin esta extension, los embeddings de 1536 dimensiones no se pueden almacenar ni buscar.
+[33] 'Normal': 1.4 Blueprints
+[34] 'Normal': app.register_blueprint(web_bp)
+app.register_blueprint(api_bp)
+app.register_blueprint(knowledge_bp)
+[35] 'Normal': Un Blueprint es un conjunto de rutas agrupadas. web_bp sirve paginas HTML, api_bp expone endpoints JSON para el chat y el audio, y knowledge_bp gestiona la subida y consulta de documentos RAG. Separar en blueprints permite organizar el codigo sin necesidad de microservicios.
+[36] 'Normal': 1.5 Panel de administracion
+[37] 'Normal': Flask-Admin monta un panel en /admin protegido por la clase SecureModelView, que solo permite acceso al email admin@zeptai.com. Desde ahi se pueden ver y editar todos los registros de la base de datos directamente.
+[39] 'Normal': 2. core/ — Configuracion y servicios transversales
+[40] 'Normal': ________________________________________________________________________________
+[41] 'Normal': 2.1 core/config.py — Configuracion centralizada
+[42] 'Normal': Define la clase Config que centraliza toda la configuracion de la aplicacion. Todos los valores sensibles se leen de variables de entorno con os.environ.get().
+[43] 'Normal': • SECRET_KEY: clave para firmar las cookies de sesion de Flask. Si cambia, todas las sesiones activas se invalidan
+[44] 'Normal': • SQLALCHEMY_DATABASE_URI: URI de PostgreSQL o SQLite como fallback. Si DATABASE_URL empieza por postgres://, se corrige a postgresql:// (Heroku legacy)
+[45] 'Normal': • SESSION_PERMANENT + PERMANENT_SESSION_LIFETIME: sesiones de 8 horas. Tras ese tiempo el usuario tiene que volver a hacer login
+[46] 'Normal': • SESSION_COOKIE_HTTPONLY: True: el JavaScript del navegador no puede leer la cookie de sesion, proteccion contra XSS
+[47] 'Normal': • SESSION_COOKIE_SAMESITE = Lax: proteccion basica contra CSRF: la cookie solo se envia en navegacion normal, no en peticiones cross-site
+[48] 'Normal': 2.2 core/db_models.py — Modelos de base de datos
+[49] 'Normal': Define 14 clases SQLAlchemy, cada una mapeada a una tabla de PostgreSQL. SQLAlchemy actua como ORM: en vez de escribir SQL, se trabaja con objetos Python y el ORM genera las queries automaticamente.
+[50] 'Normal': BusinessProfile
+[51] 'Normal': Es el modelo central. Cada usuario del sistema tiene exactamente un BusinessProfile. user_phone es la clave primaria y tambien la clave foranea que relaciona todos los demas modelos. Campos destacados:
+[52] 'Normal': • password_hash: contrasena almacenada como hash PBKDF2-SHA256 con salt aleatorio (Werkzeug). Nunca se guarda la contrasena en texto plano
+[53] 'Normal': • features: JSON con flags de funcionalidades activadas por plan (bot_enabled, etc.)
+[54] 'Normal': • system_prompt: texto personalizado que define como se comporta el agente con los clientes de ese negocio
+[55] 'Normal': • static_knowledge: JSON con los campos del wizard (sector, horarios, servicios, FAQ)
+[56] 'Normal': • active_agents: lista JSON con los IDs de agentes proactivos activados por el usuario
+[57] 'Normal': • agent_config: JSON anidado con la configuracion especifica de cada agente (politicas de devolucion, etc.)
+[58] 'Normal': • push_subscription: JSON con los datos de suscripcion a Web Push para notificaciones PWA
+[59] 'Normal': Ticket
+[60] 'Normal': Representa un recibo o factura procesada. Cuando el usuario sube una foto de un ticket, GPT-4o Vision extrae los datos y se crea un registro Ticket en la BD.
+[61] 'Normal': • image_path: ruta relativa al fichero de imagen guardado en static/uploads/
+[62] 'Normal': • status: pending (recien subido) o processed (datos extraidos correctamente)
+[63] 'Normal': • concept, total, nif, provider, date: datos fiscales extraidos por Vision API
+[64] 'Normal': ChatMessage
+[65] 'Normal': Almacena cada turno de la conversacion. El historial se recupera en cada nueva peticion para dar contexto al agente. Campos clave:
+[66] 'Normal': • role: user, assistant o tool. OpenAI exige este formato para el historial de mensajes
+[67] 'Normal': • tool_call_id + name: necesarios para los mensajes de resultado de herramienta en el protocolo de tool calling
+[68] 'Normal': Limite automatico: si hay mas de 50 mensajes, el sistema borra los mas antiguos hasta quedarse con 40. Esto evita que el contexto crezca indefinidamente y encarezca las llamadas a GPT.
+[69] 'Normal': KnowledgeChunk
+[70] 'Normal': Es el corazon del sistema RAG. Cada chunk es un fragmento de texto del negocio con su embedding vectorial de 1536 dimensiones.
+[71] 'Normal': • source_type: wizard (configuracion del negocio) o document (PDF subido por el usuario)
+[72] 'Normal': • source_name: nombre del documento de origen
+[73] 'Normal': • content: texto del fragmento (max 1600 caracteres)
+[74] 'Normal': • embedding: vector de 1536 floats en pgvector. En SQLite se guarda como texto serializado como fallback
+[75] 'Normal': LLMCall
+[76] 'Normal': Registra cada llamada a un modelo de IA con sus metricas. Permite calcular el coste real de la plataforma y detectar ineficiencias.
+[77] 'Normal': • model: gpt-4o, gpt-4o-mini, whisper-1, dall-e-3, etc.
+[78] 'Normal': • stage: en que parte del codigo se hizo la llamada (council_opinion, rag_embed, etc.)
+[79] 'Normal': • prompt_tokens + completion_tokens: tokens consumidos. El coste se calcula como tokens * precio_por_modelo
+[80] 'Normal': • latency_ms: tiempo de respuesta en milisegundos
+[81] 'Normal': Otros modelos
+[82] 'Normal': • Appointment: citas: fecha, hora, cliente, telefono. end_time se anadi o con ALTER TABLE en migracion automatica
+[83] 'Normal': • Grant: subvenciones disponibles con sector, importe, deadline y lista de usuarios ya notificados
+[84] 'Normal': • SynergyMatch: matches B2B entre dos usuarios con score (0-100) y razon generada por IA
+[85] 'Normal': • Notification: alertas in-app: titulo, mensaje, tipo, leida/no leida
+[86] 'Normal': • GeneratedDocument: documentos generados: propuestas PDF, imagenes PNG, slides PPTX, videos MP4
+[87] 'Normal': • ActivityLog: auditoria de acciones del sistema con metodo estatico .log() para registrar facilmente
+[88] 'Normal': • ChatFeedback: valoraciones +1/-1 del chatbot por mensaje
+[89] 'Normal': • RagRetrieval: log de consultas RAG: query, chunks devueltos, score promedio
+[90] 'Normal': 2.3 core/clients.py — Clientes externos singleton
+[91] 'Normal': Factoria de clientes para APIs externas. Usa el patron singleton: crea la instancia la primera vez y la reutiliza en llamadas posteriores, evitando crear nuevas conexiones en cada peticion HTTP.
+[92] 'Normal': • get_openai_client(): devuelve instancia global de OpenAI(api_key=OPENAI_API_KEY)
+[93] 'Normal': • get_runway_client(): devuelve instancia global de RunwayML para generacion de video
+[94] 'Normal': 2.4 core/llm_tracker.py — Metricas de LLM
+[95] 'Normal': Intercepta cada llamada a modelos de IA y registra el consumo en la tabla LLMCall. Los precios estan hardcodeados segun la tarifa actual de OpenAI:
+[96] 'Normal': GPT-4o:      $2.50 / 1M tokens input,  $10.00 / 1M tokens output
+[97] 'Normal': GPT-4o-mini: $0.15 / 1M tokens input,   $0.60 / 1M tokens output
+[98] 'Normal': DALL-E 3:    $0.04 / imagen
+[99] 'Normal': Whisper:     $0.006 / minuto de audio
+[100] 'Normal': RunwayML:    $0.05 / segundo de video
+[101] 'Normal': 2.5 core/limiter.py — Rate limiting
+[102] 'Normal': Usa Flask-Limiter para proteger endpoints criticos contra abuso. El limite por defecto es 300 peticiones/dia y 60/hora. El endpoint /login tiene un limite especifico de 5 peticiones/minuto para mitigar ataques de fuerza bruta.
+[104] 'Normal': 3. routes/ — Rutas de la aplicacion
+[105] 'Normal': ________________________________________________________________________________
+[106] 'Normal': 3.1 routes/web.py — Paginas HTML
+[107] 'Normal': Blueprint web_bp. Gestiona autenticacion, dashboard y todas las vistas que devuelven HTML renderizado con Jinja2.
+[108] 'Normal': /register y /login
+[109] 'Normal': El registro valida que el email no exista, hace hash de la contrasena con generate_password_hash (PBKDF2-SHA256 + salt automatico) y crea el BusinessProfile. El login comprueba con check_password_hash y guarda user_phone en la sesion Flask. La sesion es una cookie firmada con SECRET_KEY: si alguien la modifica, Flask la detecta y la invalida.
+[110] 'Normal': /dashboard
+[111] 'Normal': Hace varias queries de agregacion sobre la BD del usuario actual: suma total de gastos del mes actual (filtrado por created_at >= primer dia del mes), conteo de tickets pendientes, chats atendidos y activity logs recientes. Pasa todos estos datos al template dashboard.html.
+[112] 'Normal': /wizard y /save_config
+[113] 'Normal': El wizard es el formulario donde el usuario configura su negocio: sector, horarios, servicios, FAQ, politica de devoluciones, etc. Al guardar, /save_config hace dos cosas criticas:
+[114] 'Normal': • Genera el system_prompt: construye dinamicamente el texto de instrucciones para GPT a partir de los campos del formulario
+[115] 'Normal': • Ingestiona en RAG: llama a ingest_wizard_chunks() para trocear cada campo en chunks, generar embeddings y guardarlos en pgvector
+[116] 'Normal': /documents
+[117] 'Normal': Lista todos los GeneratedDocument del usuario agrupados por fecha y tipo (propuestas, imagenes, slides, videos). Tambien permite eliminar documentos borrando el fichero fisico del disco y el registro de la BD.
+[118] 'Normal': /marketplace (Tienda IA)
+[119] 'Normal': Muestra los agentes opcionales con su estado real (activo/inactivo) leido de BusinessProfile.active_agents. El toggle POST a /toggle_agent/<id> aniade o quita el ID del agente de esa lista JSON y hace commit.
+[120] 'Normal': 3.2 routes/api.py — Endpoints JSON
+[121] 'Normal': Blueprint api_bp. Todos los endpoints devuelven JSON y son consumidos por el JavaScript del frontend.
+[122] 'Normal': /api/chat
+[123] 'Normal': Recibe el mensaje del usuario, llama a run_agent() y devuelve la respuesta en JSON. Es el endpoint central de toda la plataforma. Cualquier cosa que el usuario escriba en el chat pasa por aqui.
+[124] 'Normal': /upload_web_ticket
+[125] 'Normal': Recibe una imagen de ticket via multipart/form-data, la guarda en static/uploads/temp/, llama a process_ticket_image() que usa GPT-4o Vision para extraer datos fiscales, y crea un registro Ticket en la BD. Devuelve JSON con confirmacion y los datos extraidos.
+[126] 'Normal': /upload_web_audio
+[127] 'Normal': Es el endpoint de navegacion y comandos por voz. El flujo es:
+[128] 'Normal': • 1: recibe audio WebM, lo guarda temporalmente
+[129] 'Normal': • 2: llama a Whisper API para transcribir el audio a texto
+[130] 'Normal': • 3: llama a _classify_voice_intent() que usa GPT-4o-mini para decidir si el usuario quiere NAVEGAR o EJECUTAR una accion
+[131] 'Normal': • 4: si es navegacion, devuelve {navigate: "/ruta"} y el JS hace window.location.href
+[132] 'Normal': • 5: si es accion, pasa el texto al agente normal y devuelve la respuesta del chat
+[133] 'Normal': La clasificacion de intencion usa un prompt con la lista de rutas disponibles y el texto transcrito. GPT responde con JSON: {type: navigate, route: /agenda} o {type: action}. Temperatura 0 para maxima determinismo.
+[134] 'Normal': /api/council/stream
+[135] 'Normal': Endpoint SSE (Server-Sent Events). En vez de devolver una respuesta JSON completa, abre un stream HTTP y va enviando eventos conforme el debate avanza. El frontend escucha con un ReadableStream y renderiza cada mensaje en tiempo real. Llama a CouncilManager.run_session() que es un generador asincrono.
+[136] 'Normal': /generate_video_from_image
+[137] 'Normal': Recibe una imagen y lanza perform_async_marketing_generation() en un hilo separado. Devuelve inmediatamente {processing: true} al usuario. El hilo genera el video con RunwayML (tarda minutos), guarda el MP4, crea el GeneratedDocument y envia una notificacion push al usuario cuando termina.
+[138] 'Normal': 3.3 routes/knowledge.py — Base de conocimiento RAG
+[139] 'Normal': /knowledge/upload
+[140] 'Normal': Recibe PDF, TXT o MD (maximo 20MB). Valida la extension con _allowed(). Guarda el fichero en static/uploads/knowledge/<user_phone>/. Lanza la ingestión en un hilo de background para no bloquear la respuesta HTTP. El hilo llama a ingest_document() que trocea, embebe y guarda en pgvector.
+[141] 'Normal': /knowledge (GET)
+[142] 'Normal': Lista todos los documentos ingestados del usuario consultando KnowledgeChunk con source_type=document y agrupando por source_name. Muestra nombre, numero de chunks y fecha de subida.
+[144] 'Normal': 4. modules/agents/ — Motor del agente principal
+[145] 'Normal': ________________________________________________________________________________
+[146] 'Normal': 4.1 manager.py — AgentExecutor
+[147] 'Normal': Es el cerebro de la plataforma. Cuando el usuario envia un mensaje, AgentExecutor.execute() orquesta todo el proceso.
+[148] 'Normal': El flujo completo de execute()
+[149] 'Normal': • Paso 1: guardar el mensaje del usuario en ChatMessage (BD)
+[150] 'Normal': • Paso 2: _build_rag_system_prompt(): buscar los 5 chunks mas similares a la query del usuario en pgvector y anadirlos al system_prompt. Esto es RAG en accion: el agente sabe sobre el negocio concreto del usuario
+[151] 'Normal': • Paso 3: llamar a GPT-4o con el historial de mensajes + system_prompt enriquecido + TOOLS_SCHEMA (tool_choice=auto)
+[152] 'Normal': • Paso 4: si GPT decide usar una herramienta (tool_call), ejecutarla con _process_tool_calls()
+[153] 'Normal': • Paso 5: si hubo tool calls, hacer una segunda llamada a GPT con los resultados de las herramientas para que genere la respuesta final en lenguaje natural
+[154] 'Normal': • Paso 6: guardar la respuesta del asistente en ChatMessage y devolver al frontend
+[155] 'Normal': Por que dos llamadas a GPT?
+[156] 'Normal': El protocolo de function calling de OpenAI funciona asi: en la primera llamada, GPT decide que herramienta usar y con que parametros pero NO genera la respuesta final. Hay que ejecutar la herramienta por nuestra cuenta y hacer una segunda llamada pasando el resultado para que GPT genere la respuesta en lenguaje natural. Esto da control total sobre la ejecucion de las herramientas.
+[157] 'Normal': _build_rag_system_prompt()
+[158] 'Normal': Combina el system_prompt configurado por el usuario con los chunks RAG mas relevantes. Llama a retrieve_chunks(user_phone, query, top_k=5) que hace una busqueda de similitud coseno en pgvector: calcula la distancia entre el embedding de la query y todos los embeddings guardados, y devuelve los 5 mas cercanos.
+[159] 'Normal': SELECT content FROM knowledge_chunk
+ORDER BY embedding <=> query_embedding
+LIMIT 5
+[160] 'Normal': El operador <=> es la distancia coseno de pgvector. Mas cercano = mas semanticamente similar.
+[161] 'Normal': 4.2 tools.py — Herramientas del agente
+[162] 'Normal': Define TOOLS_SCHEMA: el JSON que se envia a OpenAI describiendo las herramientas disponibles. GPT lee este schema y decide cuando y como llamar a cada herramienta.
+[163] 'Normal': • check_availability(date): consulta la tabla Appointment del usuario y devuelve los huecos libres de ese dia
+[164] 'Normal': • book_appointment(...): crea una cita verificando conflictos de horario. Detecta solapamientos antes de insertar
+[165] 'Normal': • create_proposal_from_last_image: busca el ultimo ticket subido y genera un PDF de presupuesto profesional
+[166] 'Normal': • create_proposal_from_text: genera presupuesto a partir de texto libre dictado por el usuario
+[167] 'Normal': • generate_marketing_material: delega en MarketingAgent para crear imagen, slide o video
+[168] 'Normal': • handle_customer_service: delega en PostSalesAgent para gestionar incidencias con las politicas configuradas
+[169] 'Normal': 4.3 history.py — Gestion del historial
+[170] 'Normal': HistoryService gestiona el contexto conversacional. OpenAI necesita el historial completo en cada llamada para mantener coherencia en la conversacion.
+[171] 'Normal': • get_recent_history(): recupera los ultimos N mensajes en orden cronologico. Formatea correctamente los mensajes tool con tool_call_id y name que exige la API de OpenAI
+[172] 'Normal': • save_interaction(): guarda un mensaje y activa auto-limpieza si hay mas de 50 mensajes: borra los mas antiguos hasta quedarse con 40. Esto controla el coste de tokens
+[174] 'Normal': 5. modules/services/ — Servicios de soporte
+[175] 'Normal': ________________________________________________________________________________
+[176] 'Normal': 5.1 embeddings.py — Pipeline RAG
+[177] 'Normal': Es el servicio mas importante del sistema. Gestiona todo el ciclo del RAG: ingestión de documentos, generacion de embeddings y recuperacion por similitud.
+[178] 'Normal': Parametros de chunking
+[179] 'Normal': CHUNK_SIZE    = 1600  # caracteres por fragmento
+[180] 'Normal': CHUNK_OVERLAP = 400   # solapamiento entre fragmentos consecutivos
+[181] 'Normal': El solapamiento de 400 caracteres evita perder informacion en los bordes de los chunks. Si una frase importante esta entre dos chunks, el solapamiento garantiza que aparece completa en uno de ellos.
+[182] 'Normal': ingest_wizard_chunks()
+[183] 'Normal': Cuando el usuario configura el wizard, cada campo (sector, servicios, horarios, FAQ, politica de devoluciones) se convierte en un chunk separado. Para cada chunk: 1) genera el embedding con text-embedding-3-small, 2) crea un KnowledgeChunk con source_type=wizard, 3) guarda en BD.
+[184] 'Normal': ingest_document()
+[185] 'Normal': Para PDFs: extrae el texto con PyPDF2 o pdfplumber. Para TXT/MD: lee directamente. Luego trocea el texto en chunks de 1600 caracteres con 400 de solapamiento, embebe cada uno y guarda en KnowledgeChunk con source_type=document.
+[186] 'Normal': retrieve_chunks()
+[187] 'Normal': Recibe la query del usuario, genera su embedding, y ejecuta la busqueda de similitud coseno en pgvector. Devuelve los top_k chunks mas relevantes con su score de similitud. Estos chunks se inyectan en el system_prompt del agente.
+[188] 'Normal': 5.2 notification.py — Sistema de notificaciones
+[189] 'Normal': • send_in_app(): crea un registro Notification en BD. El frontend lo muestra en el icono de campana
+[190] 'Normal': • send_email(): usa Flask-Mail con SMTP de Gmail. Soporta adjuntos opcionales (PDFs de presupuestos)
+[191] 'Normal': • send_push(): Web Push con VAPID keys. Envia notificacion al navegador aunque la app este cerrada. Solo funciona si el usuario acepto los permisos de notificacion PWA
+[192] 'Normal': 5.3 document.py — Persistencia de documentos
+[193] 'Normal': DocumentService.save_generated_document() crea el registro GeneratedDocument en BD y anota la accion en ActivityLog. Centraliza la logica para que todos los agentes guarden documentos de la misma forma.
+[195] 'Normal': 6. modules/proactive/ — Agentes proactivos
+[196] 'Normal': ________________________________________________________________________________
+[197] 'Normal': Los agentes proactivos se ejecutan automaticamente cada dia mediante APScheduler. No requieren interaccion del usuario. El scheduler corre en su propio contenedor Docker (zeptai_scheduler). Solo se activan para usuarios que tienen el agente en su lista active_agents.
+[198] 'Normal': 6.1 scheduler.py — Orquestador diario
+[199] 'Normal': run_daily_tasks() itera todos los usuarios activos y para cada uno ejecuta los agentes que tiene activados. Se ejecuta una vez al dia via APScheduler. Cada agente falla de forma independiente: si grant_hunter falla, el resto de agentes del usuario siguen ejecutandose.
+[200] 'Normal': 6.2 grant_hunter.py — Cazador de subvenciones
+[201] 'Normal': check_new_grants() itera todas las subvenciones de la tabla Grant y filtra las que son relevantes para el sector del usuario. Para cada candidata, _ai_match() llama a GPT-4o-mini con el perfil del negocio y la descripcion de la subvencion y pregunta si es relevante (respuesta SI/NO). Las 2 mejores matches generan una notificacion in-app y push con un pitch persuasivo.
+[202] 'Normal': ⚠ NOTA: El campo notified_phones en Grant evita volver a notificar al mismo usuario sobre la misma subvencion.
+[203] 'Normal': 6.3 business_health.py — Coach financiero
+[204] 'Normal': _get_financial_stats() calcula el gasto del mes actual, el del mes anterior y la proyeccion al final de mes (extrapolacion lineal). _generate_insight() llama a GPT con esas cifras y genera un comentario motivacional y accionable en menos de 2 frases. Se envia como notificacion in-app cada manana.
+[205] 'Normal': 6.4 networker.py — Matchmaking B2B
+[206] 'Normal': run_daily_networking() analiza el perfil de gastos del usuario actual (proveedores frecuentes, sectores) y lo compara con otros usuarios de la plataforma. _analyze_synergy_deep() usa GPT-4o para evaluar si hay sinergia real: por ejemplo, un gimnasio que compra mucho en tiendas de nutricion puede tener sinergia con una tienda de suplementos. Si el score supera 80/100, crea un SynergyMatch y notifica a ambas partes.
+[207] 'Normal': 6.5 post_sales.py — Postventa configurable
+[208] 'Normal': handle_inquiry() gestiona consultas de clientes sobre pedidos, devoluciones, cambios y garantias. Lee la configuracion especifica del usuario (agent_config.post_sales.*) para aplicar sus politicas concretas. Clasifica la consulta con GPT (RETURN/EXCHANGE/STATUS/WARRANTY/COMPLAINT) y genera una respuesta respetando las politicas configuradas.
+[209] 'Normal': 6.6 admin_redactor.py — Procesamiento de imagenes
+[210] 'Normal': Cuando el usuario sube una imagen, classify_image_intent() usa GPT-4o Vision para decidir si es un recibo (->extrae datos fiscales) o un borrador/apunte (->genera presupuesto PDF). process_image_request() orquesta el flujo: Vision API, extraccion de datos, generacion PDF con FPDF, guardado en disco.
+[211] 'Normal': 6.7 marketing_agent.py — Generacion de contenido
+[212] 'Normal': generate_marketing_content() enruta segun el tipo solicitado:
+[213] 'Normal': • image: _generate_dalle_image(): refina el prompt con GPT, llama a DALL-E 3, descarga la imagen, superpone el logo del negocio con PIL
+[214] 'Normal': • slide: _generate_pptx_slide(): crea presentacion con python-pptx usando la plantilla en static/plantilla.pptx
+[215] 'Normal': • video: _generate_runway_video(): envia imagen + prompt a RunwayML gen3a_turbo, espera la generacion y descarga el MP4
+[216] 'Normal': Toda la generacion se hace en threads de background para no bloquear el HTTP response.
+[218] 'Normal': 7. modules/council/ — Consejo Pyme
+[219] 'Normal': ________________________________________________________________________________
+[220] 'Normal': 7.1 orchestrator.py — CouncilManager
+[221] 'Normal': Implementa el debate entre tres asesores virtuales. run_session() es un generador asincrono que yield eventos SSE conforme avanza el debate.
+[222] 'Normal': Las tres personas
+[223] 'Normal': • El Socio (GPT-4o, temp 0.9): founder agresivo, orientado a revenue. Piensa que el mayor riesgo es quedarse quieto. Usa datos: CAC, LTV, pipeline
+[224] 'Normal': • El Gestor (GPT-4o, temp 0.9): lleva 20 anos viendo quebrar empresas por saltarse lo fiscal. Habla de Hacienda, AEAT, modelos 303
+[225] 'Normal': • El Coach (GPT-4o, temp 0.9): su obsesion es el dueno del negocio, no el negocio. Pregunta: tiene el equipo para ejecutar eso? va a aguantar el ritmo?
+[226] 'Normal': Las tres rondas
+[227] 'Normal': • Ronda 1: cada persona opina sobre el dilema desde su perspectiva (40-70 palabras). Ven lo que han dicho los anteriores y pueden discrepar
+[228] 'Normal': • Ronda 2: replicas: cada persona DEBE citar a un companero por nombre y decir que parte de lo que dijo es incompleta o peligrosa (30-50 palabras)
+[229] 'Normal': • Ronda 3: el Secretario sintetiza el debate y genera un plan de accion con estructura fija: Veredicto, Por que, Los 3 primeros pasos, El riesgo principal
+[230] 'Normal': Por que SSE y no WebSockets?
+[231] 'Normal': El debate es unidireccional: el servidor envia eventos al cliente, el cliente no envia nada durante el stream. SSE es exactamente para eso y es mas simple: funciona sobre HTTP estandar, no necesita handshake especial ni gestion de reconexion compleja. WebSockets son bidireccionales y habrian sido sobreingenieria aqui.
+[233] 'Normal': 8. Model Context Protocol (MCP)
+[234] 'Normal': ________________________________________________________________________________
+[235] 'Normal': MCP es un estandar abierto de Anthropic para exponer herramientas a agentes de IA de forma estandarizada. En vez de definir herramientas dentro del codigo del agente, se exponen a traves de un servidor MCP que cualquier agente compatible puede consumir.
+[236] 'Normal': mcp_server.py / mcp_server_sse.py
+[237] 'Normal': Expone las herramientas de la plataforma (get_financial_summary, get_appointments, search_web, schedule_appointment, etc.) como endpoints MCP. El servidor SSE (mcp_server_sse.py) corre en el contenedor zeptai_mcp en el puerto 8001 y permite conexion remota.
+[238] 'Normal': core/mcp_client.py — Cliente MCP
+[239] 'Normal': ZeptaiMCPClient soporta dos modos de transporte:
+[240] 'Normal': • SSE: si MCP_SSE_URL esta definido en el entorno, conecta al servidor MCP remoto via HTTP. Usado en produccion con Docker
+[241] 'Normal': • stdio: lanza mcp_server.py como subproceso y se comunica por stdin/stdout. Usado en desarrollo local
+[242] 'Normal': execute_agent_loop() orquesta el agente OpenAI con las herramientas del servidor MCP: llama a GPT, recibe los tool calls, los ejecuta contra el servidor MCP, y repite hasta que GPT genera una respuesta final sin tool calls.
+[244] 'Normal': 9. Frontend — Templates y PWA
+[245] 'Normal': ________________________________________________________________________________
+[246] 'Normal': 9.1 Templates Jinja2
+[247] 'Normal': Todos los templates extienden base.html que contiene el layout comun: navbar superior, sidebar de navegacion, sistema de notificaciones y los scripts globales (Service Worker, push notifications).
+[248] 'Normal': Templates principales:
+[249] 'Normal': • dashboard.html: metricas, ultimos tickets, activity log, chat flotante con microfono
+[250] 'Normal': • council.html: interfaz de debate con avatares animados, SSE streaming y plan de accion en Markdown
+[251] 'Normal': • agents.html: catalogo de agentes con estado real de BD (active_agents)
+[252] 'Normal': • marketplace.html: toggle de agentes opcionales con persistencia inmediata
+[253] 'Normal': • knowledge.html: subida de documentos y lista de fuentes ingestadas
+[254] 'Normal': • wizard.html: configuracion del negocio que alimenta el system_prompt y el RAG
+[255] 'Normal': 9.2 Progressive Web App (PWA)
+[256] 'Normal': La app funciona como PWA gracias a dos ficheros en static/:
+[257] 'Normal': • manifest.json: define nombre, iconos, colores y modo de pantalla completa. Permite instalar la app en el movil como si fuera nativa
+[258] 'Normal': • sw.js (v5): Service Worker que gestiona la cache y las notificaciones push. Estrategia: Cache First para assets estaticos (CSS, JS, imagenes), Network Only para paginas HTML y APIs (nunca cachea datos dinamicos para evitar mostrar datos obsoletos)
+[259] 'Normal': Las notificaciones push usan el protocolo Web Push con VAPID keys. El servidor genera la notificacion y el SW la recibe aunque el navegador este cerrado.
+[260] 'Normal': 9.3 Navegacion por voz
+[261] 'Normal': El boton de microfono en el dashboard graba audio con MediaRecorder API, lo envia a /upload_web_audio, y segun la clasificacion de intencion:
+[262] 'Normal': • Navegar: el JS ejecuta window.location.href = data.navigate para ir a la seccion indicada
+[263] 'Normal': • Accion: el texto transcrito se envia al agente como si fuera un mensaje de chat normal
+[265] 'Normal': 10. Flujos principales end-to-end
+[266] 'Normal': ________________________________________________________________________________
+[267] 'Normal': 10.1 Flujo de chat con RAG
+[268] 'Normal': Usuario escribe mensaje
+[269] 'Normal':   -> POST /api/chat
+[270] 'Normal':   -> AgentExecutor.execute()
+[271] 'Normal':      -> retrieve_chunks() en pgvector (similitud coseno)
+[272] 'Normal':      -> system_prompt + chunks RAG
+[273] 'Normal':      -> GPT-4o (tool_choice=auto, TOOLS_SCHEMA)
+[274] 'Normal':      -> Si tool_call: ejecutar herramienta -> segunda llamada GPT
+[275] 'Normal':      -> Guardar en ChatMessage
+[276] 'Normal':   -> Respuesta JSON al frontend
+[277] 'Normal': 10.2 Flujo de escaneo de ticket
+[278] 'Normal': Usuario sube foto
+[279] 'Normal':   -> POST /upload_web_ticket
+[280] 'Normal':   -> Guardar imagen en static/uploads/temp/
+[281] 'Normal':   -> process_ticket_image()
+[282] 'Normal':      -> Detectar MIME (JPEG/PNG/PDF) por magic bytes
+[283] 'Normal':      -> Encode base64 -> data URL
+[284] 'Normal':      -> GPT-4o Vision con prompt estructurado
+[285] 'Normal':      -> Parse JSON: fecha, NIF, proveedor, base, IVA, total
+[286] 'Normal':      -> Crear Ticket en BD
+[287] 'Normal':   -> Respuesta JSON con datos extraidos
+[288] 'Normal': 10.3 Flujo de ingestión de documento RAG
+[289] 'Normal': Usuario sube PDF
+[290] 'Normal':   -> POST /knowledge/upload
+[291] 'Normal':   -> Validar extension y tamano (max 20MB)
+[292] 'Normal':   -> Guardar en static/uploads/knowledge/<phone>/
+[293] 'Normal':   -> Lanzar hilo de background
+[294] 'Normal':      -> Extraer texto del PDF
+[295] 'Normal':      -> Trocear en chunks (1600 chars, 400 overlap)
+[296] 'Normal':      -> Para cada chunk:
+[297] 'Normal':         -> embed_text() -> OpenAI text-embedding-3-small
+[298] 'Normal':         -> Crear KnowledgeChunk en BD (content + embedding)
+[299] 'Normal':      -> Notificar al usuario
+[300] 'Normal':   -> Respuesta inmediata: {processing: true}
+[301] 'Normal': 10.4 Flujo de generacion de video
+[302] 'Normal': Usuario pide video desde imagen
+[303] 'Normal':   -> POST /generate_video_from_image
+[304] 'Normal':   -> Respuesta inmediata: {processing: true}
+[305] 'Normal':   -> Thread de background:
+[306] 'Normal':      -> MarketingAgent.generate_marketing_content(type=video)
+[307] 'Normal':         -> Analizar producto con Vision API
+[308] 'Normal':         -> Generar prompt con GPT
+[309] 'Normal':         -> RunwayML.create_generation(prompt, imagen)
+[310] 'Normal':         -> Polling hasta que el video este listo
+[311] 'Normal':         -> Descargar MP4 a static/generated_docs/
+[312] 'Normal':         -> Crear GeneratedDocument en BD
+[313] 'Normal':         -> NotificationService.send_in_app() + send_push()
+[315] 'Normal': 11. Infraestructura y despliegue
+[316] 'Normal': ________________________________________________________________________________
+[317] 'Normal': 11.1 Docker Compose
+[318] 'Normal': 4 servicios independientes con responsabilidades separadas:
+[319] 'Normal': • zeptai_app: Flask + Gunicorn. Sirve la aplicacion web. Puerto 5000
+[320] 'Normal': • zeptai_mcp: servidor MCP con herramientas externas. Puerto 8001. Accesible desde zeptai_app via MCP_SSE_URL
+[321] 'Normal': • zeptai_scheduler: ejecuta run_daily_tasks() con APScheduler. No expone puertos
+[322] 'Normal': • zeptai_db: PostgreSQL 15 con pgvector. Puerto 5432. Healthcheck integrado
+[323] 'Normal': La separacion en contenedores permite que un fallo en el scheduler no afecte a la aplicacion web, y que el servidor MCP escale independientemente.
+[324] 'Normal': 11.2 Variables de entorno
+[325] 'Normal': Todas las credenciales se externalizan en el archivo .env de la raiz del proyecto:
+[326] 'Normal': • OPENAI_API_KEY: para GPT-4o, Whisper, DALL-E y embeddings
+[327] 'Normal': • RUNWAYML_API_SECRET: para generacion de video
+[328] 'Normal': • DATABASE_URL: URI de PostgreSQL. Si no se define, usa SQLite como fallback local
+[329] 'Normal': • SECRET_KEY: para firmar cookies de sesion Flask
+[330] 'Normal': • MAIL_*: credenciales SMTP de Gmail para envio de emails
+[331] 'Normal': • VAPID_*: claves para notificaciones Web Push
+[332] 'Normal': 11.3 Seguridad implementada
+[333] 'Normal': Medidas de seguridad activas en la aplicacion:
+[334] 'Normal': • Hashing de contrasenas: PBKDF2-SHA256 con salt automatico (Werkzeug). Nunca se almacena texto plano
+[335] 'Normal': • Cookies HttpOnly + SameSite=Lax: proteccion XSS y CSRF basica
+[336] 'Normal': • Rate limiting: 5 intentos/minuto en /login para mitigar fuerza bruta
+[337] 'Normal': • Validacion de uploads: extension de archivo y tamano maximo en todos los endpoints de subida
+[338] 'Normal': • Proteccion de rutas: todas las rutas privadas comprueban user_phone en sesion
+[339] 'Normal': • Admin protegido: el panel /admin solo es accesible con email especifico
+[340] 'Normal': 12. Resumen: que hace cada fichero
+[341] 'Normal': ________________________________________________________________________________
+[342] 'Normal': Referencia rapida de los ficheros mas importantes:
+[344] 'Normal': Zeptai  |  Alejandro Bravo Talavante  |  TFM EBIS 2026

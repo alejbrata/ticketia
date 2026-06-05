@@ -170,7 +170,7 @@ for field, value in [
     ("Autor", "Alejandro Bravo"),
     ("Tutor", "[Nombre del tutor]"),
     ("Fecha de entrega", "Junio 2026"),
-    ("Repositorio", "https://github.com/alejbrata/ticketia"),
+    ("Repositorio", "https://github.com/alejbrata/zeptai"),
 ]:
     field_para = doc.add_paragraph()
     field_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -1292,10 +1292,10 @@ p(
 )
 table_2col(
     [
-        ("ticketia_db", "PostgreSQL 15 + pgvector. Healthcheck pg_isready garantiza disponibilidad antes de que los demás servicios arranquen. Volumen persistente pgdata."),
-        ("ticketia_mcp", "Servidor MCP SSE en el puerto 8001. Arranca después de db y antes que web. Expone 6 herramientas MCP a los agentes."),
-        ("ticketia_app", "Flask + Gunicorn en el puerto 5000. Volume mount del código fuente para hot-reload en desarrollo sin rebuild de imagen."),
-        ("ticketia_scheduler", "Scheduler con libreria schedule. Arranca despues de web. Ejecuta los 6 agentes proactivos (BusinessHealth, GrantHunter, Synergy, PostSales, AdminRedactor, Marketing) a las 09:00 diarias."),
+        ("zeptai_db", "PostgreSQL 15 + pgvector. Healthcheck pg_isready garantiza disponibilidad antes de que los demás servicios arranquen. Volumen persistente pgdata."),
+        ("zeptai_mcp", "Servidor MCP SSE en el puerto 8001. Arranca después de db y antes que web. Expone 6 herramientas MCP a los agentes."),
+        ("zeptai_app", "Flask + Gunicorn en el puerto 5000. Volume mount del código fuente para hot-reload en desarrollo sin rebuild de imagen."),
+        ("zeptai_scheduler", "Scheduler con libreria schedule. Arranca despues de web. Ejecuta los 6 agentes proactivos (BusinessHealth, GrantHunter, Synergy, PostSales, AdminRedactor, Marketing) a las 09:00 diarias."),
     ],
     header=["Servicio", "Descripción"]
 )
@@ -1715,8 +1715,8 @@ bullet("Puerto 5000 (aplicación web) y 5432 (PostgreSQL) libres en el host.")
 h2("Pasos de instalación")
 code(
     "# 1. Clonar el repositorio\n"
-    "git clone https://github.com/alejbrata/ticketia.git\n"
-    "cd ticketia\n\n"
+    "git clone https://github.com/alejbrata/zeptai.git\n"
+    "cd zeptai\n\n"
     "# 2. Configurar variables de entorno\n"
     "cp .env.example .env\n"
     "# Editar .env con las API keys reales\n\n"
@@ -1753,7 +1753,7 @@ code(
     "# Ejecutar evaluación DeepEval desde CLI\n"
     "docker compose exec web python -m pytest TICKETIA_PRO/tests/test_deepeval_rag.py -v\n\n"
     "# Acceder a la base de datos\n"
-    "docker compose exec db psql -U postgres -d ticketia_db"
+    "docker compose exec db psql -U postgres -d zeptai_db"
 )
 
 h2("Verificación del despliegue")
@@ -1763,7 +1763,7 @@ code(
     "# Respuesta esperada: {\"status\": \"ok\"}\n\n"
     "# Estado de los contenedores\n"
     "docker compose ps\n"
-    "# Todos deben mostrar 'Up' y ticketia_db debe mostrar '(healthy)'"
+    "# Todos deben mostrar 'Up' y zeptai_db debe mostrar '(healthy)'"
 )
 
 page_break()
@@ -1901,6 +1901,6 @@ footer_run.italic = True
 footer_run.font.color.rgb = RGBColor(120, 120, 120)
 
 # ─── Guardar ───────────────────────────────────────────────────────────────
-output_path = r"c:\Users\aleja\Desktop\workspace\ticketia\Zeptai_Memoria_TFM.docx"
+output_path = r"c:\Users\aleja\Desktop\workspace\zeptai\Zeptai_Memoria_TFM.docx"
 doc.save(output_path)
 print(f"OK Documento guardado: {output_path}")

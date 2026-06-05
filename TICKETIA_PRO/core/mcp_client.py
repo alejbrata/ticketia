@@ -25,7 +25,7 @@ from mcp.client.stdio import stdio_client, StdioServerParameters
 logger = logging.getLogger(__name__)
 
 
-class TicketiaMCPClient:
+class ZeptaiMCPClient:
     """
     Ejecuta un loop de agente OpenAI usando herramientas expuestas via MCP.
     Selecciona automáticamente el transporte SSE o stdio según la configuración.
@@ -177,11 +177,11 @@ class TicketiaMCPClient:
 
 # ── Singleton ─────────────────────────────────────────────────────────────────
 
-_mcp_client: TicketiaMCPClient | None = None
+_mcp_client: ZeptaiMCPClient | None = None
 
 
-def get_mcp_client() -> TicketiaMCPClient:
+def get_mcp_client() -> ZeptaiMCPClient:
     global _mcp_client
     if _mcp_client is None:
-        _mcp_client = TicketiaMCPClient()
+        _mcp_client = ZeptaiMCPClient()
     return _mcp_client

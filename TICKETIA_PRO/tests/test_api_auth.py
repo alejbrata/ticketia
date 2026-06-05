@@ -25,7 +25,7 @@ from datetime import datetime
 # Env vars falsas para evitar errores de importacion
 os.environ.setdefault('OPENAI_API_KEY', 'sk-fake-key-for-testing')
 os.environ.setdefault('SECRET_KEY', 'test-secret-key-very-long-and-random')
-os.environ.setdefault('MAIL_DEFAULT_SENDER', 'test@ticketia.com')
+os.environ.setdefault('MAIL_DEFAULT_SENDER', 'test@zeptai.com')
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -37,7 +37,7 @@ from core.db_models import BusinessProfile, ChatMessage
 # Base
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TicketiaTestBase(unittest.TestCase):
+class ZeptaiTestBase(unittest.TestCase):
     """Configura app con BD en memoria y usuario de prueba."""
 
     TEST_EMAIL = 'test@panaderia.com'
@@ -87,7 +87,7 @@ class TicketiaTestBase(unittest.TestCase):
 # 1. Tests de Autenticacion
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestAuthentication(TicketiaTestBase):
+class TestAuthentication(ZeptaiTestBase):
 
     def test_register_new_user(self):
         """Registro correcto crea usuario en BD y redirige al login."""
@@ -156,7 +156,7 @@ class TestAuthentication(TicketiaTestBase):
     def test_login_nonexistent_user(self):
         """Email inexistente no revela si el usuario existe o no."""
         resp = self.client.post('/login', data={
-            'email': 'noexiste@ticketia.com',
+            'email': 'noexiste@zeptai.com',
             'password': 'cualquier_cosa',
         }, follow_redirects=True)
         self.assertEqual(resp.status_code, 200)
@@ -178,7 +178,7 @@ class TestAuthentication(TicketiaTestBase):
 # 2. Tests de Proteccion de Rutas
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestRouteProtection(TicketiaTestBase):
+class TestRouteProtection(ZeptaiTestBase):
 
     def test_dashboard_requires_login(self):
         """El dashboard redirige si no hay sesion activa."""
@@ -217,7 +217,7 @@ class TestRouteProtection(TicketiaTestBase):
 # 3. Tests de Seguridad de Sesion
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestSessionSecurity(TicketiaTestBase):
+class TestSessionSecurity(ZeptaiTestBase):
 
     def test_session_cookie_httponly(self):
         """La cookie de sesion debe estar configurada con HttpOnly en la app."""
@@ -245,7 +245,7 @@ class TestSessionSecurity(TicketiaTestBase):
 # 4. Tests de AgentExecutor (con mock de OpenAI)
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestAgentExecutor(TicketiaTestBase):
+class TestAgentExecutor(ZeptaiTestBase):
     """
     Valida el flujo del AgentExecutor sin hacer llamadas reales a OpenAI.
     Se mockea el cliente de OpenAI para controlar la respuesta.
@@ -353,7 +353,7 @@ class TestAgentExecutor(TicketiaTestBase):
 # 5. Tests de Endpoints API (autenticado)
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestAPIEndpoints(TicketiaTestBase):
+class TestAPIEndpoints(ZeptaiTestBase):
 
     def setUp(self):
         super().setUp()
@@ -420,7 +420,7 @@ class TestAPIEndpoints(TicketiaTestBase):
 # 6. Tests de Reset de Contraseña
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestPasswordReset(TicketiaTestBase):
+class TestPasswordReset(ZeptaiTestBase):
 
     def test_forgot_password_unknown_email_no_info_leak(self):
         """
@@ -449,7 +449,7 @@ class TestPasswordReset(TicketiaTestBase):
 # 7. Tests de Rate Limiting (verificacion de cabeceras)
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestRateLimitHeaders(TicketiaTestBase):
+class TestRateLimitHeaders(ZeptaiTestBase):
     """
     Verifica que Flask-Limiter esta activo comprobando las cabeceras de respuesta.
     En modo TESTING el rate limit esta desactivado (RATELIMIT_ENABLED=False),

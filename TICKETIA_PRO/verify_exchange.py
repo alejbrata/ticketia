@@ -33,7 +33,7 @@ def test_exchange_logic():
         print(f"User: {msg}")
         print(f"Agent: {response}")
         
-        if "https://ticketia.com/cambios-y-devoluciones" in response:
+        if "https://zeptai.com/cambios-y-devoluciones" in response:
              print("✅ PASS: URL found in response")
         else:
              print("❌ FAIL: URL not found")

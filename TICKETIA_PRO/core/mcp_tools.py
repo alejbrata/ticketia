@@ -16,7 +16,13 @@ Tools disponibles:
 
 import logging
 from datetime import datetime, date as date_type
-from duckduckgo_search import DDGS
+
+try:
+    from duckduckgo_search import DDGS
+    _DDGS_AVAILABLE = True
+except ImportError:
+    DDGS = None
+    _DDGS_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +124,8 @@ def tool_search_web(query: str, max_results: int = 5) -> str:
         query: La consulta de búsqueda.
         max_results: Número máximo de resultados (por defecto 5).
     """
+    if DDGS is None:
+        return "Búsqueda web no disponible: duckduckgo-search no está instalado."
     try:
         with DDGS() as ddgs:
             search_results = list(ddgs.text(query, max_results=max_results))
@@ -227,7 +235,7 @@ def tool_send_email_notification(
 
             msg = Message(
                 subject=subject,
-                sender=app.config.get('MAIL_DEFAULT_SENDER', 'ticketia.soporte@gmail.com'),
+                sender=app.config.get('MAIL_DEFAULT_SENDER', 'zeptai.soporte@gmail.com'),
                 recipients=[to_email],
                 body=f"{body}\n\n---\nEnviado por {owner.business_name} a través de Zeptai."
             )

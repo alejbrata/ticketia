@@ -21,7 +21,7 @@ PORTADA (sugerencia de campos)
 - Autor(es): [nombre(s)]
 - Tutor de contenidos: [nombre]
 - Fecha de entrega: [mes y año]
-- Repositorio Git: https://github.com/[usuario]/ticketia
+- Repositorio Git: https://github.com/[usuario]/zeptai
 
 RESUMEN / ABSTRACT (250-300 palabras, redactar al final)
 Zeptai es una plataforma web SaaS que integra un sistema multi-agente de
@@ -270,7 +270,7 @@ siguiendo el estándar abierto de Anthropic para la integración de herramientas
 con LLMs.
 
 Arquitectura MCP en Zeptai:
-  [AgentExecutor] → [MCP Client HTTP] → [ticketia_mcp (puerto 8001)]
+  [AgentExecutor] → [MCP Client HTTP] → [zeptai_mcp (puerto 8001)]
                                               |
                                     ┌─────────┴──────────┐
                                     │  6 herramientas MCP │
@@ -288,7 +288,7 @@ Ventaja del transporte SSE frente a stdio:
   - Latencia por herramienta: ~5 ms (HTTP local) vs. ~500 ms (fork de proceso)
   - Permite conexiones concurrentes de múltiples workers de gunicorn
 
-El servidor MCP corre como contenedor Docker independiente (ticketia_mcp),
+El servidor MCP corre como contenedor Docker independiente (zeptai_mcp),
 arrancando antes que la app web para garantizar disponibilidad.
 
 Ver: TICKETIA_PRO/mcp_server_sse.py, TICKETIA_PRO/core/mcp_client.py
@@ -806,7 +806,7 @@ VARIABLES DE ENTORNO (fichero .env):
   OPENAI_API_KEY=sk-...
   RUNWAYML_API_SECRET=key_...
   PUBLIC_URL=https://zeptai.example.com
-  DATABASE_URL=postgresql://ticketia:pass@db/ticketia
+  DATABASE_URL=postgresql://zeptai:pass@db/zeptai
   VAPID_PRIVATE_KEY=...
   VAPID_PUBLIC_KEY=...
   FLASK_SECRET_KEY=...
@@ -1146,8 +1146,8 @@ PRE-REQUISITOS:
   - Puerto 5000 libre en el host
 
 PASOS:
-  1. git clone https://github.com/[usuario]/ticketia
-  2. cd ticketia
+  1. git clone https://github.com/[usuario]/zeptai
+  2. cd zeptai
   3. cp .env.example .env  # editar con API keys reales
   4. docker compose up --build -d
   5. docker compose exec web python -c "from app import create_app; from core.db_models import db; app=create_app(); app.app_context().push(); db.create_all()"
@@ -1215,8 +1215,227 @@ PROMPT DE SÍNTESIS:
   puntos de convergencia y señalando las tensiones que el decisor debe resolver."
 
 ================================================================================
+  SECCION NUEVA — OBSERVABILIDAD Y LLMOPS (añadida 2026-06-04)
+================================================================================
+
+8. STACK DE OBSERVABILIDAD: OPENTELEMETRY, PROMETHEUS, GRAFANA Y JAEGER
+------------------------------------------------------------------------
+
+8.1 MOTIVACION
+--------------
+Los sistemas de IA generativa presentan desafios de observabilidad que las
+herramientas tradicionales no cubren: el coste varia por llamada, la latencia
+depende del modelo y la calidad de las respuestas no es directamente observable
+desde los logs de acceso.
+
+Se definieron cuatro objetivos operacionales:
+- Medir el coste economico de cada funcionalidad (stage) del agente en tiempo real.
+- Detectar degradaciones de latencia (p50/p95) antes de que impacten al usuario.
+- Monitorizar la calidad RAG de forma continua mediante puntuaciones de DeepEval.
+- Trazar el ciclo de vida completo de cada peticion HTTP a traves de todos los
+  componentes del sistema.
+
+8.2 ARQUITECTURA DEL STACK
+--------------------------
+El stack se compone de cuatro capas independientes y complementarias:
+
+  Flask (web:5000)
+     |
+     |-- core/telemetry.py --> Counters / Histogram / Gauge (prometheus_client)
+     |        |                          |
+     |        +-> OTel spans  -->  Jaeger (jaeger:4318)   [trazas HTTP + DB]
+     |
+     +-- GET /api/prometheus  <--  Prometheus (prometheus:9090)  [scraping 15s]
+                                            |
+                                       Grafana (grafana:3000)  [dashboards]
+
+8.3 METRICAS PROMETHEUS (core/telemetry.py)
+-------------------------------------------
+El modulo define 5 familias de metricas como singletons de modulo:
+
+  zeptai_llm_requests_total   Counter   [model, stage, success]
+    Total de llamadas a modelos LLM.
+
+  zeptai_llm_tokens_total     Counter   [model, stage, token_type]
+    Tokens consumidos (prompt / completion).
+
+  zeptai_llm_latency_seconds  Histogram [model, stage]
+    Latencia con 9 buckets: [0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0]
+
+  zeptai_llm_cost_usd_total   Counter   [model, stage]
+    Coste acumulado estimado en USD.
+
+  zeptai_rag_score            Gauge     [metric]
+    Puntuacion de calidad RAG de DeepEval (0.0-1.0) por metrica.
+
+Expone ademas zeptai_app_info (Info) con version, servicio y entorno.
+
+API publica del modulo:
+  record_llm(model, stage, success, prompt_tokens, completion_tokens,
+             latency_ms, cost_usd)
+    Actualiza los 5 contadores de una llamada LLM. Llamada desde llm_tracker.
+
+  update_rag_score(metric, score)
+    Actualiza el Gauge zeptai_rag_score. Llamada desde test_deepeval_rag.py.
+
+  init_tracing(app)
+    Inicializa OTel si OTEL_EXPORTER_OTLP_ENDPOINT esta definido.
+    Instrumenta Flask automaticamente (FlaskInstrumentor).
+
+  init_sqlalchemy_tracing()
+    Instrumenta SQLAlchemy para emitir spans de queries DB.
+
+8.4 INTEGRACION CON LLMTRACKER
+-------------------------------
+llm_tracker.track() actualiza DOS destinos en paralelo sin duplicar logica:
+
+  1. PostgreSQL (tabla LLMCall)  ->  dashboard interno /metrics con Chart.js
+  2. Prometheus via record_llm() ->  dashboard Grafana con series temporales
+
+Si Prometheus falla, el error se silencia con try/except. La observabilidad
+es aditiva: nunca critica para el flujo de negocio.
+
+8.5 ENDPOINT /api/prometheus
+-----------------------------
+Ruta Flask que devuelve las metricas en formato exposition text/plain.
+Proteccion dual: permite acceso desde IPs de red Docker interna (172.x.x.x)
+donde Prometheus hace scraping, o desde usuarios con sesion Flask activa.
+Peticiones anonimas externas reciben 403 Forbidden.
+
+8.6 CONFIGURACION DOCKER COMPOSE
+----------------------------------
+Tres nuevos servicios en docker-compose.yml:
+
+  jaeger (jaegertracing/all-in-one:1.57)
+    - Puerto 16686: UI de trazas
+    - Puerto 4318:  receptor OTLP HTTP
+    - Variable COLLECTOR_OTLP_ENABLED=true
+
+  prometheus (prom/prometheus:v2.52.0)
+    - Puerto 9090
+    - Monta prometheus.yml como configuracion de scraping
+    - Depende de web (service_started)
+
+  grafana (grafana/grafana:10.4.3)
+    - Puerto 3000
+    - Contrasena admin: zeptai
+    - Modo anonimo habilitado para la demo
+    - Provisioning automatico desde grafana/provisioning/
+    - Depende de prometheus
+
+La app web pasa OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318 como
+variable de entorno para activar el envio de trazas al contenedor Jaeger.
+
+8.7 DASHBOARD GRAFANA Y PROVISIONING AUTOMATICO
+------------------------------------------------
+Grafana se configura via provisioning declarativo:
+
+  grafana/provisioning/datasources/
+    Define la conexion al datasource Prometheus (http://prometheus:9090).
+
+  grafana/provisioning/dashboards/
+    Carga automaticamente el JSON del dashboard zeptai-llm-observabilidad.
+
+Con docker-compose up el dashboard esta disponible sin configuracion manual.
+Paneles incluidos: llamadas LLM por stage, latencia p50/p95, coste acumulado
+en USD, tasa de tokens por minuto, puntuaciones RAG, estado del scraping.
+
+8.8 TRAZAS DISTRIBUIDAS CON OPENTELEMETRY Y JAEGER
+---------------------------------------------------
+Activadas con OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318.
+
+Flujo de spans por request:
+  Span raiz: HTTP GET/POST /ruta   (FlaskInstrumentor automatico)
+    -> Span DB: query RAG retrieval (SQLAlchemyInstrumentor)
+    -> Span DB: INSERT ChatMessage
+    -> Span DB: INSERT LLMCall
+
+Los spans se envian de forma asincrona (BatchSpanProcessor) sin bloquear Flask.
+Si la variable de entorno no esta definida, OTel se desactiva silenciosamente.
+
+8.9 PAGINA /observabilidad
+--------------------------
+Ruta Flask protegida (admin-only). Renderiza observabilidad.html con:
+- Tabs de navegacion entre Grafana, Jaeger y Prometheus.
+- Iframes que cargan cada servicio directamente en el browser del cliente.
+- Status pills en el header: comprueban la salud de cada servicio cada 30s
+  mediante fetch() con mode: "no-cors".
+- Enlace "Abrir en nueva pestana" apuntando al servicio activo.
+
+Las URLs se inyectan desde variables de entorno:
+  GRAFANA_URL     = http://localhost:3000
+  JAEGER_URL      = http://localhost:16686
+  PROMETHEUS_URL  = http://localhost:9090
+
+8.10 SUITE DE TESTS DE OBSERVABILIDAD
+--------------------------------------
+tests/test_observability.py: 18 tests en 6 grupos.
+Requiere docker-compose up para ejecutarse.
+
+  TestServiceHealth (4 tests)
+    - Prometheus /-/healthy
+    - Grafana /api/health (database: ok)
+    - Jaeger UI accesible
+    - Prometheus /graph accesible
+
+  TestPrometheusTarget (5 tests)
+    - Target "zeptai" existe en /api/v1/targets
+    - Target "zeptai" en estado "up" (reintento hasta 60s)
+    - URL de scrape contiene /api/prometheus
+    - Metrica zeptai_app_info presente (con reintento)
+    - Todas las familias de metricas esperadas presentes
+
+  TestPrometheusEndpoint (4 tests)
+    - Formato text/plain correcto
+    - Contiene zeptai_llm_requests_total, cost y latency
+    - Anonimos desde IP externa reciben 403
+    - Labels de app_info presentes (service="zeptai")
+
+  TestLLMMetricsIncrement (6 tests)
+    - record_llm() incrementa el counter de requests en +1
+    - record_llm() incrementa tokens de entrada en el valor correcto
+    - record_llm() incrementa el coste acumulado correctamente (tolerancia 1e-9)
+    - Llamadas fallidas se registran con label success="false"
+    - El histograma de latencia acumula los segundos correctamente
+    - llm_tracker.track() llama a record_llm() internamente (integracion)
+
+  TestRAGScoreGauge (3 tests)
+    - update_rag_score() fija el gauge al valor indicado
+    - update_rag_score() sobrescribe el valor anterior
+    - Metricas de distintas keys son independientes entre si
+
+  TestObservabilidadRoutes (4 tests)
+    - /observabilidad sin sesion redirige a /login
+    - /observabilidad con usuario no-admin redirige al dashboard
+    - /observabilidad con admin devuelve 200 con contenido correcto
+    - /metrics sin sesion redirige a /login
+
+8.11 CONSULTAS PROMQL DE REFERENCIA
+-------------------------------------
+Ver archivo prometheus_queries.txt para la lista completa de consultas.
+
+Consultas clave para el TFM:
+
+  Tasa de exito (%):
+    sum(zeptai_llm_requests_total{success="true"})
+    / sum(zeptai_llm_requests_total) * 100
+
+  Latencia p95 global:
+    histogram_quantile(0.95,
+      sum by (le) (rate(zeptai_llm_latency_seconds_bucket[5m])))
+
+  Stage con mayor coste:
+    topk(5, sum by (stage) (zeptai_llm_cost_usd_total))
+
+  Puntuaciones RAG actuales:
+    zeptai_rag_score
+
+  Estado del scraping:
+    up{job="zeptai"}
+
+================================================================================
   FIN DEL DOCUMENTO
-  Generado: 2026-04-15 · Actualizado: 2026-05-13
+  Generado: 2026-04-15 - Actualizado: 2026-06-04
   Basado en: Orientaciones y pautas TFM MID.pdf
-  Proyecto: Zeptai / Ticketia PRO
+  Proyecto: Zeptai / Zeptai
 ================================================================================

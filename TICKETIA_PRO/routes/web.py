@@ -6,6 +6,7 @@ import logging
 import secrets
 import pandas as pd
 from datetime import datetime, timedelta
+from functools import wraps
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,24 @@ from core.db_models import BusinessProfile, Ticket, ChatMessage, GeneratedDocume
 from core.limiter import limiter
 
 web_bp = Blueprint('web', __name__)
+
+
+def _web_login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'user_phone' not in session:
+            return redirect(url_for('web.login'))
+        return f(*args, **kwargs)
+    return decorated
+
+
+def _login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'user_phone' not in session:
+            return jsonify({"error": "Unauthorized"}), 401
+        return f(*args, **kwargs)
+    return decorated
 
 @web_bp.route('/')
 def index():
@@ -126,7 +145,7 @@ def forgot_password():
             
             reset_url = url_for('web.reset_password', token=token, _external=True)
             
-            msg = Message('Restablecer Contraseña - Ticketia',
+            msg = Message('Restablecer Contraseña - Zeptai',
                           sender=current_app.config['MAIL_DEFAULT_SENDER'],
                           recipients=[email])
             msg.body = f'Para restablecer tu contraseña, haz clic en el siguiente enlace: {reset_url}\n\nSi no solicitaste esto, ignora este correo.'
@@ -183,10 +202,8 @@ def reset_password(token):
     return render_template('reset_token.html')
 
 @web_bp.route('/marketplace')
+@_web_login_required
 def marketplace():
-    if 'user_phone' not in session:
-        return redirect(url_for('web.login'))
-        
     user = BusinessProfile.query.filter_by(user_phone=session['user_phone']).first()
     # Asegurar que active_agents sea una lista
     if user.active_agents is None:
@@ -195,10 +212,8 @@ def marketplace():
     return render_template('marketplace.html', current_user=user, current_page='marketplace')
 
 @web_bp.route('/toggle_agent/<agent_id>', methods=['POST'])
+@_web_login_required
 def toggle_agent(agent_id):
-    if 'user_phone' not in session:
-        return redirect(url_for('web.login'))
-        
     user = BusinessProfile.query.filter_by(user_phone=session['user_phone']).first()
     current_agents = list(user.active_agents or []) # Copia explícita
     
@@ -218,10 +233,8 @@ def toggle_agent(agent_id):
     return redirect(url_for('web.marketplace'))
 
 @web_bp.route('/agent_config/<agent_id>')
+@_web_login_required
 def agent_config(agent_id):
-    if 'user_phone' not in session:
-        return redirect(url_for('web.login'))
-    
     user = BusinessProfile.query.filter_by(user_phone=session['user_phone']).first()
     
     # Obtener configuración actual del agente (o dict vacío)
@@ -238,10 +251,8 @@ def agent_config(agent_id):
     return render_template('agent_config.html', agent_id=agent_id, agent_name=name, config=current_config)
 
 @web_bp.route('/save_agent_config/<agent_id>', methods=['POST'])
+@_web_login_required
 def save_agent_config(agent_id):
-    if 'user_phone' not in session:
-        return redirect(url_for('web.login'))
-        
     user = BusinessProfile.query.filter_by(user_phone=session['user_phone']).first()
     
     # 1. Leer checkboxes (si no están, es False)
@@ -274,10 +285,8 @@ def save_agent_config(agent_id):
     return redirect(url_for('web.marketplace'))
 
 @web_bp.route('/profile', methods=['GET', 'POST'])
+@_web_login_required
 def profile():
-    if 'user_phone' not in session:
-        return redirect(url_for('web.login'))
-        
     user_phone = session['user_phone']
     user = BusinessProfile.query.filter_by(user_phone=user_phone).first()
     
@@ -296,11 +305,8 @@ def profile():
     return render_template('profile.html', user=user, current_page='profile')
 
 @web_bp.route('/dashboard')
+@_web_login_required
 def dashboard():
-    # 1. Protección de Ruta
-    if 'user_phone' not in session:
-        return redirect(url_for('web.login'))
-        
     user_phone = session['user_phone']
     
     # 2. Obtener Datos Reales
@@ -391,22 +397,45 @@ def tickets_redirect():
     return redirect(url_for('web.transactions'), 301)
 
 @web_bp.route('/transactions')
+@_web_login_required
 def transactions():
-    if 'user_phone' not in session:
-        return redirect(url_for('web.login'))
-        
     user_phone = session['user_phone']
     
     # Traer TODOS los tickets
     tickets = Ticket.query.filter_by(user_phone=user_phone).order_by(Ticket.date.desc()).all()
-    
-    return render_template('transactions.html', tickets=tickets, current_page='transactions')
+
+    # Resumen IVA trimestral sobre tickets con base imponible registrada
+    from sqlalchemy import func as sqlfunc
+    iva_rows = db.session.query(
+        sqlfunc.extract('year',    Ticket.date).label('year'),
+        sqlfunc.extract('quarter', Ticket.date).label('quarter'),
+        sqlfunc.coalesce(sqlfunc.sum(Ticket.base),  0).label('base'),
+        sqlfunc.coalesce(sqlfunc.sum(Ticket.fee),   0).label('fee'),
+        sqlfunc.coalesce(sqlfunc.sum(Ticket.total), 0).label('total'),
+        sqlfunc.count(Ticket.id).label('count'),
+    ).filter(
+        Ticket.user_phone == user_phone,
+        Ticket.base.isnot(None),
+    ).group_by('year', 'quarter').order_by('year', 'quarter').all()
+
+    iva_summary = [
+        {
+            "year":    int(r.year),
+            "quarter": int(r.quarter),
+            "base":    round(float(r.base),  2),
+            "fee":     round(float(r.fee),   2),
+            "total":   round(float(r.total), 2),
+            "count":   r.count,
+        }
+        for r in iva_rows
+    ]
+
+    return render_template('transactions.html', tickets=tickets,
+                           iva_summary=iva_summary, current_page='transactions')
 
 @web_bp.route('/documents')
+@_web_login_required
 def documents_page():
-    if 'user_phone' not in session:
-        return redirect(url_for('web.login'))
-        
     user_phone = session['user_phone']
     
     # Obtener documentos
@@ -432,26 +461,23 @@ def documents_page():
         return grouped
 
     # Categorizar y Agrupar
-    docs_proposals = [d for d in all_docs if d.doc_type in ['proposal', 'invoice', 'report']]
+    docs_proposals = [d for d in all_docs if d.doc_type == 'proposal']
+    docs_invoices  = [d for d in all_docs if d.doc_type == 'invoice']
+    docs_reports   = [d for d in all_docs if d.doc_type == 'report']
     docs_images = [d for d in all_docs if d.doc_type == 'image']
     docs_presentations = [d for d in all_docs if d.doc_type == 'presentation']
     docs_video_prompts = [d for d in all_docs if d.doc_type == 'video_prompt']
-    
-    # Convertir a Árbol
-    tree_proposals = group_by_date(docs_proposals)
-    tree_images = group_by_date(docs_images)
-    tree_presentations = group_by_date(docs_presentations)
-    tree_videos = group_by_date(docs_video_prompts)
-    
+
     # --- Mobile UX helpers ---
     from datetime import timedelta
     now = datetime.now()
     yesterday = now - timedelta(days=1)
     now_str = now.strftime('%Y-%m-%d')
     yesterday_str = yesterday.strftime('%Y-%m-%d')
-    
+
     return render_template('documents.html',
                            proposals=docs_proposals,
+                           invoices=docs_invoices,
                            images=docs_images,
                            presentations=docs_presentations,
                            videos=docs_video_prompts,
@@ -460,9 +486,8 @@ def documents_page():
                            current_page='documents')
 
 @web_bp.route('/delete_document/<int:doc_id>', methods=['POST'])
+@_login_required
 def delete_document(doc_id):
-    if 'user_phone' not in session:
-        return jsonify({"success": False, "error": "Unauthorized"}), 401
     
     doc = db.session.get(GeneratedDocument, doc_id)
     if not doc:
@@ -494,10 +519,8 @@ def delete_document(doc_id):
         return jsonify({"success": False, "error": str(e)}), 500
 
 @web_bp.route('/wizard')
+@_web_login_required
 def wizard():
-    if 'user_phone' not in session:
-        return redirect(url_for('web.login'))
-        
     user_phone = session['user_phone']
     profile = BusinessProfile.query.filter_by(user_phone=user_phone).first()
     
@@ -513,11 +536,8 @@ def wizard():
     return render_template('wizard.html', current_user=profile, current_page='wizard')
 
 @web_bp.route('/save_config', methods=['POST'])
+@_web_login_required
 def save_config():
-    # 1. Auth Real (Protección)
-    if 'user_phone' not in session:
-        return redirect(url_for('web.login'))
-        
     user_phone = session['user_phone']
     
     # 2. Recuperar y sanitizar datos del formulario
@@ -549,6 +569,8 @@ def save_config():
     support_contact = _clean(data.get('support_contact', ''), 200)
     delivery_time   = _clean(data.get('delivery_time', ''), 200)
     warranty_info   = _clean(data.get('warranty_info', ''), 300)
+    nif             = _clean(data.get('nif', ''), 20)
+    address         = _clean(data.get('address', ''), 200)
 
     # 3. Lógica: Construir System Prompt
     cs_block = ""
@@ -606,6 +628,8 @@ def save_config():
         "support_contact": support_contact,
         "delivery_time": delivery_time,
         "warranty_info": warranty_info,
+        "nif": nif,
+        "address": address,
     }
     
     if profile:
@@ -653,27 +677,72 @@ def save_config():
     return redirect(url_for('web.dashboard'))
 
 @web_bp.route('/agents')
+@_web_login_required
 def agents_page():
-    if 'user_phone' not in session:
-        return redirect(url_for('web.login'))
     user = BusinessProfile.query.filter_by(user_phone=session['user_phone']).first()
     if user.active_agents is None:
         user.active_agents = []
     return render_template('agents.html', current_user=user, current_page='agents')
 
 @web_bp.route('/marketing')
+@_web_login_required
 def marketing_page():
-    if 'user_phone' not in session:
-        return redirect(url_for('web.login'))
     return render_template('marketing.html', current_page='marketing')
 
+def _get_expense_account(concept: str, provider: str = "") -> str:
+    """Devuelve el código de cuenta PGC más adecuado según el concepto del gasto.
+    Fuente: Plan General Contable español (RD 1514/2007), Grupo 6 - Compras y gastos.
+    Fallback: 629 Otros servicios.
+    """
+    import re
+
+    text = f"{concept or ''} {provider or ''}".lower()
+    words = set(re.findall(r"[a-záéíóúüñ]+", text))
+
+    # Comprobación por palabra completa para evitar falsos positivos ("gas" en "gasolina")
+    def match(keywords):
+        for k in keywords:
+            kw = k.lower()
+            if " " in kw:          # frases: substring match
+                if kw in text:
+                    return True
+            else:                   # palabras sueltas: match exacto
+                if kw in words:
+                    return True
+        return False
+
+    # El orden importa: reglas más específicas primero
+    rules = [
+        ("621", ["arrendamiento", "alquiler", "renting"]),
+        ("622", ["reparacion", "reparación", "mantenimiento", "conservacion",
+                 "conservación", "limpieza", "fontanero", "electricista",
+                 "pintura", "obra"]),
+        ("623", ["asesoria", "asesoría", "abogado", "gestoria", "gestoría",
+                 "notario", "consultoria", "consultoría", "auditoria",
+                 "auditoría", "arquitecto", "ingeniero", "perito"]),
+        ("624", ["transporte", "mensajeria", "mensajería", "courier",
+                 "envio", "envío", "seur", "glovo", "uber", "taxi",
+                 "gasolina", "combustible", "parking", "autopista", "peaje"]),
+        ("625", ["seguro", "prima", "poliza", "póliza"]),
+        ("626", ["banco", "comision", "comisión", "tarjeta", "tpv",
+                 "leasing", "prestamo", "préstamo"]),
+        ("627", ["publicidad", "marketing", "anuncio", "propaganda",
+                 "google ads", "meta ads", "instagram",
+                 "diseño grafico", "diseño gráfico", "fotografia", "fotografía"]),
+        ("628", ["luz", "electricidad", "agua", "gas natural", "internet",
+                 "fibra", "telefono", "teléfono", "movil", "móvil", "suministro"]),
+    ]
+
+    for account, keywords in rules:
+        if match(keywords):
+            return account
+
+    return "629"  # Otros servicios
+
+
 @web_bp.route('/export_excel')
+@_web_login_required
 def export_excel():
-    # 1. Protección de Ruta
-    if 'user_phone' not in session:
-        flash('Debes iniciar sesión para exportar tus gastos.', 'error')
-        return redirect(url_for('web.login'))
-        
     user_phone = session['user_phone']
     
     # Recuperar perfil para el nombre del archivo
@@ -724,7 +793,7 @@ def export_excel():
             "Name": t.provider, # Mapeado desde provider
             "Ticket_Number": t.ticket_number,
             "Concept": t.concept,
-            "Expense_Account": "629", # Valor fijo
+            "Expense_Account": _get_expense_account(t.concept, t.provider),
             "Base": t.base,
             "%IVA": t.tax_percent,
             "Fee": fee,
@@ -871,23 +940,21 @@ def _seed_demo_data_for_user(user_phone):
 
 
 @web_bp.route('/demo')
+@_web_login_required
 def demo_panel():
-    if 'user_phone' not in session: return redirect(url_for('web.login'))
     return render_template('demo_panel.html')
 
 @web_bp.route('/demo/seed_data', methods=['POST'])
+@_web_login_required
 def demo_seed():
-    if 'user_phone' not in session:
-        return redirect(url_for('web.login'))
     from seed_demo import generate_fake_history
     generate_fake_history(session['user_phone'])
     flash('✅ Datos históricos inyectados.', 'success')
     return redirect(url_for('web.demo_panel'))
 
 @web_bp.route('/demo/seed_grants', methods=['POST'])
+@_login_required
 def demo_seed_grants():
-    if 'user_phone' not in session:
-        return jsonify({"error": "Unauthorized"}), 401
     from core.db_models import Grant
     grants_data = [
         {
@@ -927,9 +994,8 @@ def demo_seed_grants():
 
 
 @web_bp.route('/demo/trigger/<agent_name>', methods=['POST'])
+@_login_required
 def demo_trigger(agent_name):
-    if 'user_phone' not in session:
-        return jsonify({"error": "Unauthorized"}), 401
     user = BusinessProfile.query.filter_by(user_phone=session['user_phone']).first()
     if not user:
         return jsonify({"error": "Usuario no encontrado."}), 404
@@ -1043,31 +1109,45 @@ def setup_magic_db():
 
 # --- THE COUNCIL ROUTES ---
 @web_bp.route('/council')
+@_web_login_required
 def council_page():
-    if not session.get('user_phone'):
-        return redirect(url_for('web.login'))
     return render_template('council.html', current_page='council')
 
 
 @web_bp.route('/metrics')
+@_web_login_required
 def metrics_page():
-    if not session.get('user_phone'):
-        return redirect(url_for('web.login'))
-    is_admin = session.get('user_email') == 'admin@ticketia.com'
+    is_admin = session.get('user_email') == 'admin@zeptai.com'
     return render_template('metrics.html', current_page='metrics', is_admin=is_admin)
 
 
 @web_bp.route('/eval')
+@_web_login_required
 def eval_page():
-    if not session.get('user_phone'):
-        return redirect(url_for('web.login'))
     return render_template('eval.html', current_page='eval')
 
 
+@web_bp.route('/observabilidad')
+@_web_login_required
+def observabilidad_page():
+    if session.get('user_email') != 'admin@zeptai.com':
+        flash('Acceso restringido a administradores.', 'error')
+        return redirect(url_for('web.dashboard'))
+    grafana_url    = os.environ.get('GRAFANA_URL',    'http://localhost:3000')
+    jaeger_url     = os.environ.get('JAEGER_URL',     'http://localhost:16686')
+    prometheus_url = os.environ.get('PROMETHEUS_URL', 'http://localhost:9090')
+    return render_template(
+        'observabilidad.html',
+        current_page='observabilidad',
+        grafana_url=grafana_url,
+        jaeger_url=jaeger_url,
+        prometheus_url=prometheus_url,
+    )
+
+
 @web_bp.route('/networking')
+@_web_login_required
 def networking():
-    if not session.get('user_phone'):
-        return redirect(url_for('web.login'))
     user_phone = session['user_phone']
     matches = SynergyMatch.query.filter(
         (SynergyMatch.user_a_phone == user_phone) |
@@ -1089,9 +1169,8 @@ def networking():
 
 
 @web_bp.route('/networking/contact/<int:match_id>', methods=['POST'])
+@_login_required
 def networking_contact(match_id):
-    if not session.get('user_phone'):
-        return jsonify({"error": "Unauthorized"}), 401
 
     user_phone = session['user_phone']
     match = SynergyMatch.query.get_or_404(match_id)
@@ -1152,9 +1231,8 @@ def networking_contact(match_id):
 
 
 @web_bp.route('/agenda')
+@_web_login_required
 def agenda():
-    if not session.get('user_phone'):
-        return redirect(url_for('web.login'))
     return render_template('agenda.html', current_page='agenda')
 
 
@@ -1205,9 +1283,8 @@ def agenda_events():
 
 
 @web_bp.route('/chatbot-cliente')
+@_web_login_required
 def chatbot_cliente():
-    if not session.get('user_phone'):
-        return redirect(url_for('web.login'))
     business_name = session.get('business_name', 'Mi Negocio')
     return render_template('chatbot_cliente.html', current_page='chatbot_cliente', business_name=business_name)
 

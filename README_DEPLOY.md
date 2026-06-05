@@ -1,4 +1,4 @@
-# 🚀 Ticketia: Guía de Despliegue Rápido
+# 🚀 Zeptai: Guía de Despliegue Rápido
 
 ## 1. Requisitos Previos
 *   Python 3.10+
@@ -8,8 +8,8 @@
 ## 2. Instalación Local
 ```bash
 # Clonar repo
-git clone https://github.com/alejbrata/ticketia.git
-cd ticketia
+git clone https://github.com/alejbrata/zeptai.git
+cd zeptai
 
 # Crear entorno virtual
 python3 -m venv venv

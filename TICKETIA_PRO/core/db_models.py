@@ -1,3 +1,4 @@
+import json
 import logging
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timezone, date as date_type
@@ -44,6 +45,26 @@ class BusinessProfile(db.Model):
     push_subscription = db.Column(db.Text, nullable=True)  # JSON PushSubscription object
 
     created_at = db.Column(db.DateTime(timezone=True), default=_now)
+
+    @property
+    def static_knowledge_dict(self) -> dict:
+        sk = self.static_knowledge or {}
+        if isinstance(sk, str):
+            try:
+                return json.loads(sk)
+            except (json.JSONDecodeError, ValueError):
+                return {}
+        return sk if isinstance(sk, dict) else {}
+
+    def to_agent_context(self) -> dict:
+        sk = self.static_knowledge_dict
+        return {
+            "business_name": self.business_name or "",
+            "phone":         self.user_phone,
+            "email":         self.email or "",
+            "sector":        sk.get("sector", "Servicios"),
+            "extra_info":    sk,
+        }
 
 
 class Ticket(db.Model):
@@ -150,6 +171,26 @@ class GeneratedDocument(db.Model):
     doc_type = db.Column(db.String(50))
     client_name = db.Column(db.String(100), nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), default=_now)
+
+    # Ciclo de vida de factura
+    invoice_number = db.Column(db.String(20),  nullable=True)   # F-2026-001
+    client_nif     = db.Column(db.String(20),  nullable=True)
+    subtotal       = db.Column(db.Float,        nullable=True)
+    vat_amount     = db.Column(db.Float,        nullable=True)
+    total_amount   = db.Column(db.Float,        nullable=True)
+    invoice_status = db.Column(db.String(20),  nullable=True)   # draft | sent | paid
+    doc_data       = db.Column(db.JSON,         nullable=True)  # items, notas, etc.
+
+    @staticmethod
+    def next_invoice_number(user_phone: str, year: int) -> str:
+        from sqlalchemy import func
+        count = db.session.query(func.count(GeneratedDocument.id)).filter(
+            GeneratedDocument.user_phone == user_phone,
+            GeneratedDocument.doc_type == 'invoice',
+            GeneratedDocument.invoice_number.isnot(None),
+            GeneratedDocument.invoice_number.like(f'F-{year}-%'),
+        ).scalar() or 0
+        return f"F-{year}-{count + 1:03d}"
 
 
 class Notification(db.Model):

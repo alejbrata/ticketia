@@ -23,32 +23,31 @@ class AdminAssistantAgent:
             logger.info("Clasificando imagen: %s...", image_url[:15])
             
             # --- PREPARAR IMAGEN (Local vs URL) ---
-            # SSRF protection: solo se permiten rutas locales del servidor.
-            # URLs externas controladas por el usuario podrían apuntar a servicios internos.
+            # URLs externas se pasan directamente a la Vision API de OpenAI (OpenAI
+            # hace el fetch desde sus servidores, no el nuestro — sin riesgo SSRF).
+            # Rutas locales se convierten a base64 para evitar exponer paths internos.
             image_content = []
             if image_url.startswith(('http://', 'https://')):
-                logger.warning("URL externa bloqueada por SSRF protection: %s", image_url[:60])
-                return 'draft'  # fallback seguro
+                image_content = [{"type": "image_url", "image_url": {"url": image_url}}]
             else:
-                # Local Path logic
+                # Local Path → base64
                 try:
                     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                    rel_path = image_url.lstrip('/') 
+                    rel_path = image_url.lstrip('/')
                     local_path = os.path.join(base_dir, rel_path)
-                    
+
                     with open(local_path, "rb") as image_file:
                         base64_image = base64.b64encode(image_file.read()).decode('utf-8')
                         image_content = [{
-                            "type": "image_url", 
+                            "type": "image_url",
                             "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
                         }]
                 except Exception as e:
                     logger.warning("Error cargando imagen local para clasificación: %s", e)
-                    # Fallback tentativo, aunque probablemente falle si es local path
                     image_content = [{"type": "image_url", "image_url": {"url": image_url}}]
 
             prompt = f"""
-            Eres un experto clasificador visual para "Ticketia".
+            Eres un experto clasificador visual para "Zeptai".
             Clasifica la imagen en UNA de dos categorías:
             
             A) 'receipt': SOLO si ves un TICKET TÉRMICO DE CAJA (supermercado, restaurante) o una FACTURA IMPRESA FORMAL. Debe parecer un documento final de pago.
@@ -112,6 +111,15 @@ class AdminAssistantAgent:
         """
         logger.info("AdminRedactor: generando PDF desde datos texto")
         return self._generate_professional_pdf(data, user_context)
+
+    def generate_invoice_pdf(self, data, user_context):
+        """
+        Genera una factura legal en PDF a partir de datos estructurados.
+        Requiere data['invoice_number'] (e.g. 'F-2026-001').
+        Devuelve (file_path, subtotal, vat_amount, total_amount) o (None, 0, 0, 0).
+        """
+        logger.info("AdminRedactor: generando factura %s", data.get('invoice_number', '?'))
+        return self._generate_professional_pdf(data, user_context, doc_title="FACTURA")
 
     def _analyze_image_with_vision(self, image_url, extra_context={}):
         """
@@ -214,11 +222,11 @@ class AdminAssistantAgent:
             logger.error("Error Vision API: %s", e)
             return None
 
-    def _generate_professional_pdf(self, data, user_context):
+    def _generate_professional_pdf(self, data, user_context, doc_title="PRESUPUESTO"):
         try:
             pdf = FPDF()
             pdf.add_page()
-            
+
             # --- VAT Logic ---
             sector = user_context.get('sector', 'Servicios').lower()
 
@@ -253,7 +261,7 @@ class AdminAssistantAgent:
             # Document Title (Right)
             pdf.set_font("Helvetica", 'B', 24)
             pdf.set_text_color(100, 100, 100)
-            pdf.cell(0, 10, "PRESUPUESTO", align='R',
+            pdf.cell(0, 10, doc_title, align='R',
                      new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
             pdf.ln(5)
@@ -287,12 +295,19 @@ class AdminAssistantAgent:
             pdf.set_font("Helvetica", '', 10)
             pdf.cell(0, 5, f"Cliente: {clean_text(data.get('client_name', 'Cliente Contado'))}",
                      new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            if data.get('client_nif'):
+                pdf.set_xy(110, pdf.get_y())
+                pdf.cell(0, 5, f"NIF/CIF: {clean_text(data['client_nif'])}",
+                         new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
             pdf.set_xy(110, pdf.get_y() + 2)
             pdf.cell(0, 5, f"Fecha: {clean_text(data.get('date') or datetime.now().strftime('%d/%m/%Y'))}",
                      new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-            pdf.cell(0, 5, f"Ref: B-{int(datetime.now().timestamp())}",
-                     new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            if doc_title == "FACTURA":
+                ref_label = f"Num. Factura: {clean_text(data.get('invoice_number', ''))}"
+            else:
+                ref_label = f"Ref: B-{int(datetime.now().timestamp())}"
+            pdf.cell(0, 5, ref_label, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
             pdf.ln(20)
 
@@ -364,19 +379,32 @@ class AdminAssistantAgent:
             pdf.set_x(10)
             pdf.set_font("Helvetica", 'I', 9)
             pdf.set_text_color(100, 100, 100)
-            notes = data.get('notes', 'Gracias por su confianza. Presupuesto válido por 15 días.')
+            if doc_title == "FACTURA":
+                default_notes = "Factura emitida de acuerdo con la normativa española de facturación (RD 1619/2012)."
+            else:
+                default_notes = "Gracias por su confianza. Presupuesto válido por 15 días."
+            notes = data.get('notes', default_notes)
             pdf.multi_cell(0, 5, f"Notas: {clean_text(notes)}\nEl precio final incluye los impuestos aplicables.")
-            
+
             # Save
-            filename = f"budget_{int(datetime.now().timestamp())}.pdf"
+            if doc_title == "FACTURA":
+                inv_slug = str(data.get('invoice_number', 'inv')).replace('/', '-')
+                filename = f"invoice_{inv_slug}_{int(datetime.now().timestamp())}.pdf"
+            else:
+                filename = f"budget_{int(datetime.now().timestamp())}.pdf"
             save_dir = os.path.join("static", "generated_docs")
             os.makedirs(save_dir, exist_ok=True)
             full_path = os.path.join(save_dir, filename)
-            
+
             pdf.output(full_path)
             logger.info("PDF generado: %s", full_path)
-            return f"/static/generated_docs/{filename}"
+            file_url = f"/static/generated_docs/{filename}"
+            if doc_title == "FACTURA":
+                return file_url, round(subtotal, 2), round(vat_amount, 2), round(total_final, 2)
+            return file_url
 
         except Exception as e:
             logger.error("Error generando PDF: %s", e)
+            if doc_title == "FACTURA":
+                return None, 0, 0, 0
             return None

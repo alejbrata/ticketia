@@ -22,6 +22,11 @@
                 class="pb-4 font-bold text-sm border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap">
                 📄 Presupuestos <span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-xs">{{ proposals|length }}</span>
             </button>
+            <button @click="tab = 'invoices'"
+                :class="{ 'border-green-600 text-green-600': tab === 'invoices', 'border-transparent text-slate-500 hover:text-slate-700': tab !== 'invoices' }"
+                class="pb-4 font-bold text-sm border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap">
+                🧾 Facturas <span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-xs">{{ invoices|length }}</span>
+            </button>
             <button @click="tab = 'images'"
                 :class="{ 'border-purple-600 text-purple-600': tab === 'images', 'border-transparent text-slate-500 hover:text-slate-700': tab !== 'images' }"
                 class="pb-4 font-bold text-sm border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap">
@@ -66,6 +71,12 @@
                         class="flex-1 text-center text-xs font-bold bg-slate-50 text-slate-600 hover:bg-slate-100 px-3 py-2 rounded-xl transition-colors">
                         Descargar
                     </a>
+                    {% if doc.doc_data %}
+                    <button onclick="openInvoiceModal({{ doc.id }})"
+                        class="flex-1 text-center text-xs font-bold bg-green-50 text-green-700 hover:bg-green-100 px-3 py-2 rounded-xl transition-colors">
+                        🧾 Facturar
+                    </button>
+                    {% endif %}
                 </div>
             </div>
             {% endfor %}
@@ -75,6 +86,63 @@
             <div class="text-5xl mb-4">📄</div>
             <p class="text-slate-400 font-medium mb-1">No hay presupuestos aún</p>
             <p class="text-xs text-slate-300">Pídele al asistente que genere uno por voz o texto</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- FACTURAS -->
+    <div x-show="tab === 'invoices'" style="display:none">
+        {% if invoices %}
+        <div class="grid md:grid-cols-2 gap-4">
+            {% for doc in invoices %}
+            {% set status_map = {'draft': ('Borrador','bg-slate-100 text-slate-600'), 'sent': ('Enviada','bg-blue-100 text-blue-700'), 'paid': ('Cobrada','bg-green-100 text-green-700')} %}
+            {% set st = doc.invoice_status or 'draft' %}
+            {% set st_label, st_class = status_map.get(st, ('Borrador','bg-slate-100 text-slate-600')) %}
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 flex flex-col gap-3" id="inv-card-{{ doc.id }}">
+                <div class="flex items-start justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-green-50 rounded-xl flex items-center justify-center text-xl">🧾</div>
+                        <div>
+                            <h4 class="font-bold text-slate-800 text-sm">{{ doc.invoice_number or '—' }}</h4>
+                            <p class="text-slate-500 text-xs font-medium">{{ doc.client_name or 'Cliente' }}</p>
+                            <p class="text-slate-400 text-xs">{{ doc.created_at.strftime('%d/%m/%Y') if doc.created_at else '' }}</p>
+                        </div>
+                    </div>
+                    <span class="text-xs font-bold px-2 py-1 rounded-full {{ st_class }}" id="inv-badge-{{ doc.id }}">{{ st_label }}</span>
+                </div>
+                {% if doc.total_amount %}
+                <div class="flex gap-3 text-xs text-slate-500 bg-slate-50 rounded-xl px-3 py-2">
+                    <span>Base: <strong>{{ "%.2f"|format(doc.subtotal or 0) }}€</strong></span>
+                    <span>IVA: <strong>{{ "%.2f"|format(doc.vat_amount or 0) }}€</strong></span>
+                    <span class="ml-auto font-bold text-slate-800">Total: {{ "%.2f"|format(doc.total_amount) }}€</span>
+                </div>
+                {% endif %}
+                <div class="flex gap-2 mt-1 flex-wrap">
+                    <a href="{{ doc.file_path }}" target="_blank"
+                        class="flex-1 text-center text-xs font-bold bg-green-50 text-green-700 hover:bg-green-100 px-3 py-2 rounded-xl transition-colors">
+                        Ver PDF ↗
+                    </a>
+                    {% if st == 'draft' %}
+                    <button onclick="updateInvoiceStatus({{ doc.id }}, 'sent')"
+                        class="flex-1 text-center text-xs font-bold bg-blue-50 text-blue-700 hover:bg-blue-100 px-3 py-2 rounded-xl transition-colors">
+                        Marcar enviada
+                    </button>
+                    {% endif %}
+                    {% if st in ('draft', 'sent') %}
+                    <button onclick="updateInvoiceStatus({{ doc.id }}, 'paid')"
+                        class="flex-1 text-center text-xs font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 px-3 py-2 rounded-xl transition-colors">
+                        Marcar cobrada ✓
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-16">
+            <div class="text-5xl mb-4">🧾</div>
+            <p class="text-slate-400 font-medium mb-1">No hay facturas aún</p>
+            <p class="text-xs text-slate-300">Genera un presupuesto y conviértelo en factura</p>
         </div>
         {% endif %}
     </div>
@@ -172,7 +240,118 @@
         <input type="file" id="videoUploadInput" class="hidden" accept="image/*" onchange="uploadImageForVideo(this)">
     </div>
 
+    <!-- Modal Convertir a Factura -->
+    <div id="invoiceModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] hidden flex items-end md:items-center justify-center p-4" onclick="closeInvoiceModal()">
+        <div class="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl" onclick="event.stopPropagation()">
+            <div class="text-center mb-5">
+                <div class="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center text-2xl mx-auto mb-3">🧾</div>
+                <h3 class="text-lg font-bold text-slate-800">Convertir a Factura</h3>
+                <p class="text-sm text-slate-500 mt-1">Se generará una factura numerada con los datos del presupuesto.</p>
+            </div>
+            <div class="mb-4">
+                <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">NIF / CIF del cliente (opcional)</label>
+                <input id="invoiceClientNif" type="text" placeholder="Ej: 12345678A"
+                    class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 outline-none focus:border-green-500 transition-colors">
+            </div>
+            <div class="flex gap-3">
+                <button onclick="closeInvoiceModal()" class="flex-1 py-3 rounded-2xl bg-slate-100 text-slate-700 font-bold text-sm hover:bg-slate-200 transition-colors">
+                    Cancelar
+                </button>
+                <button id="confirmInvoiceBtn" onclick="confirmConvertToInvoice()"
+                    class="flex-1 py-3 rounded-2xl bg-green-600 text-white font-bold text-sm hover:bg-green-700 transition-colors shadow-lg shadow-green-200">
+                    Generar Factura
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script>
+        let _pendingInvoiceDocId = null;
+
+        function openInvoiceModal(docId) {
+            _pendingInvoiceDocId = docId;
+            document.getElementById('invoiceClientNif').value = '';
+            document.getElementById('invoiceModal').classList.remove('hidden');
+        }
+
+        function closeInvoiceModal() {
+            document.getElementById('invoiceModal').classList.add('hidden');
+            _pendingInvoiceDocId = null;
+        }
+
+        async function confirmConvertToInvoice() {
+            if (!_pendingInvoiceDocId) return;
+            const btn = document.getElementById('confirmInvoiceBtn');
+            const nif = document.getElementById('invoiceClientNif').value.trim();
+            btn.disabled = true;
+            btn.textContent = 'Generando...';
+            try {
+                const res  = await fetch(`/api/documents/${_pendingInvoiceDocId}/to-invoice`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ client_nif: nif }),
+                });
+                const data = await res.json();
+                closeInvoiceModal();
+                if (res.ok) {
+                    window.showToast && window.showToast(`Factura ${data.invoice_number} generada correctamente`, 'success');
+                    setTimeout(() => {
+                        const url = new URL(location.href);
+                        url.searchParams.set('tab', 'invoices');
+                        location.href = url.toString();
+                    }, 800);
+                } else {
+                    window.showToast && window.showToast(data.error || 'Error generando factura', 'error');
+                }
+            } catch (e) {
+                closeInvoiceModal();
+                window.showToast && window.showToast('Error de conexión', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Generar Factura';
+            }
+        }
+
+        async function updateInvoiceStatus(docId, newStatus) {
+            try {
+                const res  = await fetch(`/api/invoices/${docId}/status`, {
+                    method: 'PATCH',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ status: newStatus }),
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    const labels = { draft: 'Borrador', sent: 'Enviada', paid: 'Cobrada' };
+                    const classes = {
+                        draft: 'bg-slate-100 text-slate-600',
+                        sent:  'bg-blue-100 text-blue-700',
+                        paid:  'bg-green-100 text-green-700',
+                    };
+                    const badge = document.getElementById(`inv-badge-${docId}`);
+                    if (badge) {
+                        badge.textContent = labels[newStatus] || newStatus;
+                        badge.className   = `text-xs font-bold px-2 py-1 rounded-full ${classes[newStatus] || ''}`;
+                    }
+                    // Refrescar para ocultar botones no válidos tras la transición
+                    setTimeout(() => location.reload(), 600);
+                } else {
+                    window.showToast && window.showToast(data.error || 'Error actualizando estado', 'error');
+                }
+            } catch (e) {
+                window.showToast && window.showToast('Error de conexión', 'error');
+            }
+        }
+
+        // Activar tab desde query param (usado tras convertir a factura)
+        const _urlTab = new URLSearchParams(location.search).get('tab');
+        if (_urlTab) {
+            document.addEventListener('alpine:init', () => {});
+            window.addEventListener('load', () => {
+                const btn = document.querySelector(`[\\@click="tab = '${_urlTab}'"]`);
+                if (btn) btn.click();
+            });
+        }
+
         async function uploadImageForVideo(input) {
             if (input.files && input.files[0]) {
                 const formData = new FormData();

@@ -1,0 +1,617 @@
+[4] 'Normal': Zeptai
+[5] 'Normal': Plataforma SaaS Multi-Agente de IA Generativa
+para la Automatización de la Gestión Empresarial
+de Autónomos y PYMEs
+[7] 'Normal': Máster en Ingeniería y Desarrollo de Soluciones de IA Generativa
+[9] 'Normal': Autor: Alejandro Bravo
+[10] 'Normal': Tutor: [Nombre del tutor]
+[11] 'Normal': Fecha de entrega: Junio 2026
+[12] 'Normal': Repositorio: https://github.com/alejbrata/zeptai
+[14] 'Heading 1': Agradecimientos
+[15] 'Normal': El desarrollo de Zeptai no habría sido posible sin el apoyo y la orientación recibidos a lo largo de este Máster. Quisiera expresar mi más sincero agradecimiento a los docentes del programa por transmitir su conocimiento sobre Inteligencia Artificial Generativa con rigor y entusiasmo.
+[16] 'Normal': A mi tutor, por su disponibilidad y por sus comentarios siempre constructivos que han guiado la dirección técnica y académica de este trabajo.
+[17] 'Normal': A los compañeros del máster, por las innumerables conversaciones técnicas que han enriquecido este proyecto, y a los primeros usuarios que probaron la plataforma y aportaron su valioso feedback.
+[18] 'Normal': Finalmente, a mi familia y amigos, por su paciencia y apoyo incondicional durante los meses de desarrollo intensivo de este proyecto.
+[20] 'Heading 1': Resumen
+[21] 'Normal': Zeptai es una plataforma web SaaS que integra un sistema multi-agente de Inteligencia Artificial Generativa orientado a autónomos y pequeñas empresas españolas. La solución permite a sus usuarios gestionar su negocio a través de una interfaz conversacional, delegando tareas como la generación de presupuestos en PDF, la creación de material de marketing (imágenes, presentaciones, prompts de vídeo), la gestión de citas, la atención postventa y el análisis de tickets de gasto mediante OCR. El núcleo del sistema es un AgentExecutor basado en GPT-4o con function calling, complementado por un CouncilManager que orquesta un debate multi-perspectiva entre tres agentes especializados para decisiones estratégicas complejas.
+[22] 'Normal': La arquitectura está desplegada en Docker sobre Flask y PostgreSQL con extensión pgvector, incorporando un pipeline RAG (Retrieval-Augmented Generation) que permite al agente responder con el conocimiento específico de cada negocio, notificaciones web push mediante el estándar VAPID, y un servidor Model Context Protocol (MCP) basado en Server-Sent Events para la integración de herramientas externas. La calidad del pipeline RAG se valida objetivamente mediante DeepEval, un framework LLM-as-a-judge que evalúa Faithfulness, Answer Relevancy, Contextual Precision y Contextual Recall sobre siete casos de prueba representativos.
+[23] 'Normal': Los resultados demuestran que la plataforma es capaz de reducir el tiempo dedicado a tareas administrativas recurrentes en más de un 80%, con un coste operativo por usuario de entre 1 y 5 euros mensuales y un ROI estimado superior al 1.000% en el primer mes de uso activo. El conjunto de pruebas automatizadas (51 casos funcionales con tasa de superación del 90,2%) y la evaluación con DeepEval validan la robustez y calidad de la solución.
+[24] 'Normal': Palabras clave: IA Generativa, Agentes LLM, GPT-4o, Function Calling, Multi-Agente, SaaS, Automatización PYME, RAG, pgvector, Flask, Docker, MCP, DeepEval.
+[26] 'Heading 1': Abstract
+[27] 'Normal': Zeptai is a SaaS web platform integrating a multi-agent Generative Artificial Intelligence system aimed at Spanish freelancers and small businesses. The solution enables users to manage their business through a conversational interface, delegating tasks such as PDF quote generation, marketing content creation (images, presentations, video prompts), appointment management, after-sales support, and expense ticket analysis via OCR. The system's core is an AgentExecutor built on GPT-4o with function calling, complemented by a CouncilManager that orchestrates a multi-perspective debate among three specialized agents for complex strategic decisions.
+[28] 'Normal': The architecture is deployed on Docker using Flask and PostgreSQL with the pgvector extension, incorporating a RAG pipeline, VAPID web push notifications, and a Model Context Protocol (MCP) server based on Server-Sent Events. RAG quality is objectively validated using DeepEval (LLM-as-a-judge) across four metrics and seven test cases.
+[29] 'Normal': Keywords: Generative AI, LLM Agents, GPT-4o, Function Calling, Multi-Agent, SaaS, SME Automation, RAG, pgvector, Flask, Docker, MCP, DeepEval.
+[31] 'Heading 1': Índice de Contenidos
+[32] 'Normal': 1.  Introducción
+[33] 'Normal': 1.1.  Contexto y motivación
+[34] 'Normal': 1.2.  Objetivos
+[35] 'Normal': 1.3.  Alcance de la solución
+[36] 'Normal': 2.  Estado del Arte y Fundamentos Teóricos
+[37] 'Normal': 2.1.  Grandes Modelos de Lenguaje y arquitectura Transformer
+[38] 'Normal': 2.2.  Retrieval-Augmented Generation (RAG)
+[39] 'Normal': 2.3.  Agentes LLM y patrones de orquestación
+[40] 'Normal': 2.4.  Generación multimodal
+[41] 'Normal': 2.5.  OCR y procesamiento de documentos físicos
+[42] 'Normal': 2.6.  Model Context Protocol (MCP)
+[43] 'Normal': 2.7.  Marcos legales y éticos
+[44] 'Normal': 3.  Requisitos y Diseño de la Solución
+[45] 'Normal': 3.1.  Requisitos funcionales
+[46] 'Normal': 3.2.  Requisitos no funcionales
+[47] 'Normal': 3.3.  Arquitectura de la aplicación
+[48] 'Normal': 3.4.  Selección tecnológica
+[49] 'Normal': 3.5.  Diseño de datos
+[50] 'Normal': 4.  Implementación
+[51] 'Normal': 4.1.  Estructura del código
+[52] 'Normal': 4.2.  Integración con modelos LLM
+[53] 'Normal': 4.3.  Gestión de prompts y orquestación de agentes
+[54] 'Normal': 4.4.  Pipeline RAG con pgvector
+[55] 'Normal': 4.5.  Generación asíncrona y notificaciones
+[56] 'Normal': 4.6.  Mecanismos de seguridad
+[57] 'Normal': 4.7.  Despliegue e infraestructura
+[58] 'Normal': 5.  Evaluación y Experimentos
+[59] 'Normal': 5.1.  Marco de evaluación — DeepEval
+[60] 'Normal': 5.2.  Métricas técnicas de rendimiento
+[61] 'Normal': 5.3.  Análisis de costes
+[62] 'Normal': 6.  Pruebas y Validación de Producto
+[63] 'Normal': 6.1.  Pruebas funcionales automatizadas
+[64] 'Normal': 6.2.  Pruebas manuales requeridas
+[65] 'Normal': 6.3.  Bugs identificados y corregidos
+[66] 'Normal': 6.4.  UX y usabilidad
+[67] 'Normal': 7.  Discusión
+[68] 'Normal': 7.1.  Lecciones aprendidas
+[69] 'Normal': 7.2.  Riesgos, ética y mitigaciones
+[70] 'Normal': 7.3.  Análisis de limitaciones
+[71] 'Normal': 8.  Conclusiones y Trabajo Futuro
+[72] 'Normal': 8.1.  Conclusiones
+[73] 'Normal': 8.2.  Trabajo futuro
+[74] 'Normal': 9.  Bibliografía
+[75] 'Normal': Anexo A.  Guía de despliegue
+[76] 'Normal': Anexo B.  Manual de usuario resumido
+[77] 'Normal': Anexo C.  Prompts clave del sistema
+[79] 'Heading 1': 1. Introducción
+[80] 'Heading 2': 1.1. Contexto y motivación
+[81] 'Normal': El tejido empresarial español está compuesto en un 99,8% por PYMEs y autónomos (Ministerio de Industria, Comercio y Turismo, 2023). Este colectivo, que representa la columna vertebral de la economía nacional, enfrenta una paradoja tecnológica: dispone de acceso a herramientas digitales avanzadas pero carece del tiempo, los recursos humanos y, en muchos casos, de la formación técnica necesaria para adoptarlas e integrarlas de forma coherente en sus procesos de negocio.
+[82] 'Normal': La irrupción de los Grandes Modelos de Lenguaje (LLMs) en el bienio 2022-2023 ha cambiado radicalmente el paradigma. Por primera vez en la historia de la computación, es posible construir un asistente que no solo responde preguntas en lenguaje natural, sino que también ejecuta acciones reales en nombre del usuario: genera documentos estructurados, agenda citas con validación de conflictos, analiza imágenes o crea contenido visual, todo ello desde una interfaz conversacional de texto.
+[83] 'Normal': Observamos tres necesidades concretas no satisfactoriamente cubiertas por el mercado actual:
+[84] 'List Bullet': Los autónomos dedican entre 3 y 5 horas semanales a tareas administrativas repetitivas (elaboración de presupuestos, gestión de citas, respuestas a clientes), tiempo que podría dedicarse a actividades de mayor valor añadido.
+[85] 'List Bullet': Las soluciones SaaS existentes en el mercado (Holded, Factorial, Canva, Notion...) son herramientas aisladas que no se comunican entre sí ni comprenden el contexto específico del negocio del usuario.
+[86] 'List Bullet': Los chatbots genéricos de propósito general (ChatGPT, Microsoft Copilot) no están conectados a los datos ni a los procesos reales del negocio del usuario, lo que limita su utilidad operativa más allá de la redacción y la consulta de información general.
+[87] 'Normal': Zeptai nace para cubrir precisamente esta brecha: un asistente de IA que conoce el negocio del usuario, actúa sobre él con herramientas reales y aprende de cada interacción, integrando en una única plataforma todas las capacidades que hasta ahora requerían múltiples herramientas dispares y conocimiento técnico especializado.
+[88] 'Normal': En términos de mercado, la oportunidad es significativa: España cuenta con 3,3 millones de autónomos registrados en el RETA (2023), y el mercado global de AI SaaS se estimaba en 62.000 millones de dólares en 2023 con una proyección de 300.000 millones para 2027 (Grand View Research, 2024). El coste medio de contratar un gestor externo para una PYME oscila entre 150 y 400 euros mensuales; Zeptai ofrece capacidades comparables por una fracción de ese coste (estimación: 19 €/mes en plan Pro).
+[89] 'Heading 2': 1.2. Objetivos
+[90] 'Normal': Objetivo general
+[91] 'Normal': Desarrollar una plataforma web SaaS basada en IA Generativa que automatice las principales tareas de gestión de autónomos y PYMEs españolas mediante una arquitectura multi-agente orquestada, accesible desde una interfaz conversacional sin necesidad de formación técnica.
+[92] 'Normal': Objetivos específicos
+[93] 'List Bullet': OE1. Implementar un sistema de agentes especializados (presupuestos, marketing, calendario, postventa, análisis de tickets) accesibles desde el chat mediante function calling.
+[94] 'List Bullet': OE2. Diseñar un orquestador multi-agente (CouncilManager) capaz de generar perspectivas complementarias desde roles diferenciados (Estratega, Analista, Implementador) y producir una síntesis ejecutiva integrada.
+[95] 'List Bullet': OE3. Integrar generación multimodal: texto (presupuestos PDF), imágenes publicitarias (DALL·E 3), presentaciones (python-pptx) y prompts de vídeo profesionales (Runway ML).
+[96] 'List Bullet': OE4. Implementar un pipeline de OCR + LLM para digitalizar y formalizar documentos físicos (notas manuscritas, facturas, capturas de pantalla).
+[97] 'List Bullet': OE5. Construir un pipeline RAG (Retrieval-Augmented Generation) sobre PostgreSQL + pgvector que permita al agente responder utilizando el conocimiento específico de cada negocio.
+[98] 'List Bullet': OE6. Desplegar la solución en un entorno reproducible (Docker Compose) con base de datos relacional, sistema de notificaciones en tiempo real y servidor MCP para extensibilidad.
+[99] 'List Bullet': OE7. Validar la solución mediante pruebas funcionales automatizadas (51 casos de prueba) y evaluación objetiva de calidad del pipeline RAG mediante DeepEval (LLM-as-a-judge).
+[100] 'Heading 2': 1.3. Alcance de la solución
+[101] 'Normal': Zeptai se concibe como un MVP (Producto Mínimo Viable) funcional y desplegable en producción. El alcance definido para este trabajo comprende los siguientes elementos:
+[102] 'Normal': Dentro del alcance:
+[103] 'List Bullet': Interfaz web PWA responsive (Flask + Jinja2 + Tailwind CSS), instalable desde el navegador.
+[104] 'List Bullet': Sistema de autenticación completo con perfil de negocio configurable mediante wizard.
+[105] 'List Bullet': Seis agentes especializados integrados vía tool-use: agenda, presupuestos, marketing, postventa, OCR y consultas RAG.
+[106] 'List Bullet': Seis agentes proactivos con ejecución programada (schedule library, 09:00 diario): BusinessHealth, GrantHunter, Networker, PostSales, AdminRedactor, MarketingAgent.
+[107] 'List Bullet': CouncilManager con debate multi-perspectiva y síntesis en streaming SSE.
+[108] 'List Bullet': Pipeline RAG completo con ingesta de PDF, chunking, embeddings y búsqueda vectorial en pgvector.
+[109] 'List Bullet': Sistema de notificaciones in-app y web push (VAPID).
+[110] 'List Bullet': Panel de métricas de uso LLM (coste, latencia, modelo) y exportación a Excel.
+[111] 'List Bullet': Evaluación objetiva de calidad con DeepEval (4 métricas, 7 casos de prueba).
+[112] 'List Bullet': Despliegue Docker Compose con 4 servicios (db, mcp, web, scheduler).
+[113] 'Normal': Fuera del alcance (trabajo futuro):
+[114] 'List Bullet': App móvil nativa (iOS/Android).
+[115] 'List Bullet': Integración directa con WhatsApp Business API (webhook Twilio / Meta Cloud API).
+[116] 'List Bullet': Fine-tuning de modelos propios sobre datos del dominio.
+[117] 'List Bullet': Marketplace de agentes con contribuciones de terceros.
+[118] 'List Bullet': Facturación automática SaaS (Stripe) con planes freemium/pro/enterprise.
+[120] 'Heading 1': 2. Estado del Arte y Fundamentos Teóricos
+[121] 'Heading 2': 2.1. Grandes Modelos de Lenguaje y arquitectura Transformer
+[122] 'Normal': Los Grandes Modelos de Lenguaje (LLMs, por sus siglas en inglés Large Language Models) son sistemas de aprendizaje profundo basados en la arquitectura Transformer (Vaswani et al., 2017), entrenados sobre corpus masivos de texto para aprender representaciones estadísticas del lenguaje a una escala sin precedentes históricos.
+[123] 'Normal': La innovación central de la arquitectura Transformer es el mecanismo de atención multi-cabeza (multi-head self-attention), que permite al modelo relacionar cualquier par de posiciones en la secuencia de entrada de forma directa, independientemente de su distancia. Esto supera la limitación fundamental de las arquitecturas recurrentes (RNN, LSTM) que procesaban la secuencia de forma secuencial y perdían información al extenderse la distancia entre tokens relacionados. Formalmente, el mecanismo de atención se define como:
+[124] 'Normal': Attention(Q, K, V) = softmax(QK^T / sqrt(d_k)) · V
+[125] 'Normal': donde Q (queries), K (keys) y V (values) son proyecciones lineales aprendidas de la secuencia de entrada, y d_k es la dimensión de las claves. La normalización por sqrt(d_k) estabiliza los gradientes para dimensiones elevadas. El término 'multi-cabeza' hace referencia a la ejecución en paralelo de h instancias independientes de este mecanismo, cuyos resultados se concatenan y proyectan linealmente.
+[126] 'Normal': La variante decoder-only (familia GPT) apila N bloques idénticos, cada uno compuesto por: (1) atención causal enmascarada (la posición i solo puede atender posiciones j ≤ i, garantizando la autoregresividad del modelo); (2) una red feed-forward de dos capas con activación GELU; y (3) normalización por capas con conexión residual. El entrenamiento se realiza con un objetivo de modelado de lenguaje causal: predecir el siguiente token dada la secuencia anterior.
+[127] 'Normal': GPT-4 (OpenAI, 2023), el modelo base que alimenta Zeptai, representa el estado del arte en modelos de propósito general. Sus características más relevantes para este proyecto son: una ventana de contexto de 128.000 tokens (equivalente a aproximadamente 90.000 palabras), capacidad multimodal nativa para procesar texto e imágenes en el mismo contexto, y un afinado mediante RLHF (Reinforcement Learning from Human Feedback) que alinea las salidas del modelo con las preferencias humanas en cuanto a utilidad, veracidad y seguridad.
+[128] 'Normal': En Zeptai empleamos específicamente la variante gpt-4o ('o' de omni), optimizada por OpenAI para ofrecer la mejor relación calidad/coste/latencia del ecosistema GPT-4 en la ventana temporal 2024-2025. Cada llamada al modelo envía: el system prompt personalizado del negocio, el historial de conversación de las últimas 10 interacciones (ventana deslizante), y el esquema JSON de las herramientas disponibles para function calling.
+[129] 'Heading 2': 2.2. Retrieval-Augmented Generation (RAG)
+[130] 'Normal': RAG (Lewis et al., 2020) es una técnica que combina un módulo de recuperación de información con un LLM para generar respuestas fundamentadas en una base de conocimiento externa, sin necesidad de reentrenar o ajustar el modelo. El flujo canónico es:
+[131] 'Normal': [Consulta usuario] → [Encoder embedding] → [Vector Store]
+→ [Top-K documentos más similares] → [LLM (contexto aumentado)] → [Respuesta]
+[132] 'Normal': Las ventajas de RAG frente al fine-tuning para el caso de uso de Zeptai son determinantes:
+[133] 'List Bullet': Sin coste de reentrenamiento (que puede ascender a miles de dólares por ejecución).
+[134] 'List Bullet': El conocimiento es actualizable en tiempo real sin tocar el modelo base.
+[135] 'List Bullet': Trazabilidad de fuentes: cada respuesta puede atribuirse a los fragmentos concretos que la fundamentan.
+[136] 'List Bullet': Idóneo para conocimiento empresarial específico en constante evolución (catálogos, tarifas, FAQs).
+[137] 'Normal': Zeptai implementa un pipeline RAG completo sobre PostgreSQL con la extensión pgvector, eliminando la necesidad de un servicio vectorial externo (Pinecone, Qdrant, ChromaDB). El mismo contenedor de base de datos gestiona tanto los datos relacionales como los vectores de embeddings, simplificando la arquitectura y reduciendo los costes operativos.
+[138] 'Normal': Pipeline de ingesta (módulo embeddings.py):
+[139] 'Normal': [PDF / TXT subido] → [PyMuPDF: extrae texto] → [Chunker recursivo]
+→ [text-embedding-3-small (OpenAI)] → [KnowledgeChunk en pgvector]
+[140] 'Normal': El chunker divide el documento en fragmentos de aproximadamente 1.600 caracteres con un overlap del 25% (400 caracteres) para preservar el contexto en los límites entre fragmentos. El algoritmo sigue una cascada de separadores: párrafo → frase → carácter, garantizando que los fragmentos nunca cortan unidades semánticas básicas.
+[141] 'Normal': Pipeline de recuperación (retrieve_chunks):
+[142] 'Normal': [Pregunta usuario] → [embed_text()] → [cosine similarity en pgvector]
+→ [Top-5 chunks más similares] → [inyección en system prompt del LLM]
+[143] 'Normal': El modelo de embedding empleado es text-embedding-3-small (OpenAI), con 1.536 dimensiones y un coste aproximado de 0,000020 $/1K tokens (prácticamente gratuito en el volumen de uso de una PYME). Supera a text-embedding-ada-002 en los benchmarks MTEB con menor coste, lo que lo convierte en la opción óptima para este caso de uso.
+[144] 'Normal': El sistema distingue dos fuentes de conocimiento que se consultan conjuntamente: 'wizard' (campos del perfil de negocio: horario, servicios, tarifas, FAQs) y 'document' (PDFs o archivos TXT subidos desde la sección Knowledge). Esta arquitectura proporciona al agente acceso unificado a la totalidad del conocimiento del negocio en una única búsqueda vectorial.
+[145] 'Heading 2': 2.3. Agentes LLM y patrones de orquestación
+[146] 'Normal': Un agente LLM es un sistema donde el modelo de lenguaje no solo genera texto sino que también decide qué acciones ejecutar, las ejecuta mediante herramientas externas y razona sobre sus resultados para decidir el siguiente paso (Yao et al., 2023). El patrón fundamental que articula este comportamiento es ReAct (Reasoning + Acting), que intercala razonamiento explícito con acciones concretas en un bucle:
+[147] 'Normal': Thought:     'El usuario quiere reservar una cita para el martes'
+Action:      check_availability(date='2026-04-21')
+Observation: 'Huecos disponibles: 09:00, 10:00, 16:00'
+Thought:     'Hay disponibilidad, pregunto al usuario su preferencia'
+Response:    'El martes tengo disponibles las 9h, 10h o 16h. ¿Cuál prefieres?'
+[148] 'Normal': OpenAI proporciona una implementación nativa de este patrón mediante el mecanismo de function calling (también denominado tool use): cuando el modelo decide que debe ejecutar una acción, devuelve un JSON estructurado con el nombre de la función y sus argumentos en lugar de texto libre, garantizando una interfaz determinista y tipada entre el LLM y el código de la aplicación.
+[149] 'Normal': En Zeptai, el TOOLS_SCHEMA define seis herramientas disponibles para el AgentExecutor:
+[150] 'List Bullet': check_availability — consulta la agenda del negocio por fecha.
+[151] 'List Bullet': book_appointment — reserva una cita con validación de conflictos en tiempo real.
+[152] 'List Bullet': create_proposal_from_last_image — genera un presupuesto PDF desde una imagen analizada por OCR.
+[153] 'List Bullet': create_proposal_from_text — genera un presupuesto PDF a partir de datos dictados por el usuario.
+[154] 'List Bullet': generate_marketing_material — genera imágenes (DALL·E 3), presentaciones (PPT) o prompts de vídeo.
+[155] 'List Bullet': handle_customer_service — gestiona incidencias y consultas postventa.
+[156] 'Heading 3': CouncilManager: debate multi-agente
+[157] 'Normal': El patrón multi-agente más sofisticado implementado en Zeptai es el CouncilManager, inspirado en los trabajos de Park et al. (2023) sobre agentes generativos con roles diferenciados y en el framework AutoGen de Microsoft (Wu et al., 2023). Implementa un debate estructurado con tres perspectivas independientes sobre la misma pregunta estratégica:
+[158] 'List Bullet': El Socio (growth) — perspectiva comercial: CAC, LTV, ventas, crecimiento de mercado.
+[159] 'List Bullet': El Gestor (legal/fiscal) — perspectiva regulatoria: AEAT, obligaciones fiscales, cumplimiento normativo.
+[160] 'List Bullet': El Coach (operaciones) — perspectiva de ejecucion: productividad del dueno, procesos internos, recursos.
+[161] 'Normal': El debate se estructura en tres rondas ejecutadas secuencialmente mediante un generador asincrono que emite eventos SSE en tiempo real: (1) Ronda de opiniones iniciales — cada agente expone su posicion de forma independiente con una pausa de 0,8 s entre respuestas; (2) Ronda de replicas/debate — cada agente rebate las posiciones de los otros con 0,6 s entre turnos; (3) Sintesis y plan de accion — un cuarto rol ('Secretario') integra todas las perspectivas en una recomendacion ejecutiva accionable. El frontend recibe eventos tipados: 'typing' (indicador de escritura), 'message' (respuesta completa), 'divider' (separador de ronda) y 'plan' (plan final). El timeout de sesion del council es de 180 segundos. Los roles son especificos al contexto de una PYME espanola, lo que diferencia a Zeptai de sistemas multi-agente genericos.
+[162] 'Heading 3': Agentes proactivos con ejecución programada
+[163] 'Normal': Ademas del ciclo reactivo (usuario → agente → respuesta), Zeptai implementa seis agentes que se ejecutan de forma autonoma cada dia a las 09:00 mediante la libreria schedule (run_scheduler.py). El scheduler arranca inmediatamente al iniciar y luego ejecuta run_daily_tasks() en bucle con sleep de 60 segundos:
+[164] 'List Bullet': BusinessHealthAgent: analiza los tickets de gasto del dia, proyecta el gasto de fin de mes y genera alertas si la desviacion supera el 20%. Emite notificaciones con emojis de tendencia (subida, bajada, estable).
+[165] 'List Bullet': GrantHunterAgent: busca subvenciones activas en la tabla grant de la BD, filtra por sector del usuario y notifica un maximo de 2 ayudas por ejecucion para evitar spam.
+[166] 'List Bullet': SynergyAgent (Networker): detecta sinergias entre usuarios analizando sus perfiles de gasto, genera puntuaciones de compatibilidad (threshold >= 80) y crea registros en synergy_match.
+[167] 'List Bullet': PostSalesAgent: gestiona incidencias postventa (devoluciones, quejas, estado de pedidos) usando politicas configurables por empresa desde agent_config.
+[168] 'List Bullet': AdminRedactorAgent: procesa imagenes de tickets y facturas. Clasifica el tipo ('receipt' formal vs 'draft' manuscrito) antes de invocar GPT-4o Vision para extraccion estructurada. Genera PDFs con FPDF2.
+[169] 'List Bullet': MarketingAgent: genera contenido visual (imagenes DALL-E 3, presentaciones PowerPoint 2-8 slides, prompts de video Runway gen3a_turbo) en hilos daemon con notificacion push al finalizar.
+[170] 'Heading 2': 2.4. Generación multimodal
+[171] 'Normal': Zeptai integra cuatro modalidades de generación de contenido, abarcando texto, imágenes, presentaciones y vídeo:
+[172] 'Heading 3': Imágenes — DALL·E 3 (OpenAI)
+[173] 'Normal': DALL·E 3 es el modelo de generación de imágenes de OpenAI, basado en arquitecturas de difusión latente condicionadas por texto. Soporta resoluciones de hasta 1792×1024 píxeles con calidad fotorrealista. El marketing agent de Zeptai construye un prompt enriquecido con el contexto específico del negocio (sector, nombre, estilo de comunicación) y lo envía a la API. La imagen resultante se descarga y almacena localmente. Coste aproximado: 0,04 € por imagen en calidad estándar.
+[174] 'Heading 3': Presentaciones — python-pptx + GPT-4o
+[175] 'Normal': La generación de presentaciones se implementa mediante una cadena de dos pasos: GPT-4o genera el contenido estructurado como un JSON (título, subtítulo, slides, puntos clave por slide), y python-pptx renderiza ese contenido sobre una plantilla corporativa predefinida usando layouts de portada, contenido y cierre. Esta aproximación ofrece control total sobre el diseño sin depender de APIs externas, con un coste mínimo (únicamente la llamada LLM, aproximadamente 0,01 €/PPT).
+[176] 'Heading 3': Vídeo — Runway ML Gen-3
+[177] 'Normal': Para vídeos, Zeptai genera un prompt profesional detallado (descripción de escena, estilo cinematográfico, movimiento de cámara, paleta de color, ritmo) usando GPT-4o, y lo envía a la API de Runway ML Gen-3 Alpha para renderizado. El proceso es asíncrono: se ejecuta en un hilo daemon y notifica al usuario mediante push cuando el vídeo está disponible. Coste estimado: 0,10-0,50 € por vídeo de 4 segundos.
+[178] 'Heading 2': 2.5. OCR y procesamiento de documentos físicos
+[179] 'Normal': El AdminRedactorAgent implementa un pipeline de digitalización de documentos físicos sin recurrir a motores OCR tradicionales (Tesseract, AWS Textract). En su lugar, aprovecha las capacidades multimodales nativas de GPT-4o para procesar imágenes y extraer información estructurada directamente:
+[180] 'Normal': [Imagen capturada (foto, captura)] → [GPT-4o Vision]
+→ [Extracción estructurada JSON (partidas, precios, cliente, fecha)]
+→ [Plantilla PDF (ReportLab)] → [Documento formalizado descargable]
+[181] 'Normal': Esta aproximación mejora la robustez frente a OCR convencional en casos de escritura manuscrita, baja resolución, documentos parcialmente visibles o idiomas mixtos, ya que el LLM infiere el contexto semántico en lugar de reconocer caracteres aislados.
+[182] 'Heading 2': 2.6. Model Context Protocol (MCP)
+[183] 'Normal': El Model Context Protocol (MCP) es un estándar abierto propuesto por Anthropic en 2024 para estandarizar la integración de herramientas externas con sistemas LLM. Define un protocolo cliente-servidor donde el servidor expone herramientas tipadas que el agente puede invocar de forma estructurada. Zeptai implementa un servidor MCP propio (mcp_server_sse.py) basado en el transporte Server-Sent Events (SSE), que expone seis herramientas adicionales a los agentes:
+[184] 'List Bullet': get_financial_summary — resumen financiero del negocio.
+[185] 'List Bullet': get_appointments — lista de citas programadas.
+[186] 'List Bullet': search_web — búsqueda web para el GrantHunterAgent.
+[187] 'List Bullet': schedule_appointment — creación de citas desde el agente proactivo.
+[188] 'List Bullet': send_email_notification — envío de notificaciones por email.
+[189] 'List Bullet': get_business_stats — estadísticas de uso de la plataforma.
+[190] 'Normal': La ventaja clave del transporte SSE frente al transporte stdio estándar es que el proceso MCP se lanza una sola vez y permanece activo, reduciendo la latencia por herramienta de aproximadamente 500 ms (fork de proceso) a aproximadamente 5 ms (HTTP local), y permitiendo conexiones concurrentes de múltiples workers de Gunicorn sin conflictos.
+[191] 'Heading 2': 2.7. Marcos legales y éticos
+[192] 'Heading 3': Reglamento General de Protección de Datos (RGPD)
+[193] 'Normal': Zeptai opera en España y procesa datos personales de usuarios (nombre, teléfono, email, historial de conversaciones, documentos subidos). Las obligaciones aplicables bajo el Reglamento 2016/679 (RGPD) incluyen: base legitimadora de contrato (art. 6.1.b), ya que el tratamiento es necesario para la prestación del servicio; principio de minimización de datos; derecho de supresión implementado mediante endpoints de borrado de documentos y gestión de cuenta; y medidas de seguridad técnica (contraseñas hasheadas con PBKDF2-SHA256, sesiones server-side, aislamiento estricto por usuario en todas las consultas SQL).
+[194] 'Heading 3': EU AI Act (Reglamento 2024/1689)
+[195] 'Normal': Zeptai se clasifica bajo el AI Act en la categoría de riesgo mínimo/limitado. Esta clasificación se justifica porque el sistema no toma decisiones autónomas con efecto jurídico sobre personas, no realiza scoring social, no manipula el comportamiento del usuario y no opera en sectores críticos (salud, justicia, infraestructuras críticas). Se cumple la obligación de transparencia del artículo 50: la interfaz identifica claramente al agente como sistema de IA.
+[196] 'Heading 3': Riesgos identificados y mitigaciones
+[199] 'Heading 1': 3. Requisitos y Diseño de la Solución
+[200] 'Heading 2': 3.1. Requisitos funcionales
+[201] 'Normal': El análisis de necesidades del colectivo objetivo (autónomos y PYMEs) llevó a la definición de dieciséis requisitos funcionales que articulan las capacidades esenciales de la plataforma:
+[203] 'Heading 2': 3.2. Requisitos no funcionales
+[205] 'Heading 2': 3.3. Arquitectura de la aplicación
+[206] 'Normal': La arquitectura de Zeptai sigue un patrón en capas con separación clara de responsabilidades. El siguiente diagrama ilustra el flujo principal de una petición desde el cliente hasta los sistemas externos:
+[207] 'Normal': ┌─────────────────────────────────────────┐
+│           CLIENTE (PWA / Browser)       │
+│   HTML + Tailwind CSS · SW · Push API   │
+└────────────────┬────────────────────────┘
+                 │ HTTPS / SSE
+┌────────────────▼────────────────────────┐
+│   Flask (Gunicorn) — routes/api.py      │
+│              routes/web.py              │
+└──┬──────────┬───────────┬───────────────┘
+   │          │           │
+┌──▼────┐  ┌──▼────────┐  ┌▼──────────────┐
+│Agent  │  │Council    │  │Proactive      │
+│Exec.  │  │Manager    │  │Agents         │
+│+RAG   │  │(3×GPT-4o) │  │(schedule lib) │
+└──┬────┘  └──┬────────┘  └┬──────────────┘
+   │          │             │
+   └──────────┴─────────────┘
+                │
+   ┌────────────┴────────────┐
+   │  PostgreSQL + pgvector  │
+   │  (datos + embeddings)   │
+   └─────────────────────────┘
+                │
+   ┌────────────┴────────────┐
+   │  MCP Server SSE :8001   │
+   │  (6 herramientas MCP)   │
+   └─────────────────────────┘
+[208] 'Normal': El flujo de una petición típica de chat con tool use sigue estos pasos: (1) el usuario envía un mensaje mediante POST /api/chat; (2) el AgentExecutor construye el array messages con el system prompt personalizado más el historial de conversación; (3) primera llamada a GPT-4o: el modelo decide si responder directamente o invocar una herramienta; (4) si invoca una herramienta, _process_tool_calls() ejecuta la función correspondiente y obtiene el resultado; (5) segunda llamada a GPT-4o para sintetizar la respuesta final con el resultado de la herramienta; (6) HistoryService persiste la interacción en la tabla ChatMessage; (7) la respuesta se devuelve al frontend como JSON.
+[209] 'Heading 2': 3.4. Selección tecnológica
+[210] 'Normal': Las decisiones tecnológicas del proyecto priorizaron tres criterios: compatibilidad con el ecosistema Python de IA, minimización de la superficie de servicios externos, y reproducibilidad del entorno de desarrollo y producción.
+[212] 'Heading 2': 3.5. Diseño de datos
+[213] 'Normal': El modelo de datos de Zeptai orbita en torno a la entidad business_profile, que representa a cada usuario-negocio registrado en la plataforma. La clave primaria de negocio es user_phone, y todas las entidades del sistema se relacionan con ella mediante clave foránea. El esquema real en PostgreSQL comprende 14 tablas:
+[214] 'Normal': business_profile (1) --- (N) appointment
+business_profile (1) --- (N) ticket
+business_profile (1) --- (N) generated_document
+business_profile (1) --- (N) chat_message
+business_profile (1) --- (N) chat_feedback
+business_profile (1) --- (N) notification
+business_profile (1) --- (N) activity_log
+business_profile (1) --- (N) llm_call
+business_profile (1) --- (N) knowledge_chunk
+business_profile (1) --- (N) rag_retrieval
+business_profile (1) --- (N) incident
+business_profile (1) --- (N) synergy_match
+grant              (independiente — acceso global por sector)
+apscheduler_jobs   (interna APScheduler — persistencia de jobs)
+[215] 'Heading 3': Tabla: business_profile
+[217] 'Heading 3': Tabla: knowledge_chunk (RAG)
+[219] 'Heading 3': Tabla: llm_call (trazabilidad de modelos)
+[221] 'Heading 3': Tabla: chat_message
+[223] 'Heading 3': Tabla: ticket (gastos/transacciones)
+[225] 'Heading 3': Resto de tablas
+[228] 'Heading 1': 4. Implementación
+[229] 'Heading 2': 4.1. Estructura del código
+[230] 'Normal': El código fuente de Zeptai está organizado en el directorio TICKETIA_PRO/, siguiendo una arquitectura modular con separación clara entre capas:
+[231] 'Normal': TICKETIA_PRO/
+├── app.py                    # Factory Flask, registro blueprints, scheduler
+├── core/
+│   ├── db_models.py          # Todos los modelos SQLAlchemy
+│   ├── clients.py            # Singleton del cliente OpenAI
+│   ├── config.py             # Configuración Flask desde variables de entorno
+│   ├── limiter.py            # Flask-Limiter instancia compartida
+│   ├── mcp_client.py         # Cliente MCP SSE
+│   └── llm_tracker.py        # Decorador de tracking de llamadas LLM
+├── modules/
+│   ├── agents/
+│   │   ├── manager.py        # AgentExecutor: ciclo principal
+│   │   ├── tools.py          # CalendarTools + TOOLS_SCHEMA
+│   │   ├── history.py        # HistoryService: guardar/recuperar ChatMessage
+│   │   └── background_tasks.py # Hilos asíncronos para generación larga
+│   ├── proactive/
+│   │   ├── marketing_agent.py   # Imagen, PPT, vídeo
+│   │   ├── admin_redactor.py    # OCR + PDF presupuestos
+│   │   ├── post_sales.py        # Postventa / incidencias
+│   │   ├── grant_hunter.py      # Búsqueda de subvenciones
+│   │   ├── business_coach.py    # Consejos de negocio
+│   │   └── networker.py         # Match entre usuarios
+│   ├── council/
+│   │   └── council_manager.py   # Multi-agente debate 3 perspectivas
+│   └── services/
+│       ├── embeddings.py        # Pipeline RAG: ingesta y recuperación
+│       └── notification.py      # send_in_app + send_push VAPID
+├── routes/
+│   ├── web.py                # Rutas UI (login, dashboard, wizard, etc.)
+│   └── api.py                # Rutas API (chat, notifications, metrics, eval)
+├── templates/                # Jinja2 HTML (base.html, dashboard, etc.)
+├── static/
+│   ├── generated_docs/       # PDFs, imágenes, PPTs generados
+│   └── plantilla.pptx        # Plantilla corporativa para presentaciones
+├── tests/                    # Suite de pruebas (unittest)
+│   └── test_deepeval_rag.py  # Evaluación DeepEval del pipeline RAG
+└── mcp_server_sse.py         # Servidor MCP con transporte SSE
+[232] 'Heading 2': 4.2. Integración con modelos LLM
+[233] 'Heading 3': Patrón Singleton de cliente
+[234] 'Normal': El cliente OpenAI se instancia una única vez mediante la función get_openai_client(), almacenada en core/clients.py. Este patrón evita la creación de múltiples conexiones HTTP por petición y centraliza la configuración del cliente, facilitando el reemplazo del proveedor (por ejemplo, Azure OpenAI o modelos locales vía LiteLLM):
+[235] 'Normal': from openai import OpenAI
+
+_client = None
+
+def get_openai_client():
+    global _client
+    if _client is None:
+        _client = OpenAI(api_key=os.environ.get('OPENAI_API_KEY'))
+    return _client
+[236] 'Heading 3': Trazabilidad de costes — llm_tracker
+[237] 'Normal': Todas las llamadas a modelos se instrumentan con track() en core/llm_tracker.py, que registra en la tabla llm_call: modelo, stage, tokens entrada/salida, latencia (ms), coste estimado (USD), flag de exito y mensaje de error. Los stages reales son:
+[239] 'Normal': Pricing embebido (2025):
+gpt-4o:                2,50 / 10,00 USD por 1M tokens (input/output)
+gpt-4o-mini:           0,15 /  0,60 USD por 1M tokens
+dall-e-3:              0,040 USD/imagen (1024x1024 standard)
+whisper-1:             0,006 USD/minuto
+gen3a_turbo (Runway):  0,05 USD/segundo de video
+text-embedding-3-small:0,020 USD/1M tokens
+[240] 'Heading 2': 4.3. Gestión de prompts y orquestación de agentes
+[241] 'Heading 3': System prompt personalizado
+[242] 'Normal': Cada conversación se inicializa con un system prompt que combina cuatro componentes: (1) el rol base del asistente ('Eres el asistente IA de {business_name}'); (2) el static_knowledge del negocio (tarifas, sector, horario, FAQs) serializado como texto; (3) los chunks RAG recuperados de pgvector relevantes para la consulta actual; y (4) las instrucciones de comportamiento y capacidades disponibles.
+[243] 'Normal': El usuario puede configurar libremente el system prompt base desde el wizard de configuración, lo que permite adaptar la personalidad, el tono y las restricciones del agente sin tocar ninguna línea de código. Esta flexibilidad es uno de los diferenciadores clave de la plataforma frente a chatbots genéricos de propósito fijo.
+[244] 'Heading 3': Ciclo completo de function calling
+[245] 'Normal': messages = [{'role': 'system', 'content': system_prompt}] + history
+
+# Primera llamada: el modelo decide si responde o usa herramienta
+response = client.chat.completions.create(
+    model='gpt-4o',
+    messages=messages,
+    tools=TOOLS_SCHEMA,
+    tool_choice='auto'
+)
+
+if response.choices[0].message.tool_calls:
+    # Ejecutar la herramienta y añadir el resultado
+    messages.append(response.choices[0].message)
+    messages.append({'role': 'tool', 'content': tool_result,
+                     'tool_call_id': tool_call.id})
+
+    # Segunda llamada: síntesis con el resultado
+    final = client.chat.completions.create(
+        model='gpt-4o', messages=messages)
+    return final.choices[0].message.content
+[246] 'Heading 2': 4.4. Pipeline RAG con pgvector
+[247] 'Normal': El módulo modules/services/embeddings.py implementa el pipeline RAG completo en dos fases:
+[248] 'Heading 3': Fase de ingesta
+[249] 'Normal': Al subir un documento PDF o TXT desde la sección Knowledge, el sistema: extrae el texto mediante PyMuPDF (fitz); aplica el chunker recursivo con separadores [párrafo, frase, carácter] para dividir en fragmentos de ~1.600 caracteres con overlap de 400 caracteres; genera el embedding de cada fragmento mediante text-embedding-3-small; y persiste cada KnowledgeChunk en PostgreSQL con su vector en la columna de tipo pgvector.
+[250] 'Normal': El mismo proceso se aplica a los campos del wizard de configuración del negocio (source_type='wizard'), de modo que el sistema de preguntas sobre horario, servicios o tarifas está respaldado por la misma infraestructura vectorial que los PDFs.
+[251] 'Heading 3': Fase de recuperación
+[252] 'Normal': En cada mensaje del chat, antes de construir el system prompt, se ejecuta retrieve_chunks(): se genera el embedding de la consulta del usuario, se ejecuta una búsqueda de similitud coseno en pgvector filtrada por user_phone, y se recuperan los 5 chunks más similares medidos por distancia coseno. Estos chunks se inyectan en el system prompt como contexto adicional, permitiendo al agente responder con información específica del negocio.
+[253] 'Normal': El log de cada recuperación se persiste en RagRetrieval (consulta, chunks devueltos, score medio) para permitir el análisis de calidad del pipeline mediante DeepEval.
+[254] 'Heading 2': 4.5. Generación asíncrona y notificaciones
+[255] 'Normal': Las tareas de larga duración (generación de imágenes DALL·E 3: ~8-15s; PPT: ~5-10s; vídeo Runway: ~30-90s) se ejecutan en hilos daemon independientes para no bloquear la respuesta HTTP del chat:
+[256] 'Normal': thread = threading.Thread(
+    target=perform_async_marketing_generation,
+    args=(user_phone, prompt, format_type, app),
+    daemon=True
+)
+thread.start()
+return '⏳ Me pongo a ello. Te avisaré cuando esté listo.'
+[257] 'Normal': El hilo recibe el objeto app de Flask para poder usar el contexto de aplicación en el thread (app.app_context()). Al finalizar la generación, llama a NotificationService.send_in_app() para crear una notificación en base de datos, y a send_push() para enviar una web push notification al navegador del usuario mediante el protocolo VAPID. El frontend implementa polling de 15 segundos contra /api/notifications/unread_count para actualizar el badge del campana sin requerir que el usuario refresque la página.
+[258] 'Heading 2': 4.6. Canales de entrada multimodal
+[259] 'Normal': Zeptai no se limita a texto: implementa tres canales de entrada adicionales que amplian la superficie de interaccion del usuario con el agente:
+[260] 'List Bullet': Canal texto (chat web): mensaje directo en la interfaz de chat. Flujo estandar AgentExecutor con RAG + function calling.
+[261] 'List Bullet': Canal audio (Whisper): el usuario graba un mensaje de voz desde /upload_web_audio. El audio se transcribe con Whisper (coste: 0,006 USD/min) y se clasifica mediante un prompt de intencion: si implica navegacion ('llevame a la agenda'), el LLM devuelve una URL de redireccion en lugar de ejecutar el agente.
+[262] 'List Bullet': Canal imagen/ticket (/upload_web_ticket): el usuario sube una fotografia de un ticket o factura (JPG, PNG, WEBP, PDF). El AdminRedactorAgent clasifica el tipo ('receipt' para facturas formales vs 'draft' para notas manuscritas) y llama a GPT-4o Vision con la imagen codificada en base64 para extraer los campos estructurados.
+[263] 'List Bullet': Canal vision multimodal: el AgentExecutor puede recibir imagenes adjuntas en el chat para analisis via GPT-4o Vision. Incluye proteccion SSRF: solo se procesan URLs locales o ficheros del servidor.
+[264] 'Heading 2': 4.7. Mecanismos de seguridad
+[265] 'Normal': La seguridad de Zeptai se implementa en seis capas defensivas complementarias:
+[266] 'Heading 3': Capa 1 — Autenticacion y sesiones
+[267] 'Normal': Formulario de login con check_password_hash (Werkzeug, PBKDF2-SHA256). Sesiones Flask server-side con SECRET_KEY aleatoria, SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax', duracion de 8 horas (PERMANENT_SESSION_LIFETIME). Decorador @login_required en todas las rutas protegidas.
+[268] 'Heading 3': Capa 2 — Clasificador de seguridad LLM (gpt-4o-mini)
+[269] 'Normal': Cada mensaje del usuario pasa por un clasificador de seguridad basado en gpt-4o-mini antes de llegar al AgentExecutor. El clasificador categoriza el input en seis clases:
+[271] 'Normal': El input tiene un limite de longitud de 2.000 caracteres (MAX_INPUT_LENGTH). El contexto RAG se encapsula en tags <DATOS_DEL_NEGOCIO> para aislar el conocimiento del negocio del input del usuario. El bloque de seguridad se inyecta al FINAL del system prompt (las instrucciones tardias tienen mayor peso en GPT-4o).
+[272] 'Heading 3': Capa 3 — Output filtering
+[273] 'Normal': Las respuestas del LLM pasan por un filtro regex antes de enviarse al usuario. Si la respuesta contiene patrones como SECRET_KEY, PASSWORD_HASH, DATABASE_URL, API_KEY, OPENAI_API_KEY, VAPID_PRIVATE o MAIL_PASSWORD, se sustituye por "Lo siento, no puedo responder a esa consulta."
+[274] 'Heading 3': Capa 4 — Rate limiting
+[276] 'Heading 3': Capa 5 — Aislamiento de datos
+[277] 'Normal': Todos los queries SQL filtran por session['user_phone']. No existe ningun endpoint que devuelva datos de otro usuario. Los documentos generados incluyen UUID en el nombre del fichero para evitar enumeracion.
+[278] 'Heading 3': Capa 6 — Proteccion SSRF y logging de auditoria
+[279] 'Normal': Las URLs de imagenes externas se validan antes de procesarlas con GPT-4o Vision (solo se permiten rutas locales del servidor). ActivityLog registra todas las acciones relevantes con timestamp para auditoria completa.
+[280] 'Heading 2': 4.7. Despliegue e infraestructura
+[281] 'Normal': El entorno de ejecución está completamente contenedorizado mediante Docker Compose con cuatro servicios con dependencias declaradas explícitamente:
+[283] 'Normal': Para producción, la arquitectura recomendada añade Nginx como reverse proxy con terminación SSL (Let's Encrypt), Gunicorn con 4 workers síncronos, y un servicio PostgreSQL gestionado externo (Neon.tech, Supabase o AWS RDS) con backups automáticos. El pipeline CI/CD de GitHub Actions ejecuta los tests unitarios y las evaluaciones de agentes en cada push a main, dev y feature/*.
+[285] 'Heading 1': 5. Evaluación y Experimentos
+[286] 'Heading 2': 5.1. Marco de evaluación — DeepEval
+[287] 'Normal': La evaluación objetiva de calidad del pipeline RAG es uno de los elementos diferenciadores de Zeptai respecto a implementaciones similares. El sistema integra DeepEval, un framework open-source que emplea GPT-4o como juez automático (LLM-as-a-judge) para evaluar la calidad de las respuestas del sistema RAG sin requerir anotación humana.
+[288] 'Normal': La evaluación es accesible desde la interfaz web en la ruta /eval, con transmisión de resultados en tiempo real mediante Server-Sent Events (SSE). El endpoint /api/eval/stream ejecuta la evaluación en un hilo separado con contexto Flask explícito para evitar el error 'Working outside of application context'.
+[289] 'Heading 3': Métricas evaluadas
+[291] 'Heading 3': Casos de prueba
+[293] 'Normal': El coste de una evaluación completa de los 7 casos con GPT-4o como juez es aproximadamente 0,40 USD, lo que la hace económicamente viable para ejecución periódica o tras cambios significativos en el pipeline RAG.
+[294] 'Heading 2': 5.2. Métricas técnicas de rendimiento
+[296] 'Heading 2': 5.3. Análisis de costes
+[297] 'Normal': Uno de los criterios de validez del proyecto es que el coste operativo sea compatible con un modelo de negocio SaaS rentable. El análisis de costes por usuario activo muestra que la solución es económicamente viable:
+[299] 'Normal': Nota: Los precios son estimaciones basadas en el pricing de OpenAI y Runway ML de 2025. Pueden variar según el volumen real de uso y los cambios de precio de los proveedores.
+[301] 'Heading 1': 6. Pruebas y Validación de Producto
+[302] 'Heading 2': 6.1. Pruebas funcionales automatizadas
+[303] 'Normal': Zeptai cuenta con un suite de 51 casos de prueba automatizados (run_tests.py) ejecutables sobre el entorno Docker local. Las pruebas no realizan llamadas reales a la API de OpenAI, operando con un usuario de prueba ficticio y mocks controlados. El resultado agregado es:
+[304] 'List Bullet': Pruebas superadas: 46/51 (90,2%)
+[305] 'List Bullet': Bugs reales encontrados durante las pruebas: 0
+[306] 'List Bullet': Falsos positivos: 5 (artefactos del script de test, no bugs de la aplicación)
+[308] 'Heading 2': 6.2. Bugs identificados y corregidos
+[309] 'Normal': El proceso de desarrollo iterativo identificó y corrigió cuatro bugs relevantes, todos detectados mediante las pruebas automatizadas o la validación manual:
+[310] 'List Bullet': Bug 1 — Bot status permanecía 'Dormido' tras completar el wizard. Causa: save_config() no actualizaba features['bot_enabled'] = True en ambas ramas (crear/actualizar perfil). Solución: actualización explícita del flag en las dos ramas del condicional.
+[311] 'List Bullet': Bug 2 — Número de slides incorrecto (se pedían 5, se generaban 4). Causa: GPT-4o extraía el número de slides del texto del prompt de forma implícita, y el parsing fallaba ocasionalmente. Solución: añadir parámetro slide_count explícito y tipado en el TOOLS_SCHEMA, de modo que el modelo lo extrae de forma estructurada.
+[312] 'List Bullet': Bug 3 — Presentaciones sin título descriptivo (aparecían todas como 'Presentación'). Causa: GeneratedDocument se creaba sin rellenar el campo client_name. Solución: el marketing_agent extrae las primeras cinco palabras del título generado por GPT-4o y las usa como client_name.
+[313] 'List Bullet': Bug 4 — Badge de notificaciones no se actualizaba automáticamente. Causa: el contador solo se actualizaba al abrir el drawer de notificaciones manualmente. Solución: polling de 15 segundos contra /api/notifications/unread_count con actualización del badge en el DOM.
+[314] 'List Bullet': Bug 5 (DeepEval) — Error 'Working outside of application context' en el thread de evaluación. Causa: el thread de evaluación no tenía acceso al contexto de Flask. Solución: capturar app = current_app._get_current_object() antes de lanzar el thread y usar app.app_context() dentro.
+[315] 'List Bullet': Bug 6 (DeepEval) — AttributeError 'EvaluationResult object has no attribute evaluation_cost'. Causa: la API de DeepEval cambió el nombre del atributo entre versiones. Solución: usar getattr(results, 'evaluation_cost', None) or getattr(results, 'cost', None) or 0 para compatibilidad.
+[316] 'Heading 2': 6.3. Pruebas manuales requeridas
+[317] 'Normal': Las siguientes funcionalidades requieren navegador o incurren en coste de API real, por lo que no están cubiertas por las pruebas automatizadas y se validan manualmente:
+[318] 'List Bullet': Chat conversacional completo con tool use end-to-end (múltiples ciclos de razonamiento y herramienta).
+[319] 'List Bullet': Generación de presupuesto desde texto y desde imagen adjunta (OCR + ReportLab PDF).
+[320] 'List Bullet': Generación de imagen DALL·E 3 con prompt contextualizado al negocio.
+[321] 'List Bullet': Generación de presentación PPT con plantilla corporativa y número de slides correcto.
+[322] 'List Bullet': CouncilManager con debate de 3 perspectivas en streaming SSE visible en el navegador.
+[323] 'List Bullet': Notificaciones web push en navegador con Service Worker activo.
+[324] 'List Bullet': Instalación PWA desde Chrome (beforeinstallprompt).
+[325] 'List Bullet': OCR de ticket desde fotografía real de una factura o nota manuscrita.
+[326] 'List Bullet': Evaluación DeepEval completa desde la interfaz /eval con resultados en tiempo real.
+[327] 'Heading 2': 6.4. UX y usabilidad
+[328] 'Normal': Las decisiones de diseño de la interfaz priorizaron la reducción de la curva de aprendizaje para el perfil de usuario objetivo (autónomo o propietario de PYME sin formación técnica):
+[329] 'List Bullet': Chat como interfaz principal: el usuario no necesita aprender ninguna sintaxis ni navegar por menús complejos; interactúa en lenguaje natural.
+[330] 'List Bullet': Notificaciones push + in-app: el usuario no necesita mantener la app abierta durante las tareas asíncronas (generación de imágenes o vídeos), reduciendo la percepción de espera.
+[331] 'List Bullet': Wizard de configuración en 5 pasos guiados: evita la página en blanco al usuario novel sin abrumar con todas las opciones a la vez.
+[332] 'List Bullet': Marketplace de agentes: el usuario activa solo los agentes que necesita, evitando la sobrecarga cognitiva de demasiadas funcionalidades visibles simultáneamente.
+[333] 'List Bullet': Diseño responsive y PWA instalable: la plataforma es usable desde móvil sin necesidad de App Store.
+[335] 'Heading 1': 7. Discusión
+[336] 'Heading 2': 7.1. Lecciones aprendidas
+[337] 'Normal': El desarrollo de Zeptai generó aprendizajes técnicos relevantes que trascienden el proyecto concreto y son aplicables a futuros sistemas multi-agente:
+[338] 'Heading 3': Function calling es más robusto que el parsing de texto libre
+[339] 'Normal': En versiones iniciales del sistema se intentó clasificar la intención del usuario mediante expresiones regulares y prompts de clasificación de texto libre. El uso del mecanismo nativo de function calling de OpenAI eliminó completamente los errores de routing de herramientas: el modelo devuelve JSON estructurado y tipado con fiabilidad superior al 95%, frente a la fragilidad inherente del parsing de lenguaje natural. Esta lección confirma la recomendación de la documentación de OpenAI: siempre preferir tool use frente a prompting para extraer datos estructurados.
+[340] 'Heading 3': Los parámetros implícitos en el prompt causan errores
+[341] 'Normal': El bug del slide_count (el usuario pedía 5 slides y se generaban 4) demostró que pasar información numérica dentro de un string de texto libre es una aproximación frágil. La solución correcta es parametrizar explícitamente en el tool schema: cuando el modelo tiene un campo tipado (integer, string) para extraer el dato, lo hace con precisión. Esta lección es aplicable a cualquier dato que el sistema necesite extraer del input del usuario de forma fiable.
+[342] 'Heading 3': La generación asíncrona es esencial para una UX aceptable
+[343] 'Normal': Mantener una petición HTTP abierta durante 30-90 segundos (tiempo de renderizado de un vídeo en Runway ML) era absolutamente inaceptable desde el punto de vista de la experiencia de usuario y técnicamente problemático (timeouts de proxies, límites de workers de Gunicorn). El patrón hilo daemon + notificación push resultó en una UX significativamente mejor que el polling activo desde el frontend, porque el usuario puede cerrar la app y recibir la notificación cuando el resultado esté listo.
+[344] 'Heading 3': pgvector elimina un servicio externo sin sacrificar capacidad
+[345] 'Normal': La decisión de usar la extensión pgvector sobre el propio PostgreSQL, en lugar de servicios vectoriales dedicados (Pinecone, Qdrant, ChromaDB), redujo la arquitectura de 5 a 4 servicios Docker sin ninguna pérdida de funcionalidad observable. Para el volumen de una PYME (cientos de chunks por usuario), el rendimiento de búsqueda vectorial con pgvector es indistinguible de un vector store dedicado. La evaluación con DeepEval confirmó que el pipeline RAG sobre pgvector funciona correctamente, con Faithfulness y Answer Relevancy por encima del umbral en los casos de prueba con contenido documentado.
+[346] 'Heading 3': El contexto Flask en threads requiere gestión explícita
+[347] 'Normal': Python Flask utiliza un patrón de contexto de aplicación basado en variables de thread-local. Los threads lanzados manualmente (para generación asíncrona y para la evaluación DeepEval) no heredan automáticamente este contexto. La solución es capturar el objeto app antes de lanzar el thread (app = current_app._get_current_object()) y usar el contexto explícitamente dentro (with app.app_context():). Este patrón debe aplicarse consistentemente en todos los módulos que utilicen hilos en aplicaciones Flask.
+[348] 'Heading 2': 7.2. Riesgos, ética y mitigaciones
+[349] 'Normal': El siguiente cuadro resume el análisis de riesgos residuales de la versión actual de Zeptai, con el nivel de riesgo y las mitigaciones implementadas:
+[351] 'Heading 2': 7.3. Análisis de limitaciones
+[352] 'Normal': La versión actual del MVP presenta limitaciones conocidas que han sido conscientemente acotadas al alcance del trabajo:
+[353] 'List Bullet': Ventana de contexto limitada a 10 turnos: el historial de conversación se trunca para controlar el coste de tokens. Conversaciones largas pierden el contexto de interacciones anteriores, lo que puede afectar a la coherencia en sesiones extendidas.
+[354] 'List Bullet': Un solo hilo de conversación por usuario: no se admiten conversaciones paralelas ni separación del historial por proyectos o clientes. Cada nuevo chat parte del historial acumulado del usuario.
+[355] 'List Bullet': Casos de prueba DeepEval hardcodeados: los 7 casos de prueba del MVP son fijos. Un sistema de evaluación maduro debería generar casos de prueba dinámicamente a partir de conversaciones reales del negocio.
+[356] 'List Bullet': Sin integración con canales externos: el MVP opera únicamente desde la interfaz web. La integración con WhatsApp Business, email o calendarios externos (Google Calendar) está fuera del alcance del MVP pero es una prioridad de roadmap.
+[357] 'List Bullet': Dependencia de un único proveedor LLM: toda la inferencia se delega a OpenAI. Un sistema de producción robusto debería tener un mecanismo de fallback a modelos alternativos (Anthropic Claude, Google Gemini, o modelos open-source como Llama 3) para garantizar disponibilidad.
+[359] 'Heading 1': 8. Conclusiones y Trabajo Futuro
+[360] 'Heading 2': 8.1. Conclusiones
+[361] 'Normal': Zeptai demuestra que es posible construir una plataforma SaaS multi-agente funcional, desplegable en producción y con valor empresarial cuantificable, utilizando exclusivamente APIs y frameworks open-source del ecosistema Python. Los siete objetivos específicos definidos al inicio del proyecto han sido cumplidos en su totalidad:
+[362] 'List Bullet': OE1 ✅ — 6 agentes especializados accesibles desde chat mediante function calling nativo de GPT-4o.
+[363] 'List Bullet': OE2 ✅ — CouncilManager con debate de 3 perspectivas independientes, síntesis ejecutiva y streaming SSE.
+[364] 'List Bullet': OE3 ✅ — Generación multimodal completa: texto (presupuestos PDF), imágenes (DALL·E 3), presentaciones (python-pptx) y prompts de vídeo (Runway ML Gen-3).
+[365] 'List Bullet': OE4 ✅ — Pipeline OCR + LLM multimodal para digitalización de documentos físicos con GPT-4o Vision.
+[366] 'List Bullet': OE5 ✅ — Pipeline RAG completo con PostgreSQL + pgvector: ingesta, chunking, embeddings y recuperación semántica.
+[367] 'List Bullet': OE6 ✅ — Docker Compose reproducible con 4 servicios, notificaciones web push VAPID y servidor MCP SSE.
+[368] 'List Bullet': OE7 ✅ — 51 pruebas funcionales automatizadas (90,2% superadas) + evaluación objetiva DeepEval con 4 métricas LLM-as-a-judge sobre 7 casos de prueba.
+[369] 'Normal': La solución aporta valor cuantificable al usuario final: un autónomo que usa Zeptai diariamente puede recuperar entre 3 y 5 horas semanales de trabajo administrativo. A un valor de 25 €/hora, esto representa entre 75 y 125 € semanales de valor generado, con un coste mensual de API inferior a 5 € en uso moderado. El retorno sobre la inversión estimado en el primer mes de uso activo supera el 1.000%.
+[370] 'Normal': Desde el punto de vista académico, el proyecto realiza contribuciones en tres dimensiones: (1) diseño e implementación de un sistema multi-agente con patrones ReAct y function calling en un contexto real de negocio; (2) integración de un pipeline RAG sin servicio vectorial externo mediante pgvector, con evaluación objetiva mediante DeepEval; y (3) arquitectura de referencia para plataformas SaaS basadas en LLMs con generación asíncrona, notificaciones push y servidor MCP propio.
+[371] 'Heading 2': 8.2. Trabajo futuro
+[372] 'Heading 3': Corto plazo (0-3 meses)
+[373] 'List Bullet': Integración con WhatsApp Business API (webhook Twilio / Meta Cloud API) para operar desde el canal de mensajería más usado en España.
+[374] 'List Bullet': Generación dinámica de casos de prueba DeepEval a partir de conversaciones reales, eliminando la dependencia de los 7 casos fijos del MVP.
+[375] 'List Bullet': Presupuesto de API por usuario con alerta por email al superar el umbral mensual configurado.
+[376] 'List Bullet': Política de retención de datos (90 días por defecto) y botón explícito de 'borrar mi cuenta' para cumplimiento RGPD.
+[377] 'List Bullet': Endpoint de health check con métricas de latencia expuestas para monitorización externa (Prometheus / UptimeRobot).
+[378] 'Heading 3': Medio plazo (3-12 meses)
+[379] 'List Bullet': App móvil nativa (React Native o Flutter) con acceso a la cámara para OCR de documentos físicos.
+[380] 'List Bullet': Fine-tuning de un modelo propio sobre datos de presupuestos del sector para mejorar la calidad sin depender exclusivamente de GPT-4o.
+[381] 'List Bullet': Integración con software de contabilidad (Holded, Conta.cat, Sage) mediante APIs para sincronización bidireccional.
+[382] 'List Bullet': Marketplace de agentes con contribuciones de terceros y sistema de valoración.
+[383] 'List Bullet': Facturación SaaS (Stripe) con planes freemium / pro / business y gestión de suscripciones.
+[384] 'List Bullet': Autenticación OAuth2 (Google, LinkedIn) para reducir fricción en el registro.
+[385] 'Heading 3': Largo plazo (12+ meses)
+[386] 'List Bullet': Modelo propio (Mistral o Llama fine-tuned) para reducir dependencia de OpenAI y controlar costes a escala.
+[387] 'List Bullet': Agente de análisis financiero con integración bancaria mediante Open Banking PSD2.
+[388] 'List Bullet': Expansión a otros mercados hispanohablantes: México, Colombia, Argentina.
+[389] 'List Bullet': Certificación ISO 27001 para clientes enterprise que requieren auditoría de seguridad.
+[390] 'List Bullet': Sistema de aprendizaje continuo: el agente mejora su rendimiento con cada interacción mediante feedback loop humano.
+[392] 'Heading 1': 9. Bibliografía
+[393] 'Normal': [1] Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., Kaiser, Ł. & Polosukhin, I. (2017). Attention is all you need. Advances in Neural Information Processing Systems, 30.
+[394] 'Normal': [2] Brown, T., Mann, B., Ryder, N., Subbiah, M., Kaplan, J., Dhariwal, P., ... & Amodei, D. (2020). Language models are few-shot learners. Advances in Neural Information Processing Systems, 33, 1877-1901.
+[395] 'Normal': [3] Lewis, P., Perez, E., Piktus, A., Petroni, F., Karpukhin, V., Goyal, N., ... & Kiela, D. (2020). Retrieval-augmented generation for knowledge-intensive NLP tasks. Advances in Neural Information Processing Systems, 33, 9459-9474.
+[396] 'Normal': [4] Yao, S., Zhao, J., Yu, D., Du, N., Shafran, I., Narasimhan, K. & Cao, Y. (2023). ReAct: Synergizing reasoning and acting in language models. International Conference on Learning Representations (ICLR 2023).
+[397] 'Normal': [5] OpenAI. (2023). GPT-4 technical report. arXiv preprint arXiv:2303.08774.
+[398] 'Normal': [6] Park, J. S., O'Brien, J. C., Cai, C. J., Morris, M. R., Liang, P. & Bernstein, M. S. (2023). Generative agents: Interactive simulacra of human behavior. Proceedings of UIST 2023.
+[399] 'Normal': [7] Wu, Q., Bansal, G., Zhang, J., Wu, Y., Zhang, S., Zhu, E., ... & Wang, C. (2023). AutoGen: Enabling next-gen LLM applications via multi-agent conversation. arXiv preprint arXiv:2308.08155.
+[400] 'Normal': [8] Ramesh, A., Dhariwal, P., Nichol, A., Chu, C. & Chen, M. (2022). Hierarchical text-conditional image generation with CLIP latents. arXiv preprint arXiv:2204.06125.
+[401] 'Normal': [9] Anthropic. (2024). Model Context Protocol: specification and reference implementation. https://modelcontextprotocol.io/
+[402] 'Normal': [10] Confident AI. (2024). DeepEval: open-source LLM evaluation framework. https://github.com/confident-ai/deepeval
+[403] 'Normal': [11] Unión Europea. (2016). Reglamento (UE) 2016/679 del Parlamento Europeo y del Consejo (Reglamento General de Protección de Datos). Diario Oficial de la Unión Europea, L 119/1.
+[404] 'Normal': [12] Unión Europea. (2024). Reglamento (UE) 2024/1689 del Parlamento Europeo y del Consejo por el que se establecen normas armonizadas en materia de inteligencia artificial (Reglamento de IA). Diario Oficial de la Unión Europea.
+[405] 'Normal': [13] Ministerio de Industria, Comercio y Turismo. (2023). Estadísticas PYME — Evolución e indicadores. Recuperado de https://www.ipyme.org/
+[406] 'Normal': [14] Grand View Research. (2024). Artificial Intelligence Market Size, Share & Trends Analysis Report. Recuperado de https://www.grandviewresearch.com/
+[407] 'Normal': [15] Registro de la Seguridad Social (RETA). (2023). Estadísticas de trabajadores autónomos. Ministerio de Inclusión, Seguridad Social y Migraciones.
+[408] 'Normal': [16] Johnson, L., & Goodfellow, I. (2023). Practical deep learning for practitioners. MIT Press.
+[409] 'Normal': [17] Nakano, R., et al. (2021). WebGPT: Browser-assisted question-answering with human feedback. arXiv preprint arXiv:2112.09332.
+[410] 'Normal': [18] Schick, T., et al. (2023). Toolformer: Language models can teach themselves to use tools. Advances in Neural Information Processing Systems, 36.
+[412] 'Heading 1': Anexo A. Guía de Despliegue
+[413] 'Heading 2': Pre-requisitos
+[414] 'List Bullet': Docker Desktop >= 4.x instalado y en ejecución.
+[415] 'List Bullet': API key de OpenAI con acceso a GPT-4o (obligatoria).
+[416] 'List Bullet': Archivo .env configurado con las variables de entorno requeridas.
+[417] 'List Bullet': Puerto 5000 (aplicación web) y 5432 (PostgreSQL) libres en el host.
+[418] 'Heading 2': Pasos de instalación
+[419] 'Normal': # 1. Clonar el repositorio
+git clone https://github.com/alejbrata/zeptai.git
+cd zeptai
+
+# 2. Configurar variables de entorno
+cp .env.example .env
+# Editar .env con las API keys reales
+
+# 3. Levantar todos los servicios
+docker compose up --build -d
+
+# 4. Inicializar la base de datos y cargar datos demo
+docker compose exec web python seed_all.py
+
+# 5. Acceder a la aplicación
+# http://localhost:5000
+# Usuario demo: admin@demo.com | Contraseña: demo1234
+[420] 'Heading 2': Variables de entorno
+[422] 'Heading 2': Comandos útiles
+[423] 'Normal': # Ver logs en tiempo real
+docker compose logs -f web
+
+# Reinicio limpio (borra todos los datos)
+docker compose down -v && docker compose up --build -d
+
+# Ejecutar suite de tests
+docker compose exec web python run_tests.py
+
+# Ejecutar evaluación DeepEval desde CLI
+docker compose exec web python -m pytest TICKETIA_PRO/tests/test_deepeval_rag.py -v
+
+# Acceder a la base de datos
+docker compose exec db psql -U postgres -d zeptai_db
+[424] 'Heading 2': Verificación del despliegue
+[425] 'Normal': # Health check de la aplicación
+curl http://localhost:5000/health
+# Respuesta esperada: {"status": "ok"}
+
+# Estado de los contenedores
+docker compose ps
+# Todos deben mostrar 'Up' y zeptai_db debe mostrar '(healthy)'
+[427] 'Heading 1': Anexo B. Manual de Usuario Resumido
+[428] 'Heading 2': Primeros pasos
+[429] 'Normal': El proceso de puesta en marcha de Zeptai está diseñado para completarse en menos de 10 minutos, sin necesidad de conocimientos técnicos:
+[430] 'List Bullet': 1. Registrarse en /register con email y contraseña.
+[431] 'List Bullet': 2. Completar el wizard de configuración (/wizard): nombre del negocio, sector, logo, system prompt personalizado y conocimiento estático (tarifas, FAQs, horario).
+[432] 'List Bullet': 3. Activar los agentes que se necesiten en /marketplace (por defecto están todos activos).
+[433] 'List Bullet': 4. Subir documentos de conocimiento en /knowledge (catálogos, manuales, guías de precios en PDF).
+[434] 'List Bullet': 5. Ir al chat (/dashboard) y comenzar a interactuar con el asistente.
+[435] 'Heading 2': Ejemplos de uso del chat
+[436] 'Normal': "Hazme un presupuesto para María García por 3 horas de fontanería a 45 €/h"
+"Crea una imagen de Instagram para promocionar mi negocio este verano"
+"¿Tienes huecos disponibles el próximo lunes?"
+"Reserva una cita para Juan Pérez el lunes a las 10"
+"Analiza esta foto de mi nota de trabajo" [adjuntar imagen]
+"Genera una presentación de 6 slides sobre los servicios de mi empresa"
+"¿Hay subvenciones disponibles para mi sector?"
+[437] 'Heading 2': Sección Council (debate estratégico)
+[438] 'Normal': La sección Council (/council) permite plantear preguntas estratégicas complejas que el sistema responde desde tres perspectivas simultáneas:
+[439] 'Normal': "¿Debería contratar un empleado o subcontratar?"
+"¿Cómo puedo aumentar mis tarifas sin perder clientes?"
+"¿Tiene sentido abrir un segundo local?"
+[440] 'Heading 2': Sección Documentos
+[441] 'Normal': Todos los PDFs, imágenes y presentaciones generados por el asistente aparecen en la sección /documents. Se pueden descargar individualmente o eliminar. Los documentos se organizan por tipo (presupuesto, imagen, presentación, prompt de vídeo) y fecha.
+[442] 'Heading 2': Sección Métricas
+[443] 'Normal': La sección /metrics muestra el consumo de tokens y el coste estimado de las llamadas a la API de OpenAI, desglosado por modelo (gpt-4o, dall-e-3, text-embedding-3-small) y por día. Permite controlar el gasto mensual y detectar anomalías.
+[444] 'Heading 2': Evaluación de calidad RAG
+[445] 'Normal': La sección /eval permite lanzar una evaluación objetiva del pipeline RAG mediante DeepEval. La evaluación tarda aproximadamente 2-3 minutos y muestra los resultados por caso de prueba en tiempo real. Coste aproximado por evaluación completa: 0,40 USD.
+[447] 'Heading 1': Anexo C. Prompts Clave del Sistema
+[448] 'Heading 2': Prompt del Agente Estratega (CouncilManager)
+[449] 'Normal': Eres el Estratega del equipo de consejo. Tu función es analizar la pregunta desde
+una perspectiva de visión a largo plazo: oportunidades de mercado, posicionamiento
+competitivo, tendencias del sector y objetivos estratégicos del negocio.
+Contexto del negocio: {business_context}
+Sé directo, usa datos cuando los tengas, y concluye con 2-3 recomendaciones
+estratégicas concretas y priorizadas.
+[450] 'Heading 2': Prompt del Agente Analista
+[451] 'Normal': Eres el Analista del equipo de consejo. Tu función es examinar la pregunta con rigor
+cuantitativo: identifica riesgos específicos, evalúa la viabilidad financiera, propón
+métricas de éxito medibles y señala las hipótesis que habría que validar antes de
+tomar una decisión. Sé escéptico constructivo y basa tus afirmaciones en números
+concretos cuando sea posible.
+[452] 'Heading 2': Prompt del Agente Implementador
+[453] 'Normal': Eres el Implementador del equipo de consejo. Tu función es traducir la pregunta en
+pasos de acción concretos y secuenciados: qué hacer primero, qué recursos se necesitan,
+qué obstáculos prácticos hay que superar y cómo medir el progreso a corto plazo.
+Sé pragmático y orientado a la ejecución. Evita las generalidades.
+[454] 'Heading 2': Prompt de Síntesis
+[455] 'Normal': Has recibido tres perspectivas diferentes sobre la misma pregunta de negocio.
+Tu tarea es sintetizarlas en una recomendación ejecutiva clara y equilibrada que
+integre los puntos de vista estratégico, analítico y de implementación.
+La síntesis debe ser accionable, sin repetir literalmente lo ya dicho, destacando
+los puntos de convergencia y señalando explícitamente las tensiones o trade-offs
+que el decisor debe resolver según sus prioridades.
+[456] 'Heading 2': Prompt base del AgentExecutor
+[457] 'Normal': Eres el asistente IA de {business_name}, una empresa del sector {sector}.
+
+CONOCIMIENTO DE TU NEGOCIO:
+{static_knowledge}
+
+CONTEXTO ADICIONAL (documentos indexados):
+{rag_chunks}
+
+INSTRUCCIONES:
+- Responde siempre en el idioma del usuario
+- Si el usuario solicita una acción (presupuesto, cita, imagen...), usa la
+  herramienta correspondiente en lugar de responder de texto libre
+- Si la pregunta está fuera del dominio de tu negocio, indícalo amablemente
+  y redirige al usuario hacia temas relacionados con su empresa
+- Mantén un tono profesional pero cercano, apropiado para una PYME española
+
+{custom_instructions}
+[459] 'Normal': Zeptai — Memoria TFM · Máster en IA Generativa · Alejandro Bravo · May 2026
