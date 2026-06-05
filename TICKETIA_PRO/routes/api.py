@@ -560,12 +560,12 @@ def push_unsubscribe():
 def llm_metrics():
     """
     Devuelve métricas agregadas de llamadas LLM para el usuario en sesión.
-    Si es admin (user_email == 'admin@ticketia.com') devuelve datos globales.
+    Si es admin (user_email == 'admin@zeptai.com') devuelve datos globales.
     """
     from sqlalchemy import func as sqlfunc
     from datetime import timedelta
 
-    is_admin = session.get('user_email') == 'admin@ticketia.com'
+    is_admin = session.get('user_email') == 'admin@zeptai.com'
     base_q = LLMCall.query if is_admin else LLMCall.query.filter_by(user_phone=session['user_phone'])
 
     # ── Hero stats ────────────────────────────────────────────────────────────
@@ -642,7 +642,7 @@ def prometheus_metrics():
     Acceso permitido a: admin autenticado + IPs internas Docker (172.x, 10.x, 127.x).
     """
     remote = request.remote_addr or ''
-    is_admin = session.get('user_email') == 'admin@ticketia.com'
+    is_admin = session.get('user_email') == 'admin@zeptai.com'
     is_internal = (
         remote.startswith('172.')
         or remote.startswith('10.')

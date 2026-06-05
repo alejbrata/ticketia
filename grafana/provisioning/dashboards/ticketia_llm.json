@@ -1,8 +1,8 @@
 {
-  "uid": "ticketia-llm",
-  "title": "Ticketia — LLM Observabilidad",
+  "uid": "zeptai-llm",
+  "title": "Zeptai — LLM Observabilidad",
   "description": "Métricas de llamadas LLM, tokens, coste, latencia y calidad RAG",
-  "tags": ["ticketia", "llm", "mlops"],
+  "tags": ["zeptai", "llm", "mlops"],
   "timezone": "browser",
   "schemaVersion": 38,
   "version": 1,
@@ -20,7 +20,7 @@
       "fieldConfig": {
         "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{"color":"blue","value":null}] } }
       },
-      "targets": [{ "expr": "sum(ticketia_llm_requests_total)", "legendFormat": "Total", "refId": "A" }]
+      "targets": [{ "expr": "sum(zeptai_llm_requests_total)", "legendFormat": "Total", "refId": "A" }]
     },
 
     {
@@ -33,7 +33,7 @@
       "fieldConfig": {
         "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{"color":"purple","value":null}] } }
       },
-      "targets": [{ "expr": "sum(ticketia_llm_tokens_total)", "legendFormat": "Tokens", "refId": "A" }]
+      "targets": [{ "expr": "sum(zeptai_llm_tokens_total)", "legendFormat": "Tokens", "refId": "A" }]
     },
 
     {
@@ -51,7 +51,7 @@
           "thresholds": { "steps": [{"color":"green","value":null},{"color":"yellow","value":1},{"color":"red","value":5}] }
         }
       },
-      "targets": [{ "expr": "sum(ticketia_llm_cost_usd_total)", "legendFormat": "Coste", "refId": "A" }]
+      "targets": [{ "expr": "sum(zeptai_llm_cost_usd_total)", "legendFormat": "Coste", "refId": "A" }]
     },
 
     {
@@ -70,7 +70,7 @@
         }
       },
       "targets": [{
-        "expr": "sum(ticketia_llm_requests_total{success='true'}) / sum(ticketia_llm_requests_total) * 100",
+        "expr": "sum(zeptai_llm_requests_total{success='true'}) / sum(zeptai_llm_requests_total) * 100",
         "legendFormat": "Éxito %",
         "refId": "A"
       }]
@@ -87,7 +87,7 @@
         "defaults": { "custom": { "fillOpacity": 10, "lineWidth": 2 } }
       },
       "targets": [{
-        "expr": "sum by (model) (rate(ticketia_llm_requests_total[5m])) * 60",
+        "expr": "sum by (model) (rate(zeptai_llm_requests_total[5m])) * 60",
         "legendFormat": "{{ model }}",
         "refId": "A"
       }]
@@ -102,7 +102,7 @@
       "options": { "pieType": "donut", "tooltip": { "mode": "single" }, "legend": { "displayMode": "list", "placement": "right" } },
       "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 4 } },
       "targets": [{
-        "expr": "sum by (model) (ticketia_llm_cost_usd_total)",
+        "expr": "sum by (model) (zeptai_llm_cost_usd_total)",
         "legendFormat": "{{ model }}",
         "refId": "A"
       }]
@@ -120,12 +120,12 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, sum by (stage, le) (rate(ticketia_llm_latency_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.50, sum by (stage, le) (rate(zeptai_llm_latency_seconds_bucket[5m])))",
           "legendFormat": "p50 — {{ stage }}",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.95, sum by (stage, le) (rate(ticketia_llm_latency_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (stage, le) (rate(zeptai_llm_latency_seconds_bucket[5m])))",
           "legendFormat": "p95 — {{ stage }}",
           "refId": "B"
         }
@@ -141,7 +141,7 @@
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
       "fieldConfig": { "defaults": { "custom": { "fillOpacity": 20, "lineWidth": 2, "stacking": { "mode": "normal" } } } },
       "targets": [{
-        "expr": "sum by (token_type) (rate(ticketia_llm_tokens_total[5m])) * 60",
+        "expr": "sum by (token_type) (rate(zeptai_llm_tokens_total[5m])) * 60",
         "legendFormat": "{{ token_type }}",
         "refId": "A"
       }]
@@ -156,7 +156,7 @@
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
       "fieldConfig": { "defaults": { "unit": "percent", "custom": { "fillOpacity": 10 } } },
       "targets": [{
-        "expr": "sum(rate(ticketia_llm_requests_total{success='false'}[5m])) / sum(rate(ticketia_llm_requests_total[5m])) * 100",
+        "expr": "sum(rate(zeptai_llm_requests_total{success='false'}[5m])) / sum(rate(zeptai_llm_requests_total[5m])) * 100",
         "legendFormat": "Error %",
         "refId": "A"
       }]
@@ -175,7 +175,7 @@
           "thresholds": { "steps": [{"color":"red","value":null},{"color":"yellow","value":0.6},{"color":"green","value":0.8}] }
         }
       },
-      "targets": [{ "expr": "ticketia_rag_score{metric='faithfulness'}", "refId": "A" }]
+      "targets": [{ "expr": "zeptai_rag_score{metric='faithfulness'}", "refId": "A" }]
     },
 
     {
@@ -191,7 +191,7 @@
           "thresholds": { "steps": [{"color":"red","value":null},{"color":"yellow","value":0.6},{"color":"green","value":0.8}] }
         }
       },
-      "targets": [{ "expr": "ticketia_rag_score{metric='answer_relevancy'}", "refId": "A" }]
+      "targets": [{ "expr": "zeptai_rag_score{metric='answer_relevancy'}", "refId": "A" }]
     },
 
     {
@@ -207,7 +207,7 @@
           "thresholds": { "steps": [{"color":"red","value":null},{"color":"yellow","value":0.6},{"color":"green","value":0.8}] }
         }
       },
-      "targets": [{ "expr": "ticketia_rag_score{metric='contextual_precision'}", "refId": "A" }]
+      "targets": [{ "expr": "zeptai_rag_score{metric='contextual_precision'}", "refId": "A" }]
     },
 
     {
@@ -223,7 +223,7 @@
           "thresholds": { "steps": [{"color":"red","value":null},{"color":"yellow","value":0.6},{"color":"green","value":0.8}] }
         }
       },
-      "targets": [{ "expr": "ticketia_rag_score{metric='contextual_recall'}", "refId": "A" }]
+      "targets": [{ "expr": "zeptai_rag_score{metric='contextual_recall'}", "refId": "A" }]
     }
 
   ]

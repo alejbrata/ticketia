@@ -98,7 +98,7 @@ if __name__ == "__main__":
     )
 
     print("=" * 60)
-    print("  Ticketia Scheduler — APScheduler con persistencia SQL")
+    print("  Zeptai Scheduler — APScheduler con persistencia SQL")
     print("=" * 60)
     print(f"  BD de jobs : {_DB_URI.split('///')[-1]}")
     print(f"  Ejecucion  : diaria a las 09:00")

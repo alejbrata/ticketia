@@ -145,7 +145,7 @@ def forgot_password():
             
             reset_url = url_for('web.reset_password', token=token, _external=True)
             
-            msg = Message('Restablecer Contraseña - Ticketia',
+            msg = Message('Restablecer Contraseña - Zeptai',
                           sender=current_app.config['MAIL_DEFAULT_SENDER'],
                           recipients=[email])
             msg.body = f'Para restablecer tu contraseña, haz clic en el siguiente enlace: {reset_url}\n\nSi no solicitaste esto, ignora este correo.'
@@ -689,6 +689,57 @@ def agents_page():
 def marketing_page():
     return render_template('marketing.html', current_page='marketing')
 
+def _get_expense_account(concept: str, provider: str = "") -> str:
+    """Devuelve el código de cuenta PGC más adecuado según el concepto del gasto.
+    Fuente: Plan General Contable español (RD 1514/2007), Grupo 6 - Compras y gastos.
+    Fallback: 629 Otros servicios.
+    """
+    import re
+
+    text = f"{concept or ''} {provider or ''}".lower()
+    words = set(re.findall(r"[a-záéíóúüñ]+", text))
+
+    # Comprobación por palabra completa para evitar falsos positivos ("gas" en "gasolina")
+    def match(keywords):
+        for k in keywords:
+            kw = k.lower()
+            if " " in kw:          # frases: substring match
+                if kw in text:
+                    return True
+            else:                   # palabras sueltas: match exacto
+                if kw in words:
+                    return True
+        return False
+
+    # El orden importa: reglas más específicas primero
+    rules = [
+        ("621", ["arrendamiento", "alquiler", "renting"]),
+        ("622", ["reparacion", "reparación", "mantenimiento", "conservacion",
+                 "conservación", "limpieza", "fontanero", "electricista",
+                 "pintura", "obra"]),
+        ("623", ["asesoria", "asesoría", "abogado", "gestoria", "gestoría",
+                 "notario", "consultoria", "consultoría", "auditoria",
+                 "auditoría", "arquitecto", "ingeniero", "perito"]),
+        ("624", ["transporte", "mensajeria", "mensajería", "courier",
+                 "envio", "envío", "seur", "glovo", "uber", "taxi",
+                 "gasolina", "combustible", "parking", "autopista", "peaje"]),
+        ("625", ["seguro", "prima", "poliza", "póliza"]),
+        ("626", ["banco", "comision", "comisión", "tarjeta", "tpv",
+                 "leasing", "prestamo", "préstamo"]),
+        ("627", ["publicidad", "marketing", "anuncio", "propaganda",
+                 "google ads", "meta ads", "instagram",
+                 "diseño grafico", "diseño gráfico", "fotografia", "fotografía"]),
+        ("628", ["luz", "electricidad", "agua", "gas natural", "internet",
+                 "fibra", "telefono", "teléfono", "movil", "móvil", "suministro"]),
+    ]
+
+    for account, keywords in rules:
+        if match(keywords):
+            return account
+
+    return "629"  # Otros servicios
+
+
 @web_bp.route('/export_excel')
 @_web_login_required
 def export_excel():
@@ -742,7 +793,7 @@ def export_excel():
             "Name": t.provider, # Mapeado desde provider
             "Ticket_Number": t.ticket_number,
             "Concept": t.concept,
-            "Expense_Account": "629", # Valor fijo
+            "Expense_Account": _get_expense_account(t.concept, t.provider),
             "Base": t.base,
             "%IVA": t.tax_percent,
             "Fee": fee,
@@ -1066,7 +1117,7 @@ def council_page():
 @web_bp.route('/metrics')
 @_web_login_required
 def metrics_page():
-    is_admin = session.get('user_email') == 'admin@ticketia.com'
+    is_admin = session.get('user_email') == 'admin@zeptai.com'
     return render_template('metrics.html', current_page='metrics', is_admin=is_admin)
 
 
@@ -1079,7 +1130,7 @@ def eval_page():
 @web_bp.route('/observabilidad')
 @_web_login_required
 def observabilidad_page():
-    if session.get('user_email') != 'admin@ticketia.com':
+    if session.get('user_email') != 'admin@zeptai.com':
         flash('Acceso restringido a administradores.', 'error')
         return redirect(url_for('web.dashboard'))
     grafana_url    = os.environ.get('GRAFANA_URL',    'http://localhost:3000')

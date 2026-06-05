@@ -47,7 +47,7 @@ class AdminAssistantAgent:
                     image_content = [{"type": "image_url", "image_url": {"url": image_url}}]
 
             prompt = f"""
-            Eres un experto clasificador visual para "Ticketia".
+            Eres un experto clasificador visual para "Zeptai".
             Clasifica la imagen en UNA de dos categorías:
             
             A) 'receipt': SOLO si ves un TICKET TÉRMICO DE CAJA (supermercado, restaurante) o una FACTURA IMPRESA FORMAL. Debe parecer un documento final de pago.

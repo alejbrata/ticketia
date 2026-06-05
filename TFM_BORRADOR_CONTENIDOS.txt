@@ -21,7 +21,7 @@ PORTADA (sugerencia de campos)
 - Autor(es): [nombre(s)]
 - Tutor de contenidos: [nombre]
 - Fecha de entrega: [mes y año]
-- Repositorio Git: https://github.com/[usuario]/ticketia
+- Repositorio Git: https://github.com/[usuario]/zeptai
 
 RESUMEN / ABSTRACT (250-300 palabras, redactar al final)
 Zeptai es una plataforma web SaaS que integra un sistema multi-agente de
@@ -270,7 +270,7 @@ siguiendo el estándar abierto de Anthropic para la integración de herramientas
 con LLMs.
 
 Arquitectura MCP en Zeptai:
-  [AgentExecutor] → [MCP Client HTTP] → [ticketia_mcp (puerto 8001)]
+  [AgentExecutor] → [MCP Client HTTP] → [zeptai_mcp (puerto 8001)]
                                               |
                                     ┌─────────┴──────────┐
                                     │  6 herramientas MCP │
@@ -288,7 +288,7 @@ Ventaja del transporte SSE frente a stdio:
   - Latencia por herramienta: ~5 ms (HTTP local) vs. ~500 ms (fork de proceso)
   - Permite conexiones concurrentes de múltiples workers de gunicorn
 
-El servidor MCP corre como contenedor Docker independiente (ticketia_mcp),
+El servidor MCP corre como contenedor Docker independiente (zeptai_mcp),
 arrancando antes que la app web para garantizar disponibilidad.
 
 Ver: TICKETIA_PRO/mcp_server_sse.py, TICKETIA_PRO/core/mcp_client.py
@@ -806,7 +806,7 @@ VARIABLES DE ENTORNO (fichero .env):
   OPENAI_API_KEY=sk-...
   RUNWAYML_API_SECRET=key_...
   PUBLIC_URL=https://zeptai.example.com
-  DATABASE_URL=postgresql://ticketia:pass@db/ticketia
+  DATABASE_URL=postgresql://zeptai:pass@db/zeptai
   VAPID_PRIVATE_KEY=...
   VAPID_PUBLIC_KEY=...
   FLASK_SECRET_KEY=...
@@ -1146,8 +1146,8 @@ PRE-REQUISITOS:
   - Puerto 5000 libre en el host
 
 PASOS:
-  1. git clone https://github.com/[usuario]/ticketia
-  2. cd ticketia
+  1. git clone https://github.com/[usuario]/zeptai
+  2. cd zeptai
   3. cp .env.example .env  # editar con API keys reales
   4. docker compose up --build -d
   5. docker compose exec web python -c "from app import create_app; from core.db_models import db; app=create_app(); app.app_context().push(); db.create_all()"
@@ -1253,22 +1253,22 @@ El stack se compone de cuatro capas independientes y complementarias:
 -------------------------------------------
 El modulo define 5 familias de metricas como singletons de modulo:
 
-  ticketia_llm_requests_total   Counter   [model, stage, success]
+  zeptai_llm_requests_total   Counter   [model, stage, success]
     Total de llamadas a modelos LLM.
 
-  ticketia_llm_tokens_total     Counter   [model, stage, token_type]
+  zeptai_llm_tokens_total     Counter   [model, stage, token_type]
     Tokens consumidos (prompt / completion).
 
-  ticketia_llm_latency_seconds  Histogram [model, stage]
+  zeptai_llm_latency_seconds  Histogram [model, stage]
     Latencia con 9 buckets: [0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0]
 
-  ticketia_llm_cost_usd_total   Counter   [model, stage]
+  zeptai_llm_cost_usd_total   Counter   [model, stage]
     Coste acumulado estimado en USD.
 
-  ticketia_rag_score            Gauge     [metric]
+  zeptai_rag_score            Gauge     [metric]
     Puntuacion de calidad RAG de DeepEval (0.0-1.0) por metrica.
 
-Expone ademas ticketia_app_info (Info) con version, servicio y entorno.
+Expone ademas zeptai_app_info (Info) con version, servicio y entorno.
 
 API publica del modulo:
   record_llm(model, stage, success, prompt_tokens, completion_tokens,
@@ -1276,7 +1276,7 @@ API publica del modulo:
     Actualiza los 5 contadores de una llamada LLM. Llamada desde llm_tracker.
 
   update_rag_score(metric, score)
-    Actualiza el Gauge ticketia_rag_score. Llamada desde test_deepeval_rag.py.
+    Actualiza el Gauge zeptai_rag_score. Llamada desde test_deepeval_rag.py.
 
   init_tracing(app)
     Inicializa OTel si OTEL_EXPORTER_OTLP_ENDPOINT esta definido.
@@ -1318,7 +1318,7 @@ Tres nuevos servicios en docker-compose.yml:
 
   grafana (grafana/grafana:10.4.3)
     - Puerto 3000
-    - Contrasena admin: ticketia
+    - Contrasena admin: zeptai
     - Modo anonimo habilitado para la demo
     - Provisioning automatico desde grafana/provisioning/
     - Depende de prometheus
@@ -1334,7 +1334,7 @@ Grafana se configura via provisioning declarativo:
     Define la conexion al datasource Prometheus (http://prometheus:9090).
 
   grafana/provisioning/dashboards/
-    Carga automaticamente el JSON del dashboard ticketia-llm-observabilidad.
+    Carga automaticamente el JSON del dashboard zeptai-llm-observabilidad.
 
 Con docker-compose up el dashboard esta disponible sin configuracion manual.
 Paneles incluidos: llamadas LLM por stage, latencia p50/p95, coste acumulado
@@ -1379,17 +1379,17 @@ Requiere docker-compose up para ejecutarse.
     - Prometheus /graph accesible
 
   TestPrometheusTarget (5 tests)
-    - Target "ticketia" existe en /api/v1/targets
-    - Target "ticketia" en estado "up" (reintento hasta 60s)
+    - Target "zeptai" existe en /api/v1/targets
+    - Target "zeptai" en estado "up" (reintento hasta 60s)
     - URL de scrape contiene /api/prometheus
-    - Metrica ticketia_app_info presente (con reintento)
+    - Metrica zeptai_app_info presente (con reintento)
     - Todas las familias de metricas esperadas presentes
 
   TestPrometheusEndpoint (4 tests)
     - Formato text/plain correcto
-    - Contiene ticketia_llm_requests_total, cost y latency
+    - Contiene zeptai_llm_requests_total, cost y latency
     - Anonimos desde IP externa reciben 403
-    - Labels de app_info presentes (service="ticketia")
+    - Labels de app_info presentes (service="zeptai")
 
   TestLLMMetricsIncrement (6 tests)
     - record_llm() incrementa el counter de requests en +1
@@ -1417,25 +1417,25 @@ Ver archivo prometheus_queries.txt para la lista completa de consultas.
 Consultas clave para el TFM:
 
   Tasa de exito (%):
-    sum(ticketia_llm_requests_total{success="true"})
-    / sum(ticketia_llm_requests_total) * 100
+    sum(zeptai_llm_requests_total{success="true"})
+    / sum(zeptai_llm_requests_total) * 100
 
   Latencia p95 global:
     histogram_quantile(0.95,
-      sum by (le) (rate(ticketia_llm_latency_seconds_bucket[5m])))
+      sum by (le) (rate(zeptai_llm_latency_seconds_bucket[5m])))
 
   Stage con mayor coste:
-    topk(5, sum by (stage) (ticketia_llm_cost_usd_total))
+    topk(5, sum by (stage) (zeptai_llm_cost_usd_total))
 
   Puntuaciones RAG actuales:
-    ticketia_rag_score
+    zeptai_rag_score
 
   Estado del scraping:
-    up{job="ticketia"}
+    up{job="zeptai"}
 
 ================================================================================
   FIN DEL DOCUMENTO
   Generado: 2026-04-15 - Actualizado: 2026-06-04
   Basado en: Orientaciones y pautas TFM MID.pdf
-  Proyecto: Zeptai / Ticketia PRO
+  Proyecto: Zeptai / Zeptai
 ================================================================================

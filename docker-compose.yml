@@ -23,11 +23,11 @@ services:
   # ── Base de datos PostgreSQL ──────────────────────────────────────────────
   db:
     image: pgvector/pgvector:pg15
-    container_name: ticketia_db
+    container_name: zeptai_db
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
-      POSTGRES_DB: ticketia_db
+      POSTGRES_DB: zeptai_db
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
@@ -36,7 +36,7 @@ services:
     # Healthcheck: los servicios que dependen de 'db' esperan hasta que
     # Postgres acepte conexiones (evita el race condition tipico de arranque).
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d ticketia_db"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d zeptai_db"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -49,7 +49,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: ticketia_mcp
+    container_name: zeptai_mcp
     # Sobreescribe el CMD del Dockerfile para lanzar el servidor SSE
     command: python mcp_server_sse.py
     ports:
@@ -57,11 +57,11 @@ services:
     env_file:
       - .env
     environment:
-      - DATABASE_URL=postgresql://postgres:password@db:5432/ticketia_db
+      - DATABASE_URL=postgresql://postgres:password@db:5432/zeptai_db
       - MCP_SSE_PORT=8001
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     volumes:
-      # Hot-reload del codigo en desarrollo: cambios en TICKETIA_PRO se
+      # Hot-reload del codigo en desarrollo: cambios en ZEPTAI_PRO se
       # reflejan sin rebuild de la imagen.
       - ./TICKETIA_PRO:/app/TICKETIA_PRO
     restart: unless-stopped
@@ -74,7 +74,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: ticketia_app
+    container_name: zeptai_app
     ports:
       - "5000:5000"
     # env_file inyecta OPENAI_API_KEY, TWILIO_*, MAIL_*, SECRET_KEY, etc.
@@ -86,7 +86,7 @@ services:
       - .env
     environment:
       - PORT=5000
-      - DATABASE_URL=postgresql://postgres:password@db:5432/ticketia_db
+      - DATABASE_URL=postgresql://postgres:password@db:5432/zeptai_db
       - MCP_SSE_URL=http://mcp:8001/sse
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
       - GRAFANA_URL=http://localhost:3000
@@ -111,14 +111,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: ticketia_scheduler
-    # run_scheduler.py esta en /app/ (raiz), no en /app/TICKETIA_PRO.
+    container_name: zeptai_scheduler
+    # run_scheduler.py esta en /app/ (raiz), no en /app/ZEPTAI_PRO.
     # Se usa ruta absoluta para evitar errores de CWD.
     command: python /app/run_scheduler.py
     env_file:
       - .env
     environment:
-      - DATABASE_URL=postgresql://postgres:password@db:5432/ticketia_db
+      - DATABASE_URL=postgresql://postgres:password@db:5432/zeptai_db
     volumes:
       - ./TICKETIA_PRO:/app/TICKETIA_PRO
     restart: unless-stopped
@@ -131,7 +131,7 @@ services:
   # ── Jaeger — trazas distribuidas (OpenTelemetry) ─────────────────────────────
   jaeger:
     image: jaegertracing/all-in-one:1.57
-    container_name: ticketia_jaeger
+    container_name: zeptai_jaeger
     ports:
       - "16686:16686"   # UI de Jaeger
       - "4318:4318"     # OTLP HTTP (receptor de trazas)
@@ -142,7 +142,7 @@ services:
   # ── Prometheus — scraping de métricas ────────────────────────────────────────
   prometheus:
     image: prom/prometheus:v2.52.0
-    container_name: ticketia_prometheus
+    container_name: zeptai_prometheus
     ports:
       - "9090:9090"
     volumes:
@@ -159,11 +159,11 @@ services:
   # ── Grafana — dashboards de observabilidad ────────────────────────────────────
   grafana:
     image: grafana/grafana:10.4.3
-    container_name: ticketia_grafana
+    container_name: zeptai_grafana
     ports:
       - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=ticketia
+      - GF_SECURITY_ADMIN_PASSWORD=zeptai
       - GF_SECURITY_ALLOW_EMBEDDING=true
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer

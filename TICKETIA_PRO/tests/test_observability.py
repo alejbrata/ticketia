@@ -4,7 +4,7 @@ Tests de observabilidad — stack OpenTelemetry + Prometheus + Grafana + Jaeger
 
 Grupos:
   1. Salud de servicios externos (Prometheus, Grafana, Jaeger)
-  2. Scraping de Prometheus → target ticketia en estado UP
+  2. Scraping de Prometheus → target zeptai en estado UP
   3. Endpoint /api/prometheus: autorización y formato
   4. Métricas Prometheus: contadores LLM se incrementan correctamente
   5. Gauge RAG: update_rag_score refleja valores en Prometheus
@@ -47,8 +47,8 @@ def admin_client(flask_app):
     c = flask_app.test_client()
     with c.session_transaction() as sess:
         sess['user_phone']     = '+34600000001'
-        sess['user_email']     = 'admin@ticketia.com'
-        sess['business_name']  = 'Ticketia Admin'
+        sess['user_email']     = 'admin@zeptai.com'
+        sess['business_name']  = 'Zeptai Admin'
     return c
 
 
@@ -76,53 +76,53 @@ class TestServiceHealth:
         assert r.status_code == 200
 
 
-# ── Grupo 2: Scraping Prometheus → target ticketia ───────────────────────────
+# ── Grupo 2: Scraping Prometheus → target zeptai ───────────────────────────
 
 class TestPrometheusTarget:
 
-    def test_ticketia_target_exists(self):
+    def test_zeptai_target_exists(self):
         r = requests.get(f"{PROMETHEUS_URL}/api/v1/targets", timeout=5)
         assert r.status_code == 200
         targets = r.json()["data"]["activeTargets"]
         jobs = [t["labels"]["job"] for t in targets]
-        assert "ticketia" in jobs, f"Target 'ticketia' no encontrado. Jobs: {jobs}"
+        assert "zeptai" in jobs, f"Target 'zeptai' no encontrado. Jobs: {jobs}"
 
-    def test_ticketia_target_is_up(self):
+    def test_zeptai_target_is_up(self):
         import time
-        ticketia = None
+        zeptai = None
         for _ in range(6):  # hasta 60s (6 × 10s ≥ 2 ciclos de scrape)
             r = requests.get(f"{PROMETHEUS_URL}/api/v1/targets", timeout=5)
             targets = r.json()["data"]["activeTargets"]
-            ticketia = next((t for t in targets if t["labels"]["job"] == "ticketia"), None)
-            if ticketia and ticketia["health"] == "up":
+            zeptai = next((t for t in targets if t["labels"]["job"] == "zeptai"), None)
+            if zeptai and zeptai["health"] == "up":
                 break
             time.sleep(10)
-        assert ticketia is not None, "Target 'ticketia' no encontrado"
-        assert ticketia["health"] == "up", (
-            f"Target ticketia health={ticketia['health']}, "
-            f"error: {ticketia.get('lastError', 'none')}"
+        assert zeptai is not None, "Target 'zeptai' no encontrado"
+        assert zeptai["health"] == "up", (
+            f"Target zeptai health={zeptai['health']}, "
+            f"error: {zeptai.get('lastError', 'none')}"
         )
 
-    def test_ticketia_scrape_url_correct(self):
+    def test_zeptai_scrape_url_correct(self):
         r = requests.get(f"{PROMETHEUS_URL}/api/v1/targets", timeout=5)
         targets = r.json()["data"]["activeTargets"]
-        ticketia = next(t for t in targets if t["labels"]["job"] == "ticketia")
-        assert "/api/prometheus" in ticketia["scrapeUrl"]
+        zeptai = next(t for t in targets if t["labels"]["job"] == "zeptai")
+        assert "/api/prometheus" in zeptai["scrapeUrl"]
 
-    def test_ticketia_app_info_metric_present(self):
+    def test_zeptai_app_info_metric_present(self):
         import time
         result = []
         for _ in range(6):
             r = requests.get(
                 f"{PROMETHEUS_URL}/api/v1/query",
-                params={"query": "ticketia_app_info"},
+                params={"query": "zeptai_app_info"},
                 timeout=5,
             )
             result = r.json()["data"]["result"]
             if result:
                 break
             time.sleep(10)
-        assert len(result) > 0, "ticketia_app_info no encontrada tras 60s de espera"
+        assert len(result) > 0, "zeptai_app_info no encontrada tras 60s de espera"
 
     def test_all_expected_metric_families_present(self):
         r = requests.get(
@@ -131,11 +131,11 @@ class TestPrometheusTarget:
         )
         names = set(r.json()["data"])
         expected = {
-            "ticketia_app_info",
-            "ticketia_llm_requests_total",
-            "ticketia_llm_tokens_total",
-            "ticketia_llm_cost_usd_total",
-            "ticketia_llm_latency_seconds_bucket",
+            "zeptai_app_info",
+            "zeptai_llm_requests_total",
+            "zeptai_llm_tokens_total",
+            "zeptai_llm_cost_usd_total",
+            "zeptai_llm_latency_seconds_bucket",
         }
         missing = expected - names
         assert not missing, f"Métricas no encontradas en Prometheus: {missing}"
@@ -148,16 +148,16 @@ class TestPrometheusEndpoint:
     def test_endpoint_returns_prometheus_format(self, admin_client):
         r = admin_client.get("/api/prometheus")
         assert r.status_code == 200
-        assert b"ticketia_app_info" in r.data
+        assert b"zeptai_app_info" in r.data
         content_type = r.headers.get("Content-Type", "")
         assert "text/plain" in content_type
 
     def test_endpoint_contains_llm_metrics_family(self, admin_client):
         r = admin_client.get("/api/prometheus")
         assert r.status_code == 200
-        assert b"ticketia_llm_requests_total" in r.data
-        assert b"ticketia_llm_cost_usd_total" in r.data
-        assert b"ticketia_llm_latency_seconds" in r.data
+        assert b"zeptai_llm_requests_total" in r.data
+        assert b"zeptai_llm_cost_usd_total" in r.data
+        assert b"zeptai_llm_latency_seconds" in r.data
 
     def test_endpoint_blocked_for_anonymous(self, flask_app):
         """Sin sesión y con IP externa → 403."""
@@ -170,7 +170,7 @@ class TestPrometheusEndpoint:
 
     def test_endpoint_contains_app_info_labels(self, admin_client):
         r = admin_client.get("/api/prometheus")
-        assert b'service="ticketia"' in r.data
+        assert b'service="zeptai"' in r.data
 
 
 # ── Grupo 4: Contadores LLM se incrementan ───────────────────────────────────

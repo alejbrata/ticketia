@@ -1,5 +1,5 @@
 """
-Script de pruebas automatizado — Zeptai / Ticketia PRO
+Script de pruebas automatizado — Zeptai / Zeptai
 Usuario ficticio: testbot@zeptai.test / TestPass2024!
 Ejecutar desde el host: python run_tests.py
 """

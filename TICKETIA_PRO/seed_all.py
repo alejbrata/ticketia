@@ -12,9 +12,11 @@ Pasos que ejecuta en orden:
   2. Crea el usuario demo con plan PRO_FULL
   3. Configura el wizard IA (sector, tono, FAQ, garantías, etc.)
   4. Indexa el conocimiento del wizard en pgvector (7 chunks)
-  5. Genera el PDF de knowledge base (9 páginas)
-  6. Ingesta el PDF en pgvector (18 chunks)
-  7. Carga 15 tickets de historial de gastos
+  5. Carga 15 tickets de historial de gastos
+
+Nota: el PDF de knowledge base NO se precarga intencionalmente.
+Se sube en directo durante la demo desde /documents para mostrar
+el flujo de ingesta RAG en tiempo real.
 """
 import os
 import sys
@@ -27,7 +29,7 @@ DEMO_BUSINESS = os.environ.get("DEMO_BUSINESS_NAME", "Demo Business S.L.")
 
 
 def step(n, label):
-    print(f"\n[{n}/7] {label}")
+    print(f"\n[{n}/5] {label}")
 
 
 def run():
@@ -71,25 +73,8 @@ def run():
         # ── 4. (ya hecho dentro de seed_wizard_config → ingest_wizard_chunks) ──
         # seed_wizard_config.seed() ya indexa los 7 chunks del wizard en pgvector
 
-        # ── 5. Generar PDF knowledge base ──────────────────────────────────────
-        step(5, "Generando PDF de knowledge base (9 paginas)...")
-        import seed_knowledge_pdf as kpdf
-        # Redirigir la ruta de salida al usuario demo correcto
-        from pathlib import Path
-        pdf_dir = Path(f"static/uploads/knowledge/{DEMO_PHONE}")
-        pdf_dir.mkdir(parents=True, exist_ok=True)
-        pdf_path = pdf_dir / "demo_business_knowledge.pdf"
-        kpdf.OUTPUT_PATH = pdf_path
-        kpdf.main()
-
-        # ── 6. Ingestar PDF en pgvector ────────────────────────────────────────
-        step(6, "Indexando PDF en pgvector...")
-        from modules.services.embeddings import ingest_document
-        chunks = ingest_document(DEMO_PHONE, str(pdf_path), "demo_business_knowledge.pdf")
-        print(f"     OK — {chunks} chunks indexados")
-
-        # ── 7. Tickets de historial ────────────────────────────────────────────
-        step(7, "Cargando 15 tickets de historial de gastos...")
+        # ── 5. Tickets de historial ────────────────────────────────────────────
+        step(5, "Cargando 15 tickets de historial de gastos...")
         import seed_demo
         seed_demo.generate_fake_history(DEMO_PHONE)
         print("     OK")
@@ -99,7 +84,7 @@ def run():
     print(f"  URL      : http://localhost:5000")
     print(f"  Email    : {DEMO_EMAIL}")
     print(f"  Password : {DEMO_PASSWORD}")
-    print(f"  Chunks RAG: wizard(7) + PDF(18) = 25 total")
+    print(f"  Chunks RAG: wizard (7) — sube el PDF en directo desde /documents")
     print("="*50)
 
 

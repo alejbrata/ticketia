@@ -1,19 +1,19 @@
-# 🔌 Guía de Pruebas: Integración MCP (Model Context Protocol) en Ticketia
+# 🔌 Guía de Pruebas: Integración MCP (Model Context Protocol) en Zeptai
 
-Esta guía detalla cómo probar la integración bidireccional del **Model Context Protocol (MCP)** en Ticketia. Hemos dotado a Ticketia de "superpoderes", permitiendo que funcione tanto como un **Servidor MCP** (exponiendo datos a IAs externas) como un **Cliente MCP** (permitiendo a los agentes internos usar herramientas reales).
+Esta guía detalla cómo probar la integración bidireccional del **Model Context Protocol (MCP)** en Zeptai. Hemos dotado a Zeptai de "superpoderes", permitiendo que funcione tanto como un **Servidor MCP** (exponiendo datos a IAs externas) como un **Cliente MCP** (permitiendo a los agentes internos usar herramientas reales).
 
 ---
 
-## 1. Ticketia como un Servidor MCP (SSE) 📤
+## 1. Zeptai como un Servidor MCP (SSE) 📤
 
-Hemos convertido la base de datos de Ticketia en una fuente de información estandarizada para IAs externas (como la aplicación de escritorio de Claude).
+Hemos convertido la base de datos de Zeptai en una fuente de información estandarizada para IAs externas (como la aplicación de escritorio de Claude).
 
 *   **¿Qué hace?** Levanta un servidor web en el puerto 8000 que se comunica usando *Server-Sent Events (SSE)*.
-*   **La Herramienta:** Expone `get_financial_summary`. Si una IA provee un número de teléfono, Ticketia devolverá un resumen de los gastos de ese mes de forma segura.
+*   **La Herramienta:** Expone `get_financial_summary`. Si una IA provee un número de teléfono, Zeptai devolverá un resumen de los gastos de ese mes de forma segura.
 
 ### Pasos para probarlo:
 
-Esta prueba simula ser una aplicación externa preguntándole a Ticketia por los gastos de un usuario.
+Esta prueba simula ser una aplicación externa preguntándole a Zeptai por los gastos de un usuario.
 
 1.  Abre una terminal en la carpeta raíz del proyecto (`TICKETIA_PRO`).
 2.  Inicia el servidor SSE ejecutando:
@@ -26,13 +26,13 @@ Esta prueba simula ser una aplicación externa preguntándole a Ticketia por los
     ```bash
     python test_mcp_sse_client.py
     ```
-5.  **Resultado esperado:** El script se conectará por HTTP, descubrirá la herramienta `get_financial_summary`, la ejecutará y la consola imprimirá un mensaje real extraído de la base de datos de Ticketia ("No se han encontrado tickets..." o el listado de gastos real).
+5.  **Resultado esperado:** El script se conectará por HTTP, descubrirá la herramienta `get_financial_summary`, la ejecutará y la consola imprimirá un mensaje real extraído de la base de datos de Zeptai ("No se han encontrado tickets..." o el listado de gastos real).
 
 ---
 
-## 2. Ticketia como un Cliente MCP (El "Cerebro" de los Agentes) 🧠
+## 2. Zeptai como un Cliente MCP (El "Cerebro" de los Agentes) 🧠
 
-Hemos conectado a los agentes internos de Ticketia (por ejemplo, "El Consejo" o "El Gestor") a herramientas del mundo real para que las usen *antes* de responder al usuario.
+Hemos conectado a los agentes internos de Zeptai (por ejemplo, "El Consejo" o "El Gestor") a herramientas del mundo real para que las usen *antes* de responder al usuario.
 
 *   **Las Herramientas Creadas**:
     1.  **`search_web`**: Usa DuckDuckGo para buscar en internet en tiempo real (ideal para buscar ayudas del BOE).

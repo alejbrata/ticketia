@@ -47,7 +47,7 @@ class SecureModelView(ModelView):
     def is_accessible(self):
         # Solo permite acceso al email del 'Super Admin' (definido en seed_owner.py)
         # Ojo: Asegúrate de loguearte con este email.
-        return session.get('user_email') == 'admin@ticketia.com'
+        return session.get('user_email') == 'admin@zeptai.com'
 
     def inaccessible_callback(self, name, **kwargs):
         # Si no es admin, redirige al login
@@ -57,10 +57,10 @@ class SecureModelView(ModelView):
 # Inicializar el Panel
 # Nota: template_mode='bootstrap4' puede requerir temas compatibles, si falla lo quitamos o usamos default
 try:
-    admin = Admin(app, name='Panel de Control Ticketia', template_mode='bootstrap4')
+    admin = Admin(app, name='Panel de Control Zeptai', template_mode='bootstrap4')
 except TypeError:
     # Fallback si la versión instalada no soporta template_mode en init
-    admin = Admin(app, name='Panel de Control Ticketia')
+    admin = Admin(app, name='Panel de Control Zeptai')
 
 from flask_admin.menu import MenuLink
 admin.add_link(MenuLink(name='🏠 Volver a Web', category='', url='/dashboard'))

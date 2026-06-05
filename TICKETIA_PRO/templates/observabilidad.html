@@ -46,7 +46,7 @@
 
             <!-- Spacer + external links -->
             <div class="ml-auto flex items-center gap-2">
-                <a id="external-link" href="{{ grafana_url }}/d/ticketia-llm" target="_blank" rel="noopener"
+                <a id="external-link" href="{{ grafana_url }}/d/zeptai-llm" target="_blank" rel="noopener"
                    class="text-xs text-slate-400 hover:text-indigo-600 transition-colors flex items-center gap-1">
                     Abrir en nueva pestaña ↗
                 </a>
@@ -65,7 +65,7 @@
                 <p class="text-xs text-slate-600">Si no carga, comprueba que docker-compose está corriendo</p>
             </div>
             <iframe id="iframe-grafana"
-                src="{{ grafana_url }}/d/ticketia-llm/ticketia-llm-observabilidad?orgId=1&theme=dark&kiosk"
+                src="{{ grafana_url }}/d/zeptai-llm/zeptai-llm-observabilidad?orgId=1&theme=dark&kiosk"
                 class="absolute inset-0 w-full h-full z-10"
                 style="border:none;"
                 title="Grafana LLM Dashboard">
@@ -105,7 +105,7 @@
 
 <script>
 const TABS = {
-    grafana:    { panel: 'panel-grafana',    iframe: 'iframe-grafana',    ext: '{{ grafana_url }}/d/ticketia-llm' },
+    grafana:    { panel: 'panel-grafana',    iframe: 'iframe-grafana',    ext: '{{ grafana_url }}/d/zeptai-llm' },
     jaeger:     { panel: 'panel-jaeger',     iframe: 'iframe-jaeger',     ext: '{{ jaeger_url }}' },
     prometheus: { panel: 'panel-prometheus', iframe: 'iframe-prometheus', ext: '{{ prometheus_url }}/graph' },
 };

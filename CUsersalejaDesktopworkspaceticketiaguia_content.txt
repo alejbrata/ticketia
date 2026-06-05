@@ -8,10 +8,10 @@
 [9] 'Normal': • Capa de rutas: routes/ con 3 blueprints: web (HTML), api (JSON), knowledge (RAG)
 [10] 'Normal': • Capa de logica: modules/ contiene agentes, servicios y orquestadores
 [11] 'Normal': El despliegue usa Docker Compose con 4 contenedores independientes:
-[12] 'Normal': • ticketia_app: aplicacion Flask principal, puerto 5000
-[13] 'Normal': • ticketia_mcp: servidor MCP con herramientas externas, puerto 8001
-[14] 'Normal': • ticketia_scheduler: APScheduler para tareas proactivas diarias
-[15] 'Normal': • ticketia_db: PostgreSQL 15 con extension pgvector para embeddings
+[12] 'Normal': • zeptai_app: aplicacion Flask principal, puerto 5000
+[13] 'Normal': • zeptai_mcp: servidor MCP con herramientas externas, puerto 8001
+[14] 'Normal': • zeptai_scheduler: APScheduler para tareas proactivas diarias
+[15] 'Normal': • zeptai_db: PostgreSQL 15 con extension pgvector para embeddings
 [16] 'Normal': 1. app.py — Punto de entrada
 [17] 'Normal': ________________________________________________________________________________
 [18] 'Normal': Es el fichero que Python ejecuta al arrancar. Hace cuatro cosas en orden: carga variables de entorno, inicializa Flask con su configuracion, prepara la base de datos y registra los tres blueprints de rutas.
@@ -36,7 +36,7 @@ app.register_blueprint(api_bp)
 app.register_blueprint(knowledge_bp)
 [35] 'Normal': Un Blueprint es un conjunto de rutas agrupadas. web_bp sirve paginas HTML, api_bp expone endpoints JSON para el chat y el audio, y knowledge_bp gestiona la subida y consulta de documentos RAG. Separar en blueprints permite organizar el codigo sin necesidad de microservicios.
 [36] 'Normal': 1.5 Panel de administracion
-[37] 'Normal': Flask-Admin monta un panel en /admin protegido por la clase SecureModelView, que solo permite acceso al email admin@ticketia.com. Desde ahi se pueden ver y editar todos los registros de la base de datos directamente.
+[37] 'Normal': Flask-Admin monta un panel en /admin protegido por la clase SecureModelView, que solo permite acceso al email admin@zeptai.com. Desde ahi se pueden ver y editar todos los registros de la base de datos directamente.
 [39] 'Normal': 2. core/ — Configuracion y servicios transversales
 [40] 'Normal': ________________________________________________________________________________
 [41] 'Normal': 2.1 core/config.py — Configuracion centralizada
@@ -193,7 +193,7 @@ LIMIT 5
 [193] 'Normal': DocumentService.save_generated_document() crea el registro GeneratedDocument en BD y anota la accion en ActivityLog. Centraliza la logica para que todos los agentes guarden documentos de la misma forma.
 [195] 'Normal': 6. modules/proactive/ — Agentes proactivos
 [196] 'Normal': ________________________________________________________________________________
-[197] 'Normal': Los agentes proactivos se ejecutan automaticamente cada dia mediante APScheduler. No requieren interaccion del usuario. El scheduler corre en su propio contenedor Docker (ticketia_scheduler). Solo se activan para usuarios que tienen el agente en su lista active_agents.
+[197] 'Normal': Los agentes proactivos se ejecutan automaticamente cada dia mediante APScheduler. No requieren interaccion del usuario. El scheduler corre en su propio contenedor Docker (zeptai_scheduler). Solo se activan para usuarios que tienen el agente en su lista active_agents.
 [198] 'Normal': 6.1 scheduler.py — Orquestador diario
 [199] 'Normal': run_daily_tasks() itera todos los usuarios activos y para cada uno ejecuta los agentes que tiene activados. Se ejecuta una vez al dia via APScheduler. Cada agente falla de forma independiente: si grant_hunter falla, el resto de agentes del usuario siguen ejecutandose.
 [200] 'Normal': 6.2 grant_hunter.py — Cazador de subvenciones
@@ -231,9 +231,9 @@ LIMIT 5
 [234] 'Normal': ________________________________________________________________________________
 [235] 'Normal': MCP es un estandar abierto de Anthropic para exponer herramientas a agentes de IA de forma estandarizada. En vez de definir herramientas dentro del codigo del agente, se exponen a traves de un servidor MCP que cualquier agente compatible puede consumir.
 [236] 'Normal': mcp_server.py / mcp_server_sse.py
-[237] 'Normal': Expone las herramientas de la plataforma (get_financial_summary, get_appointments, search_web, schedule_appointment, etc.) como endpoints MCP. El servidor SSE (mcp_server_sse.py) corre en el contenedor ticketia_mcp en el puerto 8001 y permite conexion remota.
+[237] 'Normal': Expone las herramientas de la plataforma (get_financial_summary, get_appointments, search_web, schedule_appointment, etc.) como endpoints MCP. El servidor SSE (mcp_server_sse.py) corre en el contenedor zeptai_mcp en el puerto 8001 y permite conexion remota.
 [238] 'Normal': core/mcp_client.py — Cliente MCP
-[239] 'Normal': TicketiaMCPClient soporta dos modos de transporte:
+[239] 'Normal': ZeptaiMCPClient soporta dos modos de transporte:
 [240] 'Normal': • SSE: si MCP_SSE_URL esta definido en el entorno, conecta al servidor MCP remoto via HTTP. Usado en produccion con Docker
 [241] 'Normal': • stdio: lanza mcp_server.py como subproceso y se comunica por stdin/stdout. Usado en desarrollo local
 [242] 'Normal': execute_agent_loop() orquesta el agente OpenAI con las herramientas del servidor MCP: llama a GPT, recibe los tool calls, los ejecuta contra el servidor MCP, y repite hasta que GPT genera una respuesta final sin tool calls.
@@ -310,10 +310,10 @@ LIMIT 5
 [316] 'Normal': ________________________________________________________________________________
 [317] 'Normal': 11.1 Docker Compose
 [318] 'Normal': 4 servicios independientes con responsabilidades separadas:
-[319] 'Normal': • ticketia_app: Flask + Gunicorn. Sirve la aplicacion web. Puerto 5000
-[320] 'Normal': • ticketia_mcp: servidor MCP con herramientas externas. Puerto 8001. Accesible desde ticketia_app via MCP_SSE_URL
-[321] 'Normal': • ticketia_scheduler: ejecuta run_daily_tasks() con APScheduler. No expone puertos
-[322] 'Normal': • ticketia_db: PostgreSQL 15 con pgvector. Puerto 5432. Healthcheck integrado
+[319] 'Normal': • zeptai_app: Flask + Gunicorn. Sirve la aplicacion web. Puerto 5000
+[320] 'Normal': • zeptai_mcp: servidor MCP con herramientas externas. Puerto 8001. Accesible desde zeptai_app via MCP_SSE_URL
+[321] 'Normal': • zeptai_scheduler: ejecuta run_daily_tasks() con APScheduler. No expone puertos
+[322] 'Normal': • zeptai_db: PostgreSQL 15 con pgvector. Puerto 5432. Healthcheck integrado
 [323] 'Normal': La separacion en contenedores permite que un fallo en el scheduler no afecte a la aplicacion web, y que el servidor MCP escale independientemente.
 [324] 'Normal': 11.2 Variables de entorno
 [325] 'Normal': Todas las credenciales se externalizan en el archivo .env de la raiz del proyecto:

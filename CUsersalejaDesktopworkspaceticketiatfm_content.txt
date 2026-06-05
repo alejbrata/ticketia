@@ -6,7 +6,7 @@ de Autónomos y PYMEs
 [9] 'Normal': Autor: Alejandro Bravo
 [10] 'Normal': Tutor: [Nombre del tutor]
 [11] 'Normal': Fecha de entrega: Junio 2026
-[12] 'Normal': Repositorio: https://github.com/alejbrata/ticketia
+[12] 'Normal': Repositorio: https://github.com/alejbrata/zeptai
 [14] 'Heading 1': Agradecimientos
 [15] 'Normal': El desarrollo de Zeptai no habría sido posible sin el apoyo y la orientación recibidos a lo largo de este Máster. Quisiera expresar mi más sincero agradecimiento a los docentes del programa por transmitir su conocimiento sobre Inteligencia Artificial Generativa con rigor y entusiasmo.
 [16] 'Normal': A mi tutor, por su disponibilidad y por sus comentarios siempre constructivos que han guiado la dirección técnica y académica de este trabajo.
@@ -503,8 +503,8 @@ return '⏳ Me pongo a ello. Te avisaré cuando esté listo.'
 [417] 'List Bullet': Puerto 5000 (aplicación web) y 5432 (PostgreSQL) libres en el host.
 [418] 'Heading 2': Pasos de instalación
 [419] 'Normal': # 1. Clonar el repositorio
-git clone https://github.com/alejbrata/ticketia.git
-cd ticketia
+git clone https://github.com/alejbrata/zeptai.git
+cd zeptai
 
 # 2. Configurar variables de entorno
 cp .env.example .env
@@ -534,7 +534,7 @@ docker compose exec web python run_tests.py
 docker compose exec web python -m pytest TICKETIA_PRO/tests/test_deepeval_rag.py -v
 
 # Acceder a la base de datos
-docker compose exec db psql -U postgres -d ticketia_db
+docker compose exec db psql -U postgres -d zeptai_db
 [424] 'Heading 2': Verificación del despliegue
 [425] 'Normal': # Health check de la aplicación
 curl http://localhost:5000/health
@@ -542,7 +542,7 @@ curl http://localhost:5000/health
 
 # Estado de los contenedores
 docker compose ps
-# Todos deben mostrar 'Up' y ticketia_db debe mostrar '(healthy)'
+# Todos deben mostrar 'Up' y zeptai_db debe mostrar '(healthy)'
 [427] 'Heading 1': Anexo B. Manual de Usuario Resumido
 [428] 'Heading 2': Primeros pasos
 [429] 'Normal': El proceso de puesta en marcha de Zeptai está diseñado para completarse en menos de 10 minutos, sin necesidad de conocimientos técnicos:

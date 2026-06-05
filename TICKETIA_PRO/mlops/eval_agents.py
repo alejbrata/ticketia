@@ -70,7 +70,7 @@ def eval_post_sales_intent():
 
 def main():
     print("=" * 50)
-    print("Ticketia MLOps Agent Evaluation")
+    print("Zeptai MLOps Agent Evaluation")
     print("=" * 50)
 
     eval_grant_hunter_output()

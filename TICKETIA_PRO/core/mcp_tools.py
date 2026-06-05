@@ -235,7 +235,7 @@ def tool_send_email_notification(
 
             msg = Message(
                 subject=subject,
-                sender=app.config.get('MAIL_DEFAULT_SENDER', 'ticketia.soporte@gmail.com'),
+                sender=app.config.get('MAIL_DEFAULT_SENDER', 'zeptai.soporte@gmail.com'),
                 recipients=[to_email],
                 body=f"{body}\n\n---\nEnviado por {owner.business_name} a través de Zeptai."
             )

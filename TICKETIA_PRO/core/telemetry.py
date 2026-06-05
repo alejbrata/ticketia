@@ -21,38 +21,38 @@ logger = logging.getLogger(__name__)
 from prometheus_client import Counter, Histogram, Gauge, Info
 
 llm_requests = Counter(
-    'ticketia_llm_requests_total',
+    'zeptai_llm_requests_total',
     'Total de llamadas a modelos LLM',
     ['model', 'stage', 'success'],
 )
 
 llm_tokens = Counter(
-    'ticketia_llm_tokens_total',
+    'zeptai_llm_tokens_total',
     'Total de tokens consumidos',
     ['model', 'stage', 'token_type'],  # token_type: prompt | completion
 )
 
 llm_latency = Histogram(
-    'ticketia_llm_latency_seconds',
+    'zeptai_llm_latency_seconds',
     'Latencia de llamadas LLM en segundos',
     ['model', 'stage'],
     buckets=[0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0],
 )
 
 llm_cost = Counter(
-    'ticketia_llm_cost_usd_total',
+    'zeptai_llm_cost_usd_total',
     'Coste acumulado estimado en USD',
     ['model', 'stage'],
 )
 
 rag_score = Gauge(
-    'ticketia_rag_score',
+    'zeptai_rag_score',
     'Puntuación de calidad RAG de DeepEval (0.0 – 1.0)',
     ['metric'],
 )
 
-app_info = Info('ticketia_app', 'Metainformación de la aplicación')
-app_info.info({'version': '1.0', 'service': 'ticketia', 'env': os.environ.get('FLASK_ENV', 'development')})
+app_info = Info('zeptai_app', 'Metainformación de la aplicación')
+app_info.info({'version': '1.0', 'service': 'zeptai', 'env': os.environ.get('FLASK_ENV', 'development')})
 
 
 # ── API pública ────────────────────────────────────────────────────────────────
@@ -109,7 +109,7 @@ def init_tracing(app) -> None:
         from opentelemetry.sdk.resources import SERVICE_NAME, Resource
         from opentelemetry.instrumentation.flask import FlaskInstrumentor
 
-        resource = Resource(attributes={SERVICE_NAME: 'ticketia'})
+        resource = Resource(attributes={SERVICE_NAME: 'zeptai'})
         provider = TracerProvider(resource=resource)
         provider.add_span_processor(
             BatchSpanProcessor(OTLPSpanExporter(endpoint=f"{endpoint}/v1/traces"))

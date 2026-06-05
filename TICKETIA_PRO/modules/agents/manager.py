@@ -301,7 +301,7 @@ class AgentExecutor:
                     with open(pdf_path.lstrip('/'), 'rb') as fp:
                         msg = Message(
                             subject=f"Nuevo Documento Generado: {os.path.basename(pdf_path)}",
-                            sender=os.environ.get('MAIL_DEFAULT_SENDER', 'no-reply@ticketia.com'),
+                            sender=os.environ.get('MAIL_DEFAULT_SENDER', 'no-reply@zeptai.com'),
                             recipients=[self.business_profile.email],
                             body=f"Hola {self.business_profile.business_name},\n\nAquí tienes el documento generado desde tu última captura.\n\nSaludos,\nTu Agente IA."
                         )

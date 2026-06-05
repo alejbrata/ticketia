@@ -121,7 +121,7 @@
             <a href="{{ url_for('web.profile') }}" onclick="toggleNavMenu()" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-colors {{ nav_active_drawer if current_page == 'profile' else nav_idle_drawer }}">
                 <span class="text-lg">👤</span><span>Mi Perfil</span>
             </a>
-            {% if session.get('user_email') == 'admin@ticketia.com' %}
+            {% if session.get('user_email') == 'admin@zeptai.com' %}
             <a href="{{ url_for('web.observabilidad_page') }}" onclick="toggleNavMenu()" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-colors {{ nav_active_drawer if current_page == 'observabilidad' else nav_idle_drawer }}">
                 <span class="text-lg">🔭</span><span>Observabilidad</span>
             </a>

@@ -5,7 +5,7 @@ def seed_policy():
     with app.app_context():
         print("🛡️ Inyectando Políticas de Seguridad...")
         
-        email = "admin@ticketia.com"
+        email = "admin@zeptai.com"
         user = BusinessProfile.query.filter_by(email=email).first()
         
         if user:
@@ -15,7 +15,7 @@ def seed_policy():
                     "forbidden_items": ["calzoncillos", "ropa interior", "pendientes", "bañador"],
                     "allow_autonomous_refunds": False,
                     "exchange_policy": {
-                        "url": "https://ticketia.com/cambios-y-devoluciones",
+                        "url": "https://zeptai.com/cambios-y-devoluciones",
                         "instructions": "Si prefieres, también puedes venir a nuestra tienda en C/ Gran Vía 12."
                     }
                 }

@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 PORT = int(os.environ.get('MCP_SSE_PORT', 8001))
 
-mcp = FastMCP("TicketiaDataServer-SSE", host="0.0.0.0", port=PORT)
+mcp = FastMCP("ZeptaiDataServer-SSE", host="0.0.0.0", port=PORT)
 
 
 @mcp.tool()

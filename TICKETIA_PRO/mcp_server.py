@@ -22,7 +22,7 @@ from core.mcp_tools import (
 
 logger = logging.getLogger(__name__)
 
-mcp = FastMCP("TicketiaDataServer")
+mcp = FastMCP("ZeptaiDataServer")
 
 
 @mcp.tool()
